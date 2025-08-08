@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Bot Discord para SCUM - Gestión de Bunkers Abandonados V2
-Con soporte para múltiples servidores
+Con soporte para múltiples servidores y sistema de suscripciones
 """
 
 import discord
@@ -13,6 +13,12 @@ from datetime import datetime, timedelta
 from database_v2 import BunkerDatabaseV2
 import os
 from typing import List, Optional
+from aiohttp import web
+import aiohttp
+from subscription_manager import subscription_manager
+from premium_utils import check_limits, premium_required
+from premium_commands import setup_premium_commands
+from premium_exclusive_commands import setup_premium_exclusive_commands
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -41,6 +47,15 @@ class BunkerBotV2(commands.Bot):
     async def setup_hook(self):
         """Inicializa el bot"""
         await self.db.initialize()
+        
+        # Inicializar sistema de suscripciones
+        await subscription_manager.initialize()
+        logger.info("Sistema de suscripciones inicializado")
+        
+        # Configurar comandos premium
+        setup_premium_commands(self)
+        setup_premium_exclusive_commands(self)
+        
         self.notification_task.start()
         
         # Sincronizar comandos
@@ -106,6 +121,7 @@ async def sector_autocomplete(
 # === COMANDOS DE GESTIÓN DE SERVIDORES ===
 
 @bot.tree.command(name="ba_add_server", description="Agregar un nuevo servidor para tracking de bunkers")
+@check_limits("servers")
 async def add_server(interaction: discord.Interaction, 
                     name: str, 
                     description: str = ""):
@@ -236,6 +252,7 @@ async def list_servers(interaction: discord.Interaction):
 
 @bot.tree.command(name="ba_register_bunker", description="Registrar tiempo de expiración de un bunker")
 @app_commands.autocomplete(sector=sector_autocomplete, server=server_autocomplete)
+@check_limits("bunkers")
 async def register_bunker(interaction: discord.Interaction, 
                          sector: str, 
                          hours: int, 
