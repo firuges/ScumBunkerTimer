@@ -38,7 +38,7 @@
 1. **Secrets** (icono de candado) →
 2. **New Secret:**
    - **Key:** `DISCORD_TOKEN`
-   - **Value:** `MTQwMzE5MzMxODQxNzg5MTQwOQ.GfKTnD.gY0U9T7X6LY-F8XxdL91xlW-KGvbZJlcZ_3718`
+   - **Value:** `XXXX`
 
 ### 5. Instalar dependencias
 En la **Console:**
