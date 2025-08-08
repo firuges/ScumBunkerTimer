@@ -21,10 +21,12 @@ class BunkerDatabaseV2:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS servers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
                     description TEXT,
                     created_by TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    discord_guild_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(name, discord_guild_id)
                 )
             """)
             
@@ -35,12 +37,13 @@ class BunkerDatabaseV2:
                     sector TEXT NOT NULL,
                     name TEXT NOT NULL,
                     server_name TEXT DEFAULT 'Default',
+                    discord_guild_id TEXT NOT NULL,
                     registered_time TIMESTAMP,
                     expiry_time TIMESTAMP,
                     registered_by TEXT,
                     discord_user_id TEXT,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(sector, server_name)
+                    UNIQUE(sector, server_name, discord_guild_id)
                 )
             """)
             
@@ -49,45 +52,46 @@ class BunkerDatabaseV2:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     bunker_sector TEXT,
                     server_name TEXT DEFAULT 'Default',
+                    discord_guild_id TEXT NOT NULL,
                     notification_time TIMESTAMP,
                     notification_type TEXT,
                     sent BOOLEAN DEFAULT FALSE
                 )
             """)
             
-            # Insertar servidor por defecto
-            await db.execute("""
-                INSERT OR IGNORE INTO servers (name, description, created_by) 
-                VALUES ('Default', 'Servidor por defecto', 'System')
-            """)
+            # Insertar servidor por defecto (lo haremos dinámico)
+            # await db.execute("""
+            #     INSERT OR IGNORE INTO servers (name, description, created_by, discord_guild_id) 
+            #     VALUES ('Default', 'Servidor por defecto', 'System', 'default')
+            # """)
             
-            # Insertar bunkers predeterminados para el servidor por defecto
-            bunkers_data = [
-                ("D1", "Bunker Abandonado D1"),
-                ("C4", "Bunker Abandonado C4"),
-                ("A1", "Bunker Abandonado A1"),
-                ("A3", "Bunker Abandonado A3")
-            ]
+            # Los bunkers se crearán cuando se agregue el primer servidor
+            # bunkers_data = [
+            #     ("D1", "Bunker Abandonado D1"),
+            #     ("C4", "Bunker Abandonado C4"),
+            #     ("A1", "Bunker Abandonado A1"),
+            #     ("A3", "Bunker Abandonado A3")
+            # ]
             
-            for sector, name in bunkers_data:
-                await db.execute("""
-                    INSERT OR IGNORE INTO bunkers (sector, name, server_name) 
-                    VALUES (?, ?, 'Default')
-                """, (sector, name))
+            # for sector, name in bunkers_data:
+            #     await db.execute("""
+            #         INSERT OR IGNORE INTO bunkers (sector, name, server_name, discord_guild_id) 
+            #         VALUES (?, ?, 'Default', 'default')
+            #     """, (sector, name))
             
             await db.commit()
             logger.info("Base de datos V2 inicializada correctamente")
 
     # === GESTIÓN DE SERVIDORES ===
     
-    async def add_server(self, name: str, description: str = "", created_by: str = "") -> bool:
-        """Agregar un nuevo servidor"""
+    async def add_server(self, name: str, description: str = "", created_by: str = "", guild_id: str = "") -> bool:
+        """Agregar un nuevo servidor para un Discord guild específico"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute("""
-                    INSERT INTO servers (name, description, created_by) 
-                    VALUES (?, ?, ?)
-                """, (name, description, created_by))
+                    INSERT INTO servers (name, description, created_by, discord_guild_id) 
+                    VALUES (?, ?, ?, ?)
+                """, (name, description, created_by, guild_id))
                 
                 # Crear bunkers para el nuevo servidor
                 bunkers_data = [
@@ -99,9 +103,9 @@ class BunkerDatabaseV2:
                 
                 for sector, bunker_name in bunkers_data:
                     await db.execute("""
-                        INSERT INTO bunkers (sector, name, server_name) 
-                        VALUES (?, ?, ?)
-                    """, (sector, bunker_name, name))
+                        INSERT INTO bunkers (sector, name, server_name, discord_guild_id) 
+                        VALUES (?, ?, ?, ?)
+                    """, (sector, bunker_name, name, guild_id))
                 
                 await db.commit()
                 logger.info(f"Servidor '{name}' agregado correctamente")
@@ -111,27 +115,27 @@ class BunkerDatabaseV2:
             logger.error(f"Error agregando servidor: {e}")
             return False
 
-    async def remove_server(self, name: str) -> bool:
-        """Eliminar un servidor y todos sus bunkers"""
+    async def remove_server(self, name: str, guild_id: str) -> bool:
+        """Eliminar un servidor y todos sus bunkers de un Discord guild específico"""
         try:
             if name == 'Default':
                 logger.warning("No se puede eliminar el servidor por defecto")
                 return False
                 
             async with aiosqlite.connect(self.db_path) as db:
-                # Verificar si el servidor existe
-                cursor = await db.execute("SELECT name FROM servers WHERE name = ?", (name,))
+                # Verificar si el servidor existe en este guild
+                cursor = await db.execute("SELECT name FROM servers WHERE name = ? AND discord_guild_id = ?", (name, guild_id))
                 if not await cursor.fetchone():
                     return False
                 
-                # Eliminar notificaciones del servidor
-                await db.execute("DELETE FROM notifications WHERE server_name = ?", (name,))
+                # Eliminar notificaciones del servidor en este guild
+                await db.execute("DELETE FROM notifications WHERE server_name = ? AND discord_guild_id = ?", (name, guild_id))
                 
-                # Eliminar bunkers del servidor
-                await db.execute("DELETE FROM bunkers WHERE server_name = ?", (name,))
+                # Eliminar bunkers del servidor en este guild
+                await db.execute("DELETE FROM bunkers WHERE server_name = ? AND discord_guild_id = ?", (name, guild_id))
                 
-                # Eliminar el servidor
-                await db.execute("DELETE FROM servers WHERE name = ?", (name,))
+                # Eliminar el servidor de este guild
+                await db.execute("DELETE FROM servers WHERE name = ? AND discord_guild_id = ?", (name, guild_id))
                 
                 await db.commit()
                 logger.info(f"Servidor '{name}' eliminado correctamente")
@@ -141,13 +145,13 @@ class BunkerDatabaseV2:
             logger.error(f"Error eliminando servidor: {e}")
             return False
 
-    async def get_servers(self) -> List[Dict]:
-        """Obtener lista de servidores"""
+    async def get_servers(self, guild_id: str) -> List[Dict]:
+        """Obtener lista de servidores de un Discord guild específico"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
                 SELECT name, description, created_by, created_at 
-                FROM servers ORDER BY name
-            """)
+                FROM servers WHERE discord_guild_id = ? ORDER BY name
+            """, (guild_id,))
             
             servers = []
             async for row in cursor:
@@ -163,9 +167,9 @@ class BunkerDatabaseV2:
     # === GESTIÓN DE BUNKERS (MODIFICADA) ===
     
     async def register_bunker_time(self, sector: str, hours: int, minutes: int, 
-                                 registered_by: str, discord_user_id: str = None, 
+                                 registered_by: str, guild_id: str, discord_user_id: str = None, 
                                  server_name: str = "Default") -> bool:
-        """Registra el tiempo de un bunker en un servidor específico"""
+        """Registra el tiempo de un bunker en un servidor específico de un Discord guild"""
         try:
             current_time = datetime.now()
             expiry_time = current_time + timedelta(hours=hours, minutes=minutes)
@@ -175,29 +179,29 @@ class BunkerDatabaseV2:
                     UPDATE bunkers 
                     SET registered_time = ?, expiry_time = ?, registered_by = ?, 
                         discord_user_id = ?, last_updated = ?
-                    WHERE sector = ? AND server_name = ?
+                    WHERE sector = ? AND server_name = ? AND discord_guild_id = ?
                 """, (current_time, expiry_time, registered_by, discord_user_id, 
-                      current_time, sector, server_name))
+                      current_time, sector, server_name, guild_id))
                 
                 await db.commit()
                 
                 # Programar notificaciones
-                await self._schedule_notifications(sector, expiry_time, server_name)
+                await self._schedule_notifications(sector, expiry_time, server_name, guild_id)
                 
-                logger.info(f"Tiempo registrado para bunker {sector} en servidor {server_name}: {hours}h {minutes}m")
+                logger.info(f"Tiempo registrado para bunker {sector} en servidor {server_name}, guild {guild_id}: {hours}h {minutes}m")
                 return True
                 
         except Exception as e:
             logger.error(f"Error registrando tiempo: {e}")
             return False
 
-    async def get_bunker_status(self, sector: str, server_name: str = "Default") -> Optional[Dict]:
-        """Obtiene el estado actual de un bunker en un servidor específico"""
+    async def get_bunker_status(self, sector: str, guild_id: str, server_name: str = "Default") -> Optional[Dict]:
+        """Obtiene el estado actual de un bunker en un servidor específico de un Discord guild"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
                 SELECT sector, name, registered_time, expiry_time, registered_by, discord_user_id, server_name
-                FROM bunkers WHERE sector = ? AND server_name = ?
-            """, (sector, server_name))
+                FROM bunkers WHERE sector = ? AND server_name = ? AND discord_guild_id = ?
+            """, (sector, server_name, guild_id))
             
             row = await cursor.fetchone()
             if not row:
@@ -264,23 +268,23 @@ class BunkerDatabaseV2:
             
             return result
 
-    async def get_all_bunkers_status(self, server_name: str = "Default") -> List[Dict]:
-        """Obtiene el estado de todos los bunkers de un servidor"""
+    async def get_all_bunkers_status(self, guild_id: str, server_name: str = "Default") -> List[Dict]:
+        """Obtiene el estado de todos los bunkers de un servidor en un Discord guild específico"""
         bunkers = []
         for sector in ["D1", "C4", "A1", "A3"]:
-            status = await self.get_bunker_status(sector, server_name)
+            status = await self.get_bunker_status(sector, guild_id, server_name)
             if status:
                 bunkers.append(status)
         return bunkers
 
-    async def _schedule_notifications(self, sector: str, expiry_time: datetime, server_name: str = "Default"):
-        """Programa notificaciones para un bunker"""
+    async def _schedule_notifications(self, sector: str, expiry_time: datetime, server_name: str = "Default", guild_id: str = ""):
+        """Programa notificaciones para un bunker en un Discord guild específico"""
         async with aiosqlite.connect(self.db_path) as db:
             # Limpiar notificaciones anteriores
             await db.execute("""
                 DELETE FROM notifications 
-                WHERE bunker_sector = ? AND server_name = ?
-            """, (sector, server_name))
+                WHERE bunker_sector = ? AND server_name = ? AND discord_guild_id = ?
+            """, (sector, server_name, guild_id))
             
             # Programar nuevas notificaciones
             notifications = [
@@ -293,21 +297,29 @@ class BunkerDatabaseV2:
             for notification_time, notification_type in notifications:
                 if notification_time > datetime.now():
                     await db.execute("""
-                        INSERT INTO notifications (bunker_sector, server_name, notification_time, notification_type)
-                        VALUES (?, ?, ?, ?)
-                    """, (sector, server_name, notification_time, notification_type))
+                        INSERT INTO notifications (bunker_sector, server_name, discord_guild_id, notification_time, notification_type)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (sector, server_name, guild_id, notification_time, notification_type))
             
             await db.commit()
 
-    async def get_pending_notifications(self) -> List[Dict]:
-        """Obtiene las notificaciones pendientes"""
+    async def get_pending_notifications(self, guild_id: str = None) -> List[Dict]:
+        """Obtiene las notificaciones pendientes, opcionalmente filtradas por guild"""
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("""
-                SELECT n.id, n.bunker_sector, n.server_name, n.notification_time, n.notification_type, b.name
-                FROM notifications n
-                JOIN bunkers b ON n.bunker_sector = b.sector AND n.server_name = b.server_name
-                WHERE n.sent = FALSE AND n.notification_time <= ?
-            """, (datetime.now(),))
+            if guild_id:
+                cursor = await db.execute("""
+                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name
+                    FROM notifications n
+                    JOIN bunkers b ON n.bunker_sector = b.sector AND n.server_name = b.server_name AND n.discord_guild_id = b.discord_guild_id
+                    WHERE n.sent = FALSE AND n.notification_time <= ? AND n.discord_guild_id = ?
+                """, (datetime.now(), guild_id))
+            else:
+                cursor = await db.execute("""
+                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name
+                    FROM notifications n
+                    JOIN bunkers b ON n.bunker_sector = b.sector AND n.server_name = b.server_name AND n.discord_guild_id = b.discord_guild_id
+                    WHERE n.sent = FALSE AND n.notification_time <= ?
+                """, (datetime.now(),))
             
             notifications = []
             async for row in cursor:
@@ -315,9 +327,10 @@ class BunkerDatabaseV2:
                     "id": row[0],
                     "sector": row[1],
                     "server_name": row[2],
-                    "time": row[3],
-                    "type": row[4],
-                    "name": row[5]
+                    "discord_guild_id": row[3],
+                    "time": row[4],
+                    "type": row[5],
+                    "name": row[6]
                 })
             
             return notifications

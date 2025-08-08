@@ -73,9 +73,10 @@ async def server_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> List[app_commands.Choice[str]]:
-    """Autocompletado para nombres de servidores"""
+    """Autocompletado para nombres de servidores del Discord guild actual"""
     try:
-        servers = await bot.db.get_servers()
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        servers = await bot.db.get_servers(guild_id)
         filtered_servers = [
             s for s in servers 
             if current.lower() in s["name"].lower()
@@ -108,16 +109,17 @@ async def sector_autocomplete(
 async def add_server(interaction: discord.Interaction, 
                     name: str, 
                     description: str = ""):
-    """Agregar un servidor nuevo"""
+    """Agregar un servidor nuevo al Discord guild actual"""
     await interaction.response.defer()
     
     try:
-        success = await bot.db.add_server(name, description, str(interaction.user))
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        success = await bot.db.add_server(name, description, str(interaction.user), guild_id)
         
         if success:
             embed = discord.Embed(
                 title="✅ Servidor Agregado",
-                description=f"El servidor **{name}** ha sido agregado correctamente.",
+                description=f"El servidor **{name}** ha sido agregado correctamente a este Discord.",
                 color=0x00ff00
             )
             if description:
@@ -127,7 +129,7 @@ async def add_server(interaction: discord.Interaction,
         else:
             embed = discord.Embed(
                 title="❌ Error",
-                description=f"No se pudo agregar el servidor **{name}**. Puede que ya exista.",
+                description=f"No se pudo agregar el servidor **{name}**. Puede que ya exista en este Discord.",
                 color=0xff0000
             )
         
@@ -145,7 +147,7 @@ async def add_server(interaction: discord.Interaction,
 @bot.tree.command(name="ba_remove_server", description="Eliminar un servidor y todos sus bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
 async def remove_server(interaction: discord.Interaction, server: str):
-    """Eliminar un servidor"""
+    """Eliminar un servidor del Discord guild actual"""
     await interaction.response.defer()
     
     try:
@@ -158,18 +160,19 @@ async def remove_server(interaction: discord.Interaction, server: str):
             await interaction.followup.send(embed=embed)
             return
         
-        success = await bot.db.remove_server(server)
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        success = await bot.db.remove_server(server, guild_id)
         
         if success:
             embed = discord.Embed(
                 title="✅ Servidor Eliminado",
-                description=f"El servidor **{server}** y todos sus bunkers han sido eliminados.",
+                description=f"El servidor **{server}** y todos sus bunkers han sido eliminados de este Discord.",
                 color=0x00ff00
             )
         else:
             embed = discord.Embed(
                 title="❌ Error",
-                description=f"No se pudo eliminar el servidor **{server}**. Puede que no exista.",
+                description=f"No se pudo eliminar el servidor **{server}**. Puede que no exista en este Discord.",
                 color=0xff0000
             )
         
@@ -186,16 +189,17 @@ async def remove_server(interaction: discord.Interaction, server: str):
 
 @bot.tree.command(name="ba_list_servers", description="Listar todos los servidores disponibles")
 async def list_servers(interaction: discord.Interaction):
-    """Listar servidores disponibles"""
+    """Listar servidores disponibles en este Discord guild"""
     await interaction.response.defer()
     
     try:
-        servers = await bot.db.get_servers()
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        servers = await bot.db.get_servers(guild_id)
         
         if not servers:
             embed = discord.Embed(
                 title="📋 Servidores",
-                description="No hay servidores registrados.",
+                description="No hay servidores registrados en este Discord. Usa `/ba_add_server` para agregar uno.",
                 color=0x808080
             )
         else:
@@ -237,7 +241,7 @@ async def register_bunker(interaction: discord.Interaction,
                          hours: int, 
                          minutes: int = 0, 
                          server: str = "Default"):
-    """Registrar el tiempo de expiración de un bunker"""
+    """Registrar el tiempo de expiración de un bunker en este Discord guild"""
     await interaction.response.defer()
     
     try:
@@ -261,8 +265,9 @@ async def register_bunker(interaction: discord.Interaction,
             return
 
         sector = sector.upper()
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
         success = await bot.db.register_bunker_time(
-            sector, hours, minutes, str(interaction.user), str(interaction.user.id), server
+            sector, hours, minutes, str(interaction.user), guild_id, str(interaction.user.id), server
         )
         
         if success:
@@ -271,7 +276,7 @@ async def register_bunker(interaction: discord.Interaction,
             
             embed = discord.Embed(
                 title="✅ Bunker Registrado",
-                description=f"**Bunker Abandonado {sector}** registrado correctamente",
+                description=f"**Bunker Abandonado {sector}** registrado correctamente en **{server}**",
                 color=0x00ff00
             )
             embed.add_field(name="🖥️ Servidor", value=server, inline=True)
@@ -316,7 +321,8 @@ async def check_bunker(interaction: discord.Interaction,
             return
 
         sector = sector.upper()
-        status = await bot.db.get_bunker_status(sector, server)
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        status = await bot.db.get_bunker_status(sector, guild_id, server)
         
         if not status:
             embed = discord.Embed(
@@ -395,16 +401,17 @@ async def check_bunker(interaction: discord.Interaction,
 @bot.tree.command(name="ba_status_all", description="Ver estado de todos los bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
 async def status_all(interaction: discord.Interaction, server: str = "Default"):
-    """Ver el estado de todos los bunkers de un servidor"""
+    """Ver el estado de todos los bunkers de un servidor en este Discord guild"""
     await interaction.response.defer()
     
     try:
-        bunkers = await bot.db.get_all_bunkers_status(server)
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        bunkers = await bot.db.get_all_bunkers_status(guild_id, server)
         
         if not bunkers:
             embed = discord.Embed(
                 title="❌ Sin datos",
-                description=f"No se encontraron bunkers en el servidor {server}",
+                description=f"No se encontraron bunkers en el servidor {server} de este Discord. ¿Necesitas crear el servidor primero?",
                 color=0xff0000
             )
             await interaction.followup.send(embed=embed)
