@@ -58,16 +58,20 @@ class BunkerBotV2(commands.Bot):
         
         self.notification_task.start()
         
-        # Sincronizar comandos
-        try:
-            synced = await self.tree.sync()
-            logger.info(f"Sincronizados {len(synced)} comandos")
-        except Exception as e:
-            logger.error(f"Error sincronizando comandos: {e}")
+        # NO sincronizar aquí - se hace en on_ready después de que todos los comandos estén registrados
 
     async def on_ready(self):
         logger.info(f'{self.user} conectado a Discord!')
         logger.info(f'Bot conectado en {len(self.guilds)} servidores')
+        
+        # Sincronizar comandos después de que todo esté listo
+        try:
+            total_commands = len([cmd for cmd in self.tree.walk_commands()])
+            logger.info(f"Comandos registrados antes de sync: {total_commands}")
+            synced = await self.tree.sync()
+            logger.info(f"EXITO: Sincronizados {len(synced)} comandos con Discord")
+        except Exception as e:
+            logger.error(f"ERROR: Error sincronizando comandos: {e}")
 
     @tasks.loop(minutes=5)
     async def notification_task(self):
