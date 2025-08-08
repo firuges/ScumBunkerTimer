@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCUM Bunker Timer - Guía Completa</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.2em;
+        }
+        
+        .section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s ease;
+        }
+        
+        .section:hover {
+            transform: translateY(-5px);
+        }
+        
+        .section h2 {
+            color: #2c3e50;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .commands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .command-card {
+            background: linear-gradient(145deg, #f8f9fa, #e9ecef);
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        
+        .command-card:hover {
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .command-card h3 {
+            color: #495057;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .command {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 5px 0;
+            display: inline-block;
+            font-size: 0.9em;
+        }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minospace(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .status-card {
+            background: linear-gradient(145deg, #ffffff, #f1f3f4);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+        }
+        
+        .status-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .example-flow {
+            background: linear-gradient(145deg, #e8f5e8, #d4edda);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #28a745;
+        }
+        
+        .step {
+            margin: 15px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 5px;
+        }
+        
+        .step strong {
+            color: #155724;
+        }
+        
+        .tips {
+            background: linear-gradient(145deg, #fff3cd, #ffeaa7);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #ffc107;
+        }
+        
+        .tips h4 {
+            color: #856404;
+            margin-bottom: 15px;
+        }
+        
+        .tips ul {
+            color: #856404;
+            margin-left: 20px;
+        }
+        
+        .premium-section {
+            background: linear-gradient(145deg, #f8d7da, #f5c6cb);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 5px solid #dc3545;
+        }
+        
+        .premium-section h4 {
+            color: #721c24;
+            margin-bottom: 15px;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .table th,
+        .table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .table th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .footer {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 30px;
+            color: #6c757d;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .commands-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🤖 SCUM Bunker Timer V2</h1>
+            <p>Guía Completa del Bot para Gestión de Bunkers</p>
+        </div>
+
+        <!-- Inicio Rápido -->
+        <div class="section">
+            <h2>🚀 Inicio Rápido - 3 Pasos</h2>
+            <div class="example-flow">
+                <div class="step">
+                    <strong>1. Agregar Servidor:</strong>
+                    <div class="command">/ba_add_server name:Mi-Servidor</div>
+                </div>
+                <div class="step">
+                    <strong>2. Registrar Bunker:</strong>
+                    <div class="command">/ba_register_bunker sector:D1 hours:5</div>
+                </div>
+                <div class="step">
+                    <strong>3. Verificar Estado:</strong>
+                    <div class="command">/ba_check_bunker sector:D1</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos de Servidores -->
+        <div class="section">
+            <h2>🖥️ Gestión de Servidores</h2>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Agregar Servidor</h3>
+                    <div class="command">/ba_add_server name:NombreServidor</div>
+                    <p>Registra un nuevo servidor SCUM en el bot. Cada servidor mantiene sus propios bunkers separados.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Eliminar Servidor</h3>
+                    <div class="command">/ba_remove_server server:NombreServidor</div>
+                    <p>Elimina un servidor y todos sus bunkers asociados. ⚠️ Acción irreversible.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Listar Servidores</h3>
+                    <div class="command">/ba_list_servers</div>
+                    <p>Muestra todos los servidores registrados en tu Discord con estadísticas básicas.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos de Bunkers -->
+        <div class="section">
+            <h2>🏰 Gestión de Bunkers</h2>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Registrar Bunker</h3>
+                    <div class="command">/ba_register_bunker sector:D1 hours:5</div>
+                    <p>Registra cuando encontraste un bunker cerrado. El bot calculará automáticamente cuándo se abrirá.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Verificar Bunker</h3>
+                    <div class="command">/ba_check_bunker sector:D1</div>
+                    <p>Consulta el estado actual de un bunker específico con tiempo restante.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Estado de Todos</h3>
+                    <div class="command">/ba_status_all</div>
+                    <p>Muestra el estado de todos los bunkers en un servidor con tiempos actualizados.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Lista Detallada</h3>
+                    <div class="command">/ba_list_bunkers</div>
+                    <p>Lista completa con detalles de registro, usuario que lo registró y estadísticas.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Cerrar Bunker</h3>
+                    <div class="command">/ba_close_bunker sector:D1</div>
+                    <p>Marca un bunker como permanentemente cerrado cuando lo confirmes in-game.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estados de Bunkers -->
+        <div class="section">
+            <h2>📊 Estados de Bunkers</h2>
+            <div class="status-grid">
+                <div class="status-card">
+                    <div class="status-icon">🔒</div>
+                    <h4>CERRADO</h4>
+                    <p>El bunker está esperando a abrirse. Muestra tiempo restante.</p>
+                </div>
+                <div class="status-card">
+                    <div class="status-icon">🟢</div>
+                    <h4>ACTIVO</h4>
+                    <p>Bunker abierto con acceso por 24 horas. ¡Ve rápido!</p>
+                </div>
+                <div class="status-card">
+                    <div class="status-icon">🔴</div>
+                    <h4>EXPIRADO</h4>
+                    <p>Bunker cerrado permanentemente. Ya no se puede acceder.</p>
+                </div>
+                <div class="status-card">
+                    <div class="status-icon">❓</div>
+                    <h4>SIN REGISTRO</h4>
+                    <p>No hay información sobre este bunker en el sector.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos Personales -->
+        <div class="section">
+            <h2>📊 Información Personal</h2>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Mi Uso Diario</h3>
+                    <div class="command">/ba_my_usage</div>
+                    <p>Verifica cuántos bunkers has registrado hoy y tu límite diario actual.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Información de Planes</h3>
+                    <div class="command">/ba_subscription</div>
+                    <p>Consulta tu plan actual (Gratuito o Premium) y los beneficios disponibles.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Ayuda Básica</h3>
+                    <div class="command">/ba_help</div>
+                    <p>Muestra los comandos esenciales para empezar a usar el bot.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos Premium -->
+        <div class="section">
+            <h2>💎 Comandos Premium</h2>
+            <div class="premium-section">
+                <h4>🔒 Requiere Plan Premium</h4>
+                <p>Los siguientes comandos están disponibles solo para usuarios con plan Premium activo.</p>
+            </div>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Estadísticas Avanzadas</h3>
+                    <div class="command">/ba_stats</div>
+                    <p>Estadísticas detalladas de uso, bunkers más activos, y análisis temporal.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Configurar Notificaciones</h3>
+                    <div class="command">/ba_notifications</div>
+                    <p>Configura alertas automáticas por DM cuando los bunkers estén por abrirse.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Verificar Notificaciones</h3>
+                    <div class="command">/ba_check_notifications</div>
+                    <p>Ve el estado de tus notificaciones y próximas alertas programadas.</p>
+                </div>
+                <div class="command-card">
+                    <h3>Exportar Datos</h3>
+                    <div class="command">/ba_export</div>
+                    <p>Exporta todos los datos de bunkers en formato JSON para respaldo.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sectores Disponibles -->
+        <div class="section">
+            <h2>📍 Sectores y Ubicaciones</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Sector</th>
+                        <th>Coordenadas Aproximadas</th>
+                        <th>Descripción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>D1</strong></td>
+                        <td>Zona Norte-Este</td>
+                        <td>Sector popular con varios bunkers near zona militar</td>
+                    </tr>
+                    <tr>
+                        <td><strong>C4</strong></td>
+                        <td>Zona Central</td>
+                        <td>Área central del mapa con bunkers de acceso medio</td>
+                    </tr>
+                    <tr>
+                        <td><strong>A1</strong></td>
+                        <td>Zona Sur-Oeste</td>
+                        <td>Sector menos poblado pero con bunkers valiosos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>A3</strong></td>
+                        <td>Zona Sur-Este</td>
+                        <td>Área costera con bunkers cerca de puertos</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Comparación de Planes -->
+        <div class="section">
+            <h2>🆓 vs 💎 Comparación de Planes</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Característica</th>
+                        <th>Plan Gratuito</th>
+                        <th>Plan Premium</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Bunkers por día</td>
+                        <td>1 bunker</td>
+                        <td>Ilimitado</td>
+                    </tr>
+                    <tr>
+                        <td>Comandos básicos</td>
+                        <td>✅ Incluidos</td>
+                        <td>✅ Incluidos</td>
+                    </tr>
+                    <tr>
+                        <td>Notificaciones DM</td>
+                        <td>❌ No disponible</td>
+                        <td>✅ Automáticas</td>
+                    </tr>
+                    <tr>
+                        <td>Estadísticas avanzadas</td>
+                        <td>❌ No disponible</td>
+                        <td>✅ Completas</td>
+                    </tr>
+                    <tr>
+                        <td>Exportar datos</td>
+                        <td>❌ No disponible</td>
+                        <td>✅ Formato JSON</td>
+                    </tr>
+                    <tr>
+                        <td>Soporte prioritario</td>
+                        <td>❌ Estándar</td>
+                        <td>✅ Prioritario</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Tips y Consejos -->
+        <div class="section">
+            <h2>💡 Tips y Consejos</h2>
+            <div class="tips">
+                <h4>🎯 Consejos para Usuarios Eficientes</h4>
+                <ul>
+                    <li><strong>Autocompletado:</strong> Escribe las primeras letras del servidor/sector para filtrar opciones</li>
+                    <li><strong>Servidor Default:</strong> Si no especificas servidor, se usa "Default" automáticamente</li>
+                    <li><strong>Ventana de 24h:</strong> Los bunkers tienen exactamente 24 horas de acceso cuando se abren</li>
+                    <li><strong>Registro de tiempo:</strong> Especifica las horas desde que encontraste el bunker cerrado</li>
+                    <li><strong>Verificación frecuente:</strong> Usa /ba_status_all para ver todos los bunkers de un vistazo</li>
+                    <li><strong>Notificaciones automáticas:</strong> Con Premium, recibes DM cuando los bunkers están por abrirse</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Ejemplo de Flujo Completo -->
+        <div class="section">
+            <h2>📝 Ejemplo de Uso Completo</h2>
+            <div class="example-flow">
+                <h4>Escenario: Configurar y usar el bot por primera vez</h4>
+                
+                <div class="step">
+                    <strong>Paso 1 - Configuración inicial:</strong><br>
+                    <div class="command">/ba_add_server name:MiServidor-PVP</div>
+                    <p>Agregas tu servidor SCUM favorito al bot</p>
+                </div>
+                
+                <div class="step">
+                    <strong>Paso 2 - Encontrar bunker cerrado:</strong><br>
+                    <div class="command">/ba_register_bunker sector:D1 hours:3 server:MiServidor-PVP</div>
+                    <p>Registras que encontraste un bunker cerrado en D1 hace 3 horas</p>
+                </div>
+                
+                <div class="step">
+                    <strong>Paso 3 - Verificar estado:</strong><br>
+                    <div class="command">/ba_check_bunker sector:D1 server:MiServidor-PVP</div>
+                    <p>El bot te dice: "🔒 CERRADO - Se abre en 5 horas y 23 minutos"</p>
+                </div>
+                
+                <div class="step">
+                    <strong>Paso 4 - Verificar más tarde:</strong><br>
+                    <div class="command">/ba_check_bunker sector:D1 server:MiServidor-PVP</div>
+                    <p>El bot te dice: "🟢 ACTIVO - Abierto por 18 horas más"</p>
+                </div>
+                
+                <div class="step">
+                    <strong>Paso 5 - Confirmar estado:</strong><br>
+                    <div class="command">/ba_close_bunker sector:D1 server:MiServidor-PVP</div>
+                    <p>Después de saquear, marcas el bunker como cerrado permanentemente</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>🤖 <strong>SCUM Bunker Timer V2.0.0</strong></p>
+            <p>Bot desarrollado para la comunidad SCUM | 13 comandos disponibles</p>
+            <p>Para soporte técnico, contacta al administrador del servidor Discord</p>
+        </div>
+    </div>
+</body>
+</html>

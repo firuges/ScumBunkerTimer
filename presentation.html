@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scum Bunker Timer - Sistema Premium de Gestión de Bunkers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 60px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            margin-bottom: 40px;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .header .subtitle {
+            font-size: 1.5rem;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+
+        .bot-logo {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            margin: 0 auto 30px;
+            background: linear-gradient(45deg, #FF6B6B, #4ECDC4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 4rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 60px 0;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .feature-title {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #FFD700;
+        }
+
+        .pricing-section {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 20px;
+            padding: 60px 40px;
+            margin: 60px 0;
+            backdrop-filter: blur(15px);
+        }
+
+        .pricing-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 50px;
+            color: #FFD700;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .plan-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plan-card.premium {
+            border-color: #FFD700;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 165, 0, 0.1));
+        }
+
+        .plan-card.premium::before {
+            content: "⭐ RECOMENDADO";
+            position: absolute;
+            top: 15px;
+            right: -30px;
+            background: #FFD700;
+            color: #000;
+            padding: 5px 40px;
+            transform: rotate(45deg);
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .plan-title {
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .plan-features {
+            list-style: none;
+            margin: 30px 0;
+            text-align: left;
+        }
+
+        .plan-features li {
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .plan-features li:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            color: #4ECDC4;
+            font-weight: bold;
+        }
+
+        .upgrade-note {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid #FFD700;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .commands-section {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            padding: 50px 40px;
+            margin: 60px 0;
+        }
+
+        .commands-title {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 40px;
+            color: #4ECDC4;
+        }
+
+        .commands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .command-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid #4ECDC4;
+        }
+
+        .command-name {
+            font-family: 'Courier New', monospace;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 12px;
+            border-radius: 5px;
+            display: inline-block;
+            margin-bottom: 10px;
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        .premium-badge {
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            color: #000;
+            padding: 4px 8px;
+            border-radius: 15px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 50px 0;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            margin-top: 60px;
+        }
+
+        .highlight {
+            color: #FFD700;
+            font-weight: bold;
+        }
+
+        .notification-demo {
+            background: rgba(114, 137, 218, 0.2);
+            border: 1px solid #7289DA;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+
+        .notification-title {
+            color: #7289DA;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.5rem;
+            }
+            
+            .header .subtitle {
+                font-size: 1.2rem;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="bot-logo">🏰</div>
+            <h1>Scum Bunker Timer</h1>
+            <p class="subtitle">Sistema Inteligente de Gestión de Bunkers con Notificaciones Automáticas</p>
+            <p>El bot más avanzado para trackear bunkers en SCUM con sistema premium y notificaciones personalizadas</p>
+        </header>
+
+        <section class="features-grid">
+            <div class="feature-card">
+                <span class="feature-icon">⏰</span>
+                <h3 class="feature-title">Tracking Automático</h3>
+                <p>Registra automáticamente el tiempo de cierre de bunkers y calcula cuando expiran. Sistema de notificaciones 30 minutos antes del vencimiento.</p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">💎</span>
+                <h3 class="feature-title">Sistema Premium</h3>
+                <p>Funciones avanzadas para usuarios premium: notificaciones personalizadas, estadísticas detalladas, exportación de datos y configuraciones avanzadas.</p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">🔔</span>
+                <h3 class="feature-title">Notificaciones Inteligentes</h3>
+                <p>Sistema automático de DM personal para usuarios normales y notificaciones públicas para owners. Configuración por servidor y sector.</p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">🌐</span>
+                <h3 class="feature-title">Multi-Servidor</h3>
+                <p>Soporte para múltiples servidores de SCUM con aislamiento por Discord guild. Cada servidor tiene su propia base de datos independiente.</p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">📊</span>
+                <h3 class="feature-title">Estadísticas Avanzadas</h3>
+                <p>Análisis detallado de actividad, gráficos de tendencias, reportes de eficiencia y métricas de uso por servidor y usuario.</p>
+            </div>
+
+            <div class="feature-card">
+                <span class="feature-icon">🛡️</span>
+                <h3 class="feature-title">Privacidad Total</h3>
+                <p>Sistema automático de DM personal que garantiza que solo veas notificaciones de tus propios bunkers. Privacidad y seguridad máxima.</p>
+            </div>
+        </section>
+
+        <section class="pricing-section">
+            <h2 class="pricing-title">💎 Planes de Suscripción</h2>
+            <div class="pricing-grid">
+                <div class="plan-card">
+                    <h3 class="plan-title">
+                        <span>📱</span> Plan Gratuito
+                    </h3>
+                    <ul class="plan-features">
+                        <li><span class="check-icon">✅</span> <span class="highlight">1 bunker por día</span></li>
+                        <li><span class="check-icon">✅</span> Comandos básicos</li>
+                        <li><span class="check-icon">✅</span> Soporte comunitario</li>
+                        <li><span class="check-icon">❌</span> Notificaciones avanzadas</li>
+                        <li><span class="check-icon">❌</span> Estadísticas detalladas</li>
+                        <li><span class="check-icon">❌</span> Exportación de datos</li>
+                        <li><span class="check-icon">❌</span> Soporte prioritario</li>
+                    </ul>
+                </div>
+
+                <div class="plan-card premium">
+                    <h3 class="plan-title">
+                        <span>⭐</span> Premium
+                    </h3>
+                    <ul class="plan-features">
+                        <li><span class="check-icon">✅</span> <span class="highlight">Bunkers ilimitados</span></li>
+                        <li><span class="check-icon">✅</span> Estadísticas avanzadas</li>
+                        <li><span class="check-icon">✅</span> Notificaciones personalizadas</li>
+                        <li><span class="check-icon">✅</span> DM personal automático</li>
+                        <li><span class="check-icon">✅</span> Exportación de datos</li>
+                        <li><span class="check-icon">✅</span> Configuración por servidor</li>
+                        <li><span class="check-icon">✅</span> Soporte prioritario</li>
+                        <li><span class="check-icon">✅</span> API personalizada</li>
+                    </ul>
+                    <div class="upgrade-note">
+                        <strong>Para upgrade contacta al administrador del bot</strong>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="commands-section">
+            <h2 class="commands-title">🎮 Comandos Disponibles</h2>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <div class="command-name">/ba_register</div>
+                    <p>Registra un nuevo bunker con servidor, sector y horas hasta el cierre</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_status</div>
+                    <p>Consulta el estado actual de todos los bunkers registrados</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_check</div>
+                    <p>Verifica el tiempo restante de un bunker específico</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_close</div>
+                    <p>Marca un bunker como cerrado manualmente</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_list</div>
+                    <p>Lista todos los bunkers activos con información detallada</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_stats</div>
+                    <span class="premium-badge">PREMIUM</span>
+                    <p>Estadísticas avanzadas con gráficos y análisis detallado</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_notifications</div>
+                    <span class="premium-badge">PREMIUM</span>
+                    <p>Configurar notificaciones automáticas personalizadas</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-name">/ba_export</div>
+                    <span class="premium-badge">PREMIUM</span>
+                    <p>Exportar datos en formato JSON para análisis externo</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="notification-demo">
+            <div class="notification-title">🔔 Ejemplo de Notificación Automática</div>
+            <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace;">
+                <div style="color: #FFD700; font-weight: bold;">⏰ Expira en 30 minutos</div>
+                <div style="color: #fff; margin: 10px 0;"><strong>Bunker D1</strong> en <strong>Official Server</strong></div>
+                <div style="color: #99AAB5; font-size: 0.9rem;">💎 Notificación Premium Personal</div>
+            </div>
+            <p style="margin-top: 15px; font-size: 0.9rem; opacity: 0.8;">
+                <strong>Privacidad garantizada:</strong> Solo recibes notificaciones de bunkers que tú registraste
+            </p>
+        </section>
+
+        <footer class="footer">
+            <h3>🚀 ¿Listo para optimizar tu gestión de bunkers?</h3>
+            <p>Únete a cientos de jugadores que ya usan Scum Bunker Timer para dominar el juego</p>
+            <p style="margin-top: 20px; opacity: 0.7;">
+                Bot desarrollado con ❤️ para la comunidad de SCUM | Sistema premium con notificaciones inteligentes
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

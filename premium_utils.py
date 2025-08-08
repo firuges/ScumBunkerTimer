@@ -10,14 +10,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 def premium_required(feature_name: str = "esta funcionalidad"):
-    """Decorador que requiere suscripción premium"""
+    """Decorador que requiere suscripción premium - SIN DEFER AUTOMÁTICO"""
     def decorator(func):
         @wraps(func)
         async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+            # Verificar suscripción ANTES de cualquier defer
             guild_id = str(interaction.guild.id) if interaction.guild else "default"
             subscription = await subscription_manager.get_subscription(guild_id)
             
             if subscription['plan_type'] == 'free':
+                # Plan gratuito - mostrar mensaje de upgrade
                 embed = discord.Embed(
                     title="💎 Funcionalidad Premium",
                     description=f"Para usar {feature_name} necesitas actualizar a **Premium**.",
@@ -25,12 +27,12 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                 )
                 embed.add_field(
                     name="🆓 Plan Actual: Gratuito",
-                    value="• 2 bunkers simultáneos\n• 1 servidor SCUM\n• Notificaciones básicas",
+                    value="• 1 bunker por día\n• 1 servidor SCUM\n• Comandos básicos",
                     inline=False
                 )
                 embed.add_field(
-                    name="💎 Plan Premium ($5.99/mes)",
-                    value="• Bunkers ilimitados\n• Múltiples servidores SCUM\n• Notificaciones avanzadas\n• Estadísticas detalladas",
+                    name="💎 Plan Premium",
+                    value="• Bunkers ilimitados\n• Múltiples servidores SCUM\n• Notificaciones avanzadas\n• Estadísticas detalladas\n• DM personal automático",
                     inline=False
                 )
                 embed.add_field(
@@ -39,10 +41,14 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                     inline=False
                 )
                 
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                # Responder inmediatamente sin defer
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                else:
+                    await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
-            # Continuar con la función original
+            # Si es premium, ejecutar función original
             return await func(interaction, *args, **kwargs)
         return wrapper
     return decorator
@@ -52,16 +58,47 @@ def check_limits(limit_type: str):
     def decorator(func):
         @wraps(func)
         async def wrapper(interaction: discord.Interaction, *args, **kwargs):
-            # DEFER INMEDIATAMENTE para evitar timeouts
-            if not interaction.response.is_done():
-                await interaction.response.defer()
             
             guild_id = str(interaction.guild.id) if interaction.guild else "default"
             
-            # Obtener contadores actuales (esto depende de tu implementación)
+            # Obtener contadores actuales y verificar uso diario
             if limit_type == "bunkers":
                 from database_v2 import BunkerDatabaseV2
                 db = BunkerDatabaseV2()
+                
+                # Para plan gratuito, verificar uso diario
+                guild_id = str(interaction.guild.id) if interaction.guild else "default"
+                subscription = await subscription_manager.get_subscription(guild_id)
+                
+                if subscription['plan_type'] == 'free':
+                    # Verificar uso diario del usuario
+                    user_id = str(interaction.user.id)
+                    daily_usage = await db.check_daily_usage(guild_id, user_id)
+                    
+                    if not daily_usage['can_register']:
+                        embed = discord.Embed(
+                            title="⚠️ Límite Diario Alcanzado",
+                            description=f"Ya registraste **{daily_usage['bunkers_today']} bunker** hoy.\n\nPlan Gratuito: **1 bunker por día**",
+                            color=0xff6b6b
+                        )
+                        embed.add_field(
+                            name="📅 Próximo registro",
+                            value="Podrás registrar otro bunker **mañana**",
+                            inline=True
+                        )
+                        embed.add_field(
+                            name="💎 Solución",
+                            value="Actualiza a Premium para bunkers ilimitados\n`/ba_subscription`",
+                            inline=True
+                        )
+                        
+                        if not interaction.response.is_done():
+                            await interaction.response.send_message(embed=embed, ephemeral=True)
+                        else:
+                            await interaction.followup.send(embed=embed, ephemeral=True)
+                        return
+                
+                # Para verificación de bunkers simultáneos (ya no se usa para free, pero se mantiene para compatibilidad)
                 bunkers = await db.get_all_bunkers_status(guild_id)
                 active_bunkers = len([b for b in bunkers if b.get('registered_by')])
                 servers = await db.get_servers(guild_id)
@@ -69,7 +106,7 @@ def check_limits(limit_type: str):
                 
                 limits = await subscription_manager.check_limits(guild_id, active_bunkers, servers_count)
                 
-                if not limits['bunkers_ok']:
+                if not limits['bunkers_ok'] and subscription['plan_type'] != 'free':  # No aplicar límite simultáneo a free
                     embed = discord.Embed(
                         title="⚠️ Límite Alcanzado",
                         description=f"Has alcanzado el límite de bunkers activos para tu plan.",
@@ -86,7 +123,10 @@ def check_limits(limit_type: str):
                         inline=True
                     )
                     
-                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message(embed=embed, ephemeral=True)
+                    else:
+                        await interaction.followup.send(embed=embed, ephemeral=True)
                     return
             
             elif limit_type == "servers":
@@ -116,7 +156,10 @@ def check_limits(limit_type: str):
                         inline=True
                     )
                     
-                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message(embed=embed, ephemeral=True)
+                    else:
+                        await interaction.followup.send(embed=embed, ephemeral=True)
                     return
             
             # Continuar con la función original
@@ -136,7 +179,7 @@ async def get_subscription_embed(guild_id: str) -> discord.Embed:
         )
         embed.add_field(
             name="📊 Límites Actuales",
-            value=f"• **{subscription['max_bunkers']}** bunkers simultáneos\n• **{subscription['max_servers']}** servidor SCUM\n• Notificaciones básicas",
+            value=f"• **{subscription['max_bunkers']}** bunker por día\n• **{subscription['max_servers']}** servidor SCUM\n• Comandos básicos",
             inline=False
         )
         embed.add_field(
@@ -145,8 +188,8 @@ async def get_subscription_embed(guild_id: str) -> discord.Embed:
             inline=False
         )
         embed.add_field(
-            name="💰 Precio",
-            value=f"**${subscription.get('premium_price', 5.99)}/mes**",
+            name="� Contacto",
+            value="Contacta al administrador del bot para upgrade",
             inline=True
         )
     else:

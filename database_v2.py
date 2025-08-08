@@ -47,6 +47,19 @@ class BunkerDatabaseV2:
                 )
             """)
             
+            # Crear tabla de uso diario para plan gratuito
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS daily_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_guild_id TEXT NOT NULL,
+                    discord_user_id TEXT NOT NULL,
+                    usage_date DATE NOT NULL,
+                    bunkers_registered INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(discord_guild_id, discord_user_id, usage_date)
+                )
+            """)
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -55,7 +68,26 @@ class BunkerDatabaseV2:
                     discord_guild_id TEXT NOT NULL,
                     notification_time TIMESTAMP,
                     notification_type TEXT,
-                    sent BOOLEAN DEFAULT FALSE
+                    sent BOOLEAN DEFAULT FALSE,
+                    registered_by_id TEXT
+                )
+            """)
+            
+            # Tabla para configuraciones de notificación
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS notification_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_guild_id TEXT NOT NULL,
+                    channel_id TEXT NOT NULL,
+                    server_name TEXT DEFAULT 'Default',
+                    bunker_sector TEXT DEFAULT 'all_sectors',
+                    notification_type TEXT DEFAULT 'all',
+                    role_id TEXT,
+                    enabled BOOLEAN DEFAULT TRUE,
+                    personal_dm BOOLEAN DEFAULT FALSE,
+                    created_by TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(discord_guild_id, channel_id, server_name, bunker_sector, notification_type)
                 )
             """)
             
@@ -303,19 +335,28 @@ class BunkerDatabaseV2:
             
             await db.commit()
 
+    async def create_notification(self, sector: str, server_name: str, guild_id: str, notification_time: datetime, notification_type: str, registered_by_id: str = None):
+        """Crea una notificación específica"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT INTO notifications (bunker_sector, server_name, discord_guild_id, notification_time, notification_type, sent, registered_by_id)
+                VALUES (?, ?, ?, ?, ?, FALSE, ?)
+            """, (sector, server_name, guild_id, notification_time, notification_type, registered_by_id))
+            await db.commit()
+
     async def get_pending_notifications(self, guild_id: str = None) -> List[Dict]:
         """Obtiene las notificaciones pendientes, opcionalmente filtradas por guild"""
         async with aiosqlite.connect(self.db_path) as db:
             if guild_id:
                 cursor = await db.execute("""
-                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name
+                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name, n.registered_by_id
                     FROM notifications n
                     JOIN bunkers b ON n.bunker_sector = b.sector AND n.server_name = b.server_name AND n.discord_guild_id = b.discord_guild_id
                     WHERE n.sent = FALSE AND n.notification_time <= ? AND n.discord_guild_id = ?
                 """, (datetime.now(), guild_id))
             else:
                 cursor = await db.execute("""
-                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name
+                    SELECT n.id, n.bunker_sector, n.server_name, n.discord_guild_id, n.notification_time, n.notification_type, b.name, n.registered_by_id
                     FROM notifications n
                     JOIN bunkers b ON n.bunker_sector = b.sector AND n.server_name = b.server_name AND n.discord_guild_id = b.discord_guild_id
                     WHERE n.sent = FALSE AND n.notification_time <= ?
@@ -330,7 +371,8 @@ class BunkerDatabaseV2:
                     "discord_guild_id": row[3],
                     "time": row[4],
                     "type": row[5],
-                    "name": row[6]
+                    "name": row[6],
+                    "registered_by_id": row[7]
                 })
             
             return notifications
@@ -342,3 +384,127 @@ class BunkerDatabaseV2:
                 UPDATE notifications SET sent = TRUE WHERE id = ?
             """, (notification_id,))
             await db.commit()
+
+    async def get_unique_servers(self, guild_id: str):
+        """Obtiene la lista de servidores únicos para un guild"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT DISTINCT server_name FROM bunkers 
+                WHERE discord_guild_id = ? AND server_name IS NOT NULL
+                ORDER BY server_name
+            """, (guild_id,))
+            
+            servers = []
+            async for row in cursor:
+                servers.append(row[0])
+            
+            # Si no hay servidores, devolver "Default"
+            if not servers:
+                servers = ["Default"]
+                
+            return servers
+
+    async def save_notification_config(self, guild_id: str, channel_id: str, server_name: str, 
+                                     bunker_sector: str, notification_type: str, role_id: str = None, 
+                                     enabled: bool = True, personal_dm: bool = False, created_by: str = None):
+        """Guarda una configuración de notificación"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO notification_configs 
+                (discord_guild_id, channel_id, server_name, bunker_sector, notification_type, role_id, enabled, personal_dm, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (guild_id, channel_id, server_name, bunker_sector, notification_type, role_id, enabled, personal_dm, created_by))
+            await db.commit()
+
+    async def get_notification_configs(self, guild_id: str, server_name: str = None, bunker_sector: str = None):
+        """Obtiene configuraciones de notificación que coincidan con los criterios"""
+        async with aiosqlite.connect(self.db_path) as db:
+            query = """
+                SELECT channel_id, role_id, notification_type, enabled, personal_dm, created_by 
+                FROM notification_configs 
+                WHERE discord_guild_id = ? AND enabled = TRUE
+            """
+            params = [guild_id]
+            
+            # Filtros opcionales
+            if server_name:
+                query += " AND (server_name = ? OR server_name = 'all_servers')"
+                params.append(server_name)
+            
+            if bunker_sector:
+                query += " AND (bunker_sector = ? OR bunker_sector = 'all_sectors')"
+                params.append(bunker_sector)
+            
+            cursor = await db.execute(query, params)
+            
+            configs = []
+            async for row in cursor:
+                configs.append({
+                    "channel_id": row[0],
+                    "role_id": row[1],
+                    "notification_type": row[2],
+                    "enabled": row[3],
+                    "personal_dm": row[4],
+                    "created_by": row[5]
+                })
+            
+            return configs
+
+    async def check_daily_usage(self, guild_id: str, user_id: str) -> dict:
+        """Verificar el uso diario de un usuario"""
+        from datetime import date
+        today = date.today()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT bunkers_registered 
+                FROM daily_usage 
+                WHERE discord_guild_id = ? AND discord_user_id = ? AND usage_date = ?
+            """, (guild_id, user_id, today))
+            
+            row = await cursor.fetchone()
+            bunkers_today = row[0] if row else 0
+            
+            return {
+                "bunkers_today": bunkers_today,
+                "date": today.isoformat(),
+                "can_register": bunkers_today == 0  # Solo puede registrar si no ha registrado hoy
+            }
+    
+    async def increment_daily_usage(self, guild_id: str, user_id: str):
+        """Incrementar el contador de uso diario"""
+        from datetime import date
+        today = date.today()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            # Usar INSERT OR REPLACE para crear o actualizar
+            await db.execute("""
+                INSERT OR REPLACE INTO daily_usage 
+                (discord_guild_id, discord_user_id, usage_date, bunkers_registered)
+                VALUES (?, ?, ?, 
+                    COALESCE((SELECT bunkers_registered FROM daily_usage 
+                             WHERE discord_guild_id = ? AND discord_user_id = ? AND usage_date = ?), 0) + 1
+                )
+            """, (guild_id, user_id, today, guild_id, user_id, today))
+            
+            await db.commit()
+    
+    async def get_daily_usage_stats(self, guild_id: str, user_id: str, days: int = 7) -> list:
+        """Obtener estadísticas de uso diario de los últimos N días"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT usage_date, bunkers_registered 
+                FROM daily_usage 
+                WHERE discord_guild_id = ? AND discord_user_id = ?
+                ORDER BY usage_date DESC 
+                LIMIT ?
+            """, (guild_id, user_id, days))
+            
+            stats = []
+            async for row in cursor:
+                stats.append({
+                    "date": row[0],
+                    "bunkers_registered": row[1]
+                })
+            
+            return stats

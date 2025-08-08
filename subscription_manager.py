@@ -49,7 +49,7 @@ class SubscriptionManager:
             
             # Insertar planes por defecto
             plans = [
-                ('free', 2, 1, False, False, False, 0.00),
+                ('free', 1, 1, False, False, False, 0.00),  # 1 bunker por día
                 ('premium', -1, -1, True, True, True, 5.99),
                 ('enterprise', -1, -1, True, True, True, 15.99)
             ]
@@ -84,13 +84,13 @@ class SubscriptionManager:
                 'guild_id': row[1],
                 'plan_type': row[2],
                 'status': row[3],
-                'current_period_end': row[6],
-                'max_bunkers': row[9],
-                'max_servers': row[10],
-                'advanced_notifications': bool(row[11]),
-                'api_access': bool(row[12]),
-                'priority_support': bool(row[13]),
-                'monthly_price': row[14]
+                'current_period_end': row[7],
+                'max_bunkers': int(row[11]) if row[11] is not None else 2,
+                'max_servers': int(row[12]) if row[12] is not None else 1,
+                'advanced_notifications': bool(row[13]),
+                'api_access': bool(row[14]),
+                'priority_support': bool(row[15]),
+                'monthly_price': row[16]
             }
     
     async def create_free_subscription(self, guild_id: str):
@@ -137,9 +137,9 @@ class SubscriptionManager:
         """Verificar si el guild está dentro de los límites"""
         subscription = await self.get_subscription(guild_id)
         
-        # -1 significa ilimitado
-        max_bunkers = subscription['max_bunkers']
-        max_servers = subscription['max_servers']
+        # Convertir a enteros y -1 significa ilimitado
+        max_bunkers = int(subscription['max_bunkers'])
+        max_servers = int(subscription['max_servers'])
         
         bunkers_ok = max_bunkers == -1 or bunkers_count <= max_bunkers
         servers_ok = max_servers == -1 or servers_count <= max_servers

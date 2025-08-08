@@ -16,10 +16,9 @@ class PremiumCommands:
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ba_subscription", description="Ver información sobre planes premium y suscripciones")
-    async def premium_info(self, interaction: discord.Interaction):
+    @app_commands.command(name="ba_plans", description="Ver planes de suscripción disponibles")
+    async def subscription_plans(self, interaction: discord.Interaction):
         """Mostrar información sobre planes premium"""
-        await interaction.response.defer()
         
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         
@@ -90,16 +89,16 @@ class PremiumCommands:
                 manage_button.callback = manage_callback
                 view.add_item(manage_button)
             
-            await interaction.followup.send(embed=embed, view=view)
+            await interaction.response.send_message(embed=embed, view=view)
             
         except Exception as e:
-            logger.error(f"Error en premium_info: {e}")
+            logger.error(f"Error en subscription_plans: {e}")
             embed = discord.Embed(
                 title="❌ Error",
                 description="Ocurrió un error al obtener información de suscripción.",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="ba_admin_premium", description="[ADMIN] Gestionar suscripciones")
     async def admin_premium(self, interaction: discord.Interaction, 
@@ -113,8 +112,6 @@ class PremiumCommands:
         if str(interaction.user.id) not in admin_ids:
             await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
             return
-        
-        await interaction.response.defer(ephemeral=True)
         
         target_guild_id = guild_id or str(interaction.guild.id)
         
@@ -171,7 +168,7 @@ class PremiumCommands:
                     color=0xff0000
                 )
             
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
             
         except Exception as e:
             logger.error(f"Error en admin_premium: {e}")
@@ -180,10 +177,11 @@ class PremiumCommands:
                 description=f"Error ejecutando acción: {str(e)}",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
 
 def setup_premium_commands(bot):
     """Agregar comandos premium al bot"""
     premium = PremiumCommands(bot)
-    bot.tree.add_command(premium.premium_info)
+    # Comando ba_plans temporalmente deshabilitado por CommandSignatureMismatch
+    # bot.tree.add_command(premium.subscription_plans)
     bot.tree.add_command(premium.admin_premium)

@@ -24,6 +24,13 @@ from dotenv import load_dotenv
 # Cargar variables de entorno desde .env
 load_dotenv()
 
+# Importar configuración del bot
+try:
+    from config import BOT_CREATOR_ID
+except ImportError:
+    # ID del creador del bot (reemplazar con tu Discord User ID)
+    BOT_CREATOR_ID = 123456789012345678  # CAMBIAR POR TU ID DE DISCORD
+
 # Configuración de logging
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +67,28 @@ class BunkerBotV2(commands.Bot):
         
         # NO sincronizar aquí - se hace en on_ready después de que todos los comandos estén registrados
 
+    def should_use_personal_dm(self, user_id: int, guild: discord.Guild) -> bool:
+        """
+        Determina si debe usar DM personal o canal público.
+        
+        Args:
+            user_id: ID del usuario
+            guild: Servidor de Discord
+        
+        Returns:
+            True si debe usar DM personal, False si debe usar canal público
+        """
+        # Si es el creador del bot, usar canal público
+        if user_id == BOT_CREATOR_ID:
+            return False
+        
+        # Si es el owner del servidor, usar canal público
+        if guild and user_id == guild.owner_id:
+            return False
+        
+        # Para todos los demás usuarios, usar DM personal
+        return True
+
     async def on_ready(self):
         logger.info(f'{self.user} conectado a Discord!')
         logger.info(f'Bot conectado en {len(self.guilds)} servidores')
@@ -78,18 +107,85 @@ class BunkerBotV2(commands.Bot):
         """Tarea para enviar notificaciones programadas"""
         try:
             notifications = await self.db.get_pending_notifications()
+            logger.info(f"Verificando notificaciones: {len(notifications)} pendientes")
+            
             for notification in notifications:
+                logger.info(f"Enviando notificación: {notification['type']} para {notification['sector']} en {notification['server_name']}")
                 await self.send_notification(notification)
                 await self.db.mark_notification_sent(notification["id"])
+                logger.info(f"Notificación enviada y marcada como completada")
+                
         except Exception as e:
-            logger.error(f"Error en notificaciones: {e}")
+            logger.error(f"Error en notification_task: {e}")
 
     async def send_notification(self, notification):
         """Enviar notificación a los canales configurados"""
         try:
-            # Aquí puedes configurar el canal donde enviar notificaciones
-            # Por ahora solo loguea
-            logger.info(f"Notificación: {notification['type']} para bunker {notification['sector']} en servidor {notification['server_name']}")
+            guild_id = notification["discord_guild_id"]
+            guild = self.get_guild(int(guild_id))
+            if not guild:
+                logger.error(f"Guild {guild_id} no encontrado")
+                return
+            
+            # Buscar configuraciones de notificación para este bunker
+            from premium_exclusive_commands import get_notification_configs
+            configs = await get_notification_configs(guild_id, notification["server_name"], notification["sector"])
+            
+            if not configs:
+                logger.info(f"No hay configuraciones de notificación para {notification['sector']} en {notification['server_name']}")
+                return
+            
+            # Crear embed de notificación
+            color_map = {
+                "expiring": 0xff9500,  # Naranja
+                "expired": 0xff0000,   # Rojo
+                "new": 0x00ff00       # Verde
+            }
+            
+            type_map = {
+                "expiring": "⏰ Expira en 30 minutos",
+                "expired": "🔴 ¡EXPIRADO!",
+                "new": "🆕 Nuevo bunker registrado"
+            }
+            
+            embed = discord.Embed(
+                title=type_map.get(notification["type"], "🔔 Notificación"),
+                description=f"**Bunker {notification['sector']}** en **{notification['server_name']}**",
+                color=color_map.get(notification["type"], 0x0099ff)
+            )
+            
+            # Enviar a cada configuración
+            for config in configs:
+                try:
+                    # Determinar automáticamente si usar DM personal basado en quién creó la configuración
+                    config_creator_id = config.get("created_by")
+                    use_personal_dm = self.should_use_personal_dm(config_creator_id, guild)
+                    
+                    # Si debe usar DM personal, enviar solo al registrador
+                    if use_personal_dm:
+                        # Enviar DM solo si esta configuración es del usuario que registró el bunker
+                        if config_creator_id == notification.get("registered_by_id"):
+                            try:
+                                user = await self.fetch_user(int(notification["registered_by_id"]))
+                                if user:
+                                    dm_embed = embed.copy()
+                                    dm_embed.set_footer(text="💎 Notificación Premium Personal")
+                                    await user.send(embed=dm_embed)
+                                    logger.info(f"DM automático enviado a {user.display_name} para {notification['sector']}")
+                            except Exception as e:
+                                logger.error(f"Error enviando DM automático a usuario {notification.get('registered_by_id')}: {e}")
+                    else:
+                        # Owner del bot o del Discord: usar canal público
+                        channel = guild.get_channel(int(config["channel_id"]))
+                        if channel:
+                            content = f"<@&{config['role_id']}>" if config["role_id"] else None
+                            await channel.send(content=content, embed=embed)
+                            logger.info(f"Notificación pública enviada a #{channel.name} para {notification['sector']}")
+                        else:
+                            logger.error(f"Canal {config['channel_id']} no encontrado")
+                except Exception as e:
+                    logger.error(f"Error enviando notificación: {e}")
+                    
         except Exception as e:
             logger.error(f"Error enviando notificación: {e}")
 
@@ -103,33 +199,89 @@ async def server_autocomplete(
 ) -> List[app_commands.Choice[str]]:
     """Autocompletado para nombres de servidores del Discord guild actual"""
     try:
-        guild_id = str(interaction.guild.id) if interaction.guild else "default"
-        servers = await bot.db.get_servers(guild_id)
-        filtered_servers = [
-            s for s in servers 
-            if current.lower() in s["name"].lower()
-        ][:25]  # Discord permite máximo 25 opciones
+        # Verificar que la interacción sea válida
+        if not interaction.guild:
+            return [app_commands.Choice(name="Default", value="Default")]
+        
+        guild_id = str(interaction.guild.id)
+        
+        # Usar un timeout corto para evitar problemas de timing
+        import asyncio
+        async def get_servers_with_timeout():
+            return await bot.db.get_servers(guild_id)
+        
+        try:
+            # Timeout de 2 segundos para evitar interacciones expiradas
+            servers = await asyncio.wait_for(get_servers_with_timeout(), timeout=2.0)
+        except asyncio.TimeoutError:
+            # Si hay timeout, usar valores por defecto
+            return [
+                app_commands.Choice(name="Default", value="Default"),
+                app_commands.Choice(name="convictos", value="convictos")
+            ]
+        
+        # Filtrar por texto actual
+        if current:
+            filtered_servers = [
+                s for s in servers 
+                if current.lower() in s["name"].lower()
+            ][:25]
+        else:
+            filtered_servers = servers[:25]
+        
+        # Si no hay servidores, devolver opciones por defecto
+        if not filtered_servers:
+            return [
+                app_commands.Choice(name="Default", value="Default"),
+                app_commands.Choice(name="convictos", value="convictos")
+            ]
         
         return [
-            app_commands.Choice(name=f"{server['name']}", value=server["name"])
+            app_commands.Choice(name=server["name"], value=server["name"])
             for server in filtered_servers
         ]
+        
     except Exception as e:
-        logger.error(f"Error en autocompletado de servidores: {e}")
-        return [app_commands.Choice(name="Default", value="Default")]
+        # Log del error pero no fallar
+        logger.error(f"Error en server_autocomplete: {e}")
+        # Devolver opciones básicas en caso de error
+        return [
+            app_commands.Choice(name="Default", value="Default"),
+            app_commands.Choice(name="convictos", value="convictos")
+        ]
 
 async def sector_autocomplete(
     interaction: discord.Interaction,
     current: str,
 ) -> List[app_commands.Choice[str]]:
     """Autocompletado para sectores de bunkers"""
-    sectors = ["D1", "C4", "A1", "A3"]
-    filtered_sectors = [s for s in sectors if current.upper() in s]
-    
-    return [
-        app_commands.Choice(name=f"Sector {sector}", value=sector)
-        for sector in filtered_sectors
-    ]
+    try:
+        sectors = ["D1", "C4", "A1", "A3"]
+        
+        # Filtrar por texto actual si se proporciona
+        if current:
+            filtered_sectors = [s for s in sectors if current.upper() in s]
+        else:
+            filtered_sectors = sectors
+        
+        # Asegurar que siempre hay al menos una opción
+        if not filtered_sectors:
+            filtered_sectors = ["D1"]  # Default fallback
+        
+        return [
+            app_commands.Choice(name=f"Sector {sector}", value=sector)
+            for sector in filtered_sectors
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error en sector_autocomplete: {e}")
+        # Fallback básico en caso de error
+        return [
+            app_commands.Choice(name="Sector D1", value="D1"),
+            app_commands.Choice(name="Sector C4", value="C4"),
+            app_commands.Choice(name="Sector A1", value="A1"),
+            app_commands.Choice(name="Sector A3", value="A3")
+        ]
 
 # === COMANDOS DE GESTIÓN DE SERVIDORES ===
 
@@ -162,7 +314,7 @@ async def add_server(interaction: discord.Interaction,
                 color=0xff0000
             )
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en add_server: {e}")
@@ -171,13 +323,12 @@ async def add_server(interaction: discord.Interaction,
             description="Ocurrió un error al agregar el servidor.",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ba_remove_server", description="Eliminar un servidor y todos sus bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
 async def remove_server(interaction: discord.Interaction, server: str):
     """Eliminar un servidor del Discord guild actual"""
-    await interaction.response.defer()
     
     try:
         if server == "Default":
@@ -186,7 +337,7 @@ async def remove_server(interaction: discord.Interaction, server: str):
                 description="No se puede eliminar el servidor **Default**.",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
             return
         
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -205,7 +356,7 @@ async def remove_server(interaction: discord.Interaction, server: str):
                 color=0xff0000
             )
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en remove_server: {e}")
@@ -214,12 +365,11 @@ async def remove_server(interaction: discord.Interaction, server: str):
             description="Ocurrió un error al eliminar el servidor.",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ba_list_servers", description="Listar todos los servidores disponibles")
 async def list_servers(interaction: discord.Interaction):
     """Listar servidores disponibles en este Discord guild"""
-    await interaction.response.defer()
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -250,7 +400,7 @@ async def list_servers(interaction: discord.Interaction):
                     inline=True
                 )
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en list_servers: {e}")
@@ -259,39 +409,96 @@ async def list_servers(interaction: discord.Interaction):
             description="Ocurrió un error al obtener la lista de servidores.",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
 
 # === COMANDOS DE BUNKERS (MODIFICADOS) ===
 
 @bot.tree.command(name="ba_register_bunker", description="Registrar tiempo de expiración de un bunker")
 @app_commands.autocomplete(sector=sector_autocomplete, server=server_autocomplete)
+@app_commands.describe(
+    sector="Sector del bunker (D1, C4, A1, A3)",
+    hours="Horas hasta la apertura (OBLIGATORIO)",
+    server="Servidor donde está el bunker (OBLIGATORIO)",
+    minutes="Minutos adicionales (opcional, 0-59)"
+)
 @check_limits("bunkers")
 async def register_bunker(interaction: discord.Interaction, 
                          sector: str, 
                          hours: int, 
-                         minutes: int = 0, 
-                         server: str = "Default"):
+                         server: str,
+                         minutes: int = 0):
     """Registrar el tiempo de expiración de un bunker en este Discord guild"""
     # El decorador @check_limits ya maneja defer()
     
     try:
-        # Validaciones
+        # === VALIDACIONES OBLIGATORIAS ===
+        
+        # Validar que se proporcione un sector válido
+        if not sector or sector.strip() == "":
+            embed = discord.Embed(
+                title="❌ Sector requerido",
+                description="Debes especificar un sector válido (D1, C4, A1, A3)",
+                color=0xff0000
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.followup.send(embed=embed)
+            return
+        
+        # Validar que se proporcione un servidor
+        if not server or server.strip() == "":
+            embed = discord.Embed(
+                title="❌ Servidor requerido",
+                description="Debes especificar un servidor válido",
+                color=0xff0000
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.followup.send(embed=embed)
+            return
+        
+        # Validar que se proporcionen horas válidas (no puede ser 0 horas y 0 minutos)
+        if hours == 0 and minutes == 0:
+            embed = discord.Embed(
+                title="❌ Tiempo requerido",
+                description="El tiempo debe ser mayor a 0. Especifica al menos 1 minuto o 1 hora.",
+                color=0xff0000
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.followup.send(embed=embed)
+            return
+        
+        # Validar sector permitido
         if sector.upper() not in ["D1", "C4", "A1", "A3"]:
             embed = discord.Embed(
                 title="❌ Sector inválido",
-                description="El sector debe ser uno de: D1, C4, A1, A3",
+                description="El sector debe ser uno de: **D1**, **C4**, **A1**, **A3**",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.followup.send(embed=embed)
             return
 
+        # Validar rango de tiempo
         if hours < 0 or hours > 200 or minutes < 0 or minutes >= 60:
             embed = discord.Embed(
                 title="❌ Tiempo inválido",
                 description="Las horas deben estar entre 0-200 y los minutos entre 0-59",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed)
+            else:
+                await interaction.followup.send(embed=embed)
             return
 
         sector = sector.upper()
@@ -301,6 +508,11 @@ async def register_bunker(interaction: discord.Interaction,
         )
         
         if success:
+            # Incrementar contador de uso diario para plan gratuito
+            subscription = await subscription_manager.get_subscription(guild_id)
+            if subscription['plan_type'] == 'free':
+                await bot.db.increment_daily_usage(guild_id, str(interaction.user.id))
+            
             current_time = datetime.now()
             expiry_time = current_time + timedelta(hours=hours, minutes=minutes)
             
@@ -314,6 +526,12 @@ async def register_bunker(interaction: discord.Interaction,
             embed.add_field(name="🗓️ Apertura", value=f"<t:{int(expiry_time.timestamp())}:F>", inline=False)
             embed.add_field(name="👤 Registrado por", value=interaction.user.mention, inline=True)
             embed.set_footer(text="El bunker se abrirá cuando el tiempo llegue a 0")
+            
+            # Crear notificaciones programadas
+            user_id = str(interaction.user.id)
+            await bot.db.create_notification(sector, server, guild_id, expiry_time - timedelta(minutes=30), "expiring", user_id)  # 30 min antes
+            await bot.db.create_notification(sector, server, guild_id, expiry_time, "expired", user_id)  # Cuando expire
+            await bot.db.create_notification(sector, server, guild_id, current_time, "new", user_id)  # Inmediatamente (nuevo bunker)
         else:
             embed = discord.Embed(
                 title="❌ Error",
@@ -321,7 +539,10 @@ async def register_bunker(interaction: discord.Interaction,
                 color=0xff0000
             )
         
-        await interaction.followup.send(embed=embed)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en register_bunker: {e}")
@@ -330,7 +551,10 @@ async def register_bunker(interaction: discord.Interaction,
             description="Ocurrió un error al registrar el bunker",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(embed=embed)
+        else:
+            await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="ba_check_bunker", description="Verificar estado de un bunker específico")
 @app_commands.autocomplete(sector=sector_autocomplete, server=server_autocomplete)
@@ -338,7 +562,6 @@ async def check_bunker(interaction: discord.Interaction,
                       sector: str, 
                       server: str = "Default"):
     """Verificar el estado de un bunker específico"""
-    await interaction.response.defer()
     
     try:
         if sector.upper() not in ["D1", "C4", "A1", "A3"]:
@@ -347,7 +570,7 @@ async def check_bunker(interaction: discord.Interaction,
                 description="El sector debe ser uno de: D1, C4, A1, A3",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
             return
 
         sector = sector.upper()
@@ -360,7 +583,7 @@ async def check_bunker(interaction: discord.Interaction,
                 description=f"No se encontró el bunker {sector} en el servidor {server}",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
             return
 
         # Crear embed según el estado
@@ -417,7 +640,7 @@ async def check_bunker(interaction: discord.Interaction,
         embed.set_footer(text=f"Consultado por {interaction.user.display_name}")
         embed.timestamp = datetime.now()
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en check_bunker: {e}")
@@ -426,13 +649,12 @@ async def check_bunker(interaction: discord.Interaction,
             description="Ocurrió un error al verificar el bunker",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ba_status_all", description="Ver estado de todos los bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
 async def status_all(interaction: discord.Interaction, server: str = "Default"):
     """Ver el estado de todos los bunkers de un servidor en este Discord guild"""
-    await interaction.response.defer()
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -444,7 +666,7 @@ async def status_all(interaction: discord.Interaction, server: str = "Default"):
                 description=f"No se encontraron bunkers en el servidor {server} de este Discord. ¿Necesitas crear el servidor primero?",
                 color=0xff0000
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
             return
 
         embed = discord.Embed(
@@ -477,7 +699,7 @@ async def status_all(interaction: discord.Interaction, server: str = "Default"):
         embed.set_footer(text=f"Consultado por {interaction.user.display_name}")
         embed.timestamp = datetime.now()
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en status_all: {e}")
@@ -486,99 +708,227 @@ async def status_all(interaction: discord.Interaction, server: str = "Default"):
             description="Ocurrió un error al obtener el estado de los bunkers",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
-# === COMANDO DE AYUDA ===
+# === COMANDO DE AYUDA ESENCIAL ===
 
-@bot.tree.command(name="ba_help", description="Mostrar ayuda y comandos disponibles del bot")
+@bot.tree.command(name="ba_help", description="Guía básica del bot")
 async def help_command(interaction: discord.Interaction):
-    """Mostrar ayuda completa del bot"""
-    await interaction.response.defer()
+    """Mostrar ayuda esencial del bot"""
     
     try:
         embed = discord.Embed(
-            title="🤖 SCUM Bunker Bot V2 - Ayuda",
-            description="Bot para gestionar timers de bunkers abandonados en SCUM con soporte multi-servidor",
-            color=0x0099ff
+            title="🤖 SCUM Bunker Timer - Guía Básica",
+            description="Los 3 comandos esenciales para empezar",
+            color=0x00ff00
         )
         
-        # Comandos de servidores
+        # Paso 1: Agregar servidor
         embed.add_field(
-            name="🖥️ Gestión de Servidores",
-            value=(
-                "`/ba_add_server` - Agregar nuevo servidor SCUM\n"
-                "`/ba_remove_server` - Eliminar servidor existente\n"
-                "`/ba_list_servers` - Listar todos los servidores"
-            ),
+            name="1️⃣ Agregar Servidor",
+            value="`/ba_add_server name:Mi-Servidor`\nAgregar tu servidor SCUM al bot",
             inline=False
         )
         
-        # Comandos de bunkers
+        # Paso 2: Registrar bunker
         embed.add_field(
-            name="🏗️ Gestión de Bunkers",
-            value=(
-                "`/ba_register_bunker` - Registrar tiempo de bunker\n"
-                "`/ba_check_bunker` - Consultar estado de bunker\n"
-                "`/ba_status_all` - Ver todos los bunkers de un servidor"
-            ),
+            name="2️⃣ Registrar Bunker",
+            value="`/ba_register_bunker sector:D1 hours:5`\nRegistrar cuando encontraste un bunker cerrado",
             inline=False
         )
         
-        # Estados de bunkers
+        # Paso 3: Verificar bunker
         embed.add_field(
-            name="📊 Estados de Bunkers",
-            value=(
-                "🔒 **CERRADO** - Esperando apertura\n"
-                "🟢 **ACTIVO** - Abierto (24h de acceso)\n"
-                "🔴 **EXPIRADO** - Cerrado permanentemente\n"
-                "❓ **SIN REGISTRO** - Sin información"
-            ),
+            name="3️⃣ Verificar Estado",
+            value="`/ba_check_bunker sector:D1`\nVer si el bunker ya está abierto",
             inline=False
         )
         
-        # Información adicional
+        # Info adicional
         embed.add_field(
-            name="💡 Consejos",
-            value=(
-                "• Usa autocompletado escribiendo para filtrar opciones\n"
-                "• El servidor 'Default' es el principal\n"
-                "• Los bunkers tienen una ventana de 24h cuando se abren\n"
-                "• Todos los comandos incluyen parámetro opcional de servidor"
-            ),
-            inline=False
-        )
-        
-        # Sectores disponibles
-        embed.add_field(
-            name="📍 Sectores Disponibles",
+            name="📍 Sectores",
             value="D1, C4, A1, A3",
             inline=True
         )
         
-        # Ejemplo de uso
         embed.add_field(
-            name="📝 Ejemplo de Uso",
-            value=(
-                "1. `/ba_add_server name:Mi-Servidor`\n"
-                "2. `/ba_register_bunker sector:D1 hours:5 server:Mi-Servidor`\n"
-                "3. `/ba_check_bunker sector:D1 server:Mi-Servidor`"
-            ),
-            inline=False
+            name="� Guía Completa",
+            value="[Ver guía detallada](https://scum-bunker-timer.onrender.com/guide.html) 📚",
+            inline=True
         )
         
-        embed.set_footer(text=f"Solicitado por {interaction.user.display_name} | Bot V2.0.0")
-        embed.timestamp = datetime.now()
+        embed.set_footer(text="¿Necesitas más ayuda? Usa el enlace de la guía completa")
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en help_command: {e}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message("❌ Error mostrando ayuda")
+        else:
+            await interaction.followup.send("❌ Error mostrando ayuda")
+
+@bot.tree.command(name="ba_my_usage", description="Ver tu uso diario de bunkers")
+async def my_usage_command(interaction: discord.Interaction):
+    """Ver el uso diario personal"""
+    try:
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        user_id = str(interaction.user.id)
+        
+        # Obtener suscripción del guild
+        subscription = await subscription_manager.get_subscription(guild_id)
+        
+        # Obtener uso diario
+        daily_usage = await bot.db.check_daily_usage(guild_id, user_id)
+        
+        # Obtener estadísticas de la semana
+        weekly_stats = await bot.db.get_daily_usage_stats(guild_id, user_id, 7)
+        
+        embed = discord.Embed(
+            title="📊 Mi Uso Diario",
+            description=f"Estadísticas de uso para {interaction.user.display_name}",
+            color=0x3498db if subscription['plan_type'] == 'premium' else 0x95a5a6
+        )
+        
+        # Plan actual
+        plan_emoji = "💎" if subscription['plan_type'] == 'premium' else "🆓"
+        plan_name = "Premium" if subscription['plan_type'] == 'premium' else "Gratuito"
+        
+        embed.add_field(
+            name=f"{plan_emoji} Plan Actual",
+            value=f"**{plan_name}**",
+            inline=True
+        )
+        
+        # Uso de hoy
+        if subscription['plan_type'] == 'free':
+            usage_text = f"**{daily_usage['bunkers_today']}/1** bunkers hoy"
+            if daily_usage['can_register']:
+                usage_text += "\n✅ Puedes registrar 1 bunker más"
+            else:
+                usage_text += "\n❌ Límite diario alcanzado"
+        else:
+            usage_text = "🚀 **Ilimitado**"
+        
+        embed.add_field(
+            name="🗓️ Uso de Hoy",
+            value=usage_text,
+            inline=True
+        )
+        
+        # Próximo reset (solo para plan gratuito)
+        if subscription['plan_type'] == 'free':
+            from datetime import time
+            tomorrow = datetime.combine(datetime.now().date() + timedelta(days=1), time.min)
+            embed.add_field(
+                name="🔄 Próximo Reset",
+                value=f"<t:{int(tomorrow.timestamp())}:R>",
+                inline=True
+            )
+        
+        # Estadísticas semanales
+        if weekly_stats:
+            total_bunkers = sum(stat['bunkers_registered'] for stat in weekly_stats)
+            avg_daily = total_bunkers / len(weekly_stats) if weekly_stats else 0
+            
+            embed.add_field(
+                name="📈 Última Semana",
+                value=f"• **{total_bunkers}** bunkers registrados\n• **{avg_daily:.1f}** promedio diario",
+                inline=False
+            )
+            
+            # Gráfico simple de actividad
+            activity_chart = "```\n"
+            activity_chart += "Actividad últimos 7 días:\n"
+            for stat in reversed(weekly_stats[-7:]):  # Últimos 7 días
+                date_str = stat['date'][-5:]  # Solo MM-DD
+                bars = "█" * stat['bunkers_registered'] + "░" * (3 - stat['bunkers_registered'])
+                activity_chart += f"{date_str}: {bars} ({stat['bunkers_registered']})\n"
+            activity_chart += "```"
+            
+            embed.add_field(
+                name="📊 Gráfico de Actividad",
+                value=activity_chart,
+                inline=False
+            )
+        
+        # Información adicional
+        if subscription['plan_type'] == 'free':
+            embed.add_field(
+                name="💎 ¿Quieres más?",
+                value="Actualiza a Premium para bunkers ilimitados\nUsa `/ba_subscription` para más información",
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Uso monitoreado desde hoy | Plan {plan_name}")
+        embed.timestamp = datetime.now()
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en my_usage_command: {e}")
         embed = discord.Embed(
             title="❌ Error",
-            description="Ocurrió un error al mostrar la ayuda.",
+            description="Error obteniendo estadísticas de uso.",
             color=0xff0000
         )
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
+
+# === COMANDO SIMPLE DE SUSCRIPCIONES ===
+
+@bot.tree.command(name="ba_suscripcion", description="Ver información sobre planes de suscripción")
+async def subscription_info(interaction: discord.Interaction):
+    """Comando simple de información de suscripciones"""
+    try:
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        
+        # Obtener suscripción actual
+        subscription = await subscription_manager.get_subscription(guild_id)
+        plan = subscription.get('plan', 'free') if subscription else 'free'
+        
+        # Crear embed básico
+        embed = discord.Embed(
+            title="💎 Planes de Suscripción",
+            description="Obtén acceso a funciones premium del bot",
+            color=0x9b59b6
+        )
+        
+        embed.add_field(
+            name="🆓 Plan Gratuito",
+            value="• 5 bunkers por día\n• Comandos básicos\n• Soporte comunitario",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="⭐ Premium - $5.99/mes",
+            value="• 20 bunkers por día\n• Estadísticas avanzadas\n• Exportación de datos",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🚀 Enterprise - $15.99/mes",
+            value="• 100 bunkers por día\n• Soporte prioritario\n• API personalizada",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📊 Tu Plan Actual",
+            value=f"**{plan.capitalize()}**",
+            inline=False
+        )
+        
+        embed.set_footer(text="Para upgrade contacta al administrador del bot")
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en subscription_info: {e}")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Error obteniendo información de suscripción.",
+            color=0xff0000
+        )
+        await interaction.response.send_message(embed=embed)
 
 # === EVENTOS Y NOTIFICACIONES ===
 
