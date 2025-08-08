@@ -64,6 +64,15 @@ class BunkerBotV2(commands.Bot):
         logger.info(f'{self.user} conectado a Discord!')
         logger.info(f'Bot conectado en {len(self.guilds)} servidores')
         
+        # Limpiar comandos primero para evitar signature mismatch
+        logger.info("🧹 Limpiando comandos para evitar conflicts...")
+        self.tree.clear_commands(guild=None)
+        await self.tree.sync()
+        
+        # Re-configurar comandos
+        setup_premium_commands(self)
+        setup_premium_exclusive_commands(self)
+        
         # Sincronizar comandos después de que todo esté listo
         try:
             total_commands = len([cmd for cmd in self.tree.walk_commands()])
