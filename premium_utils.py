@@ -52,6 +52,10 @@ def check_limits(limit_type: str):
     def decorator(func):
         @wraps(func)
         async def wrapper(interaction: discord.Interaction, *args, **kwargs):
+            # DEFER INMEDIATAMENTE para evitar timeouts
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+            
             guild_id = str(interaction.guild.id) if interaction.guild else "default"
             
             # Obtener contadores actuales (esto depende de tu implementación)
@@ -82,7 +86,7 @@ def check_limits(limit_type: str):
                         inline=True
                     )
                     
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    await interaction.followup.send(embed=embed, ephemeral=True)
                     return
             
             elif limit_type == "servers":
@@ -112,7 +116,7 @@ def check_limits(limit_type: str):
                         inline=True
                     )
                     
-                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    await interaction.followup.send(embed=embed, ephemeral=True)
                     return
             
             # Continuar con la función original

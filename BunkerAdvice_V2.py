@@ -139,7 +139,7 @@ async def add_server(interaction: discord.Interaction,
                     name: str, 
                     description: str = ""):
     """Agregar un servidor nuevo al Discord guild actual"""
-    await interaction.response.defer()
+    # El decorador @check_limits ya maneja defer()
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -272,7 +272,7 @@ async def register_bunker(interaction: discord.Interaction,
                          minutes: int = 0, 
                          server: str = "Default"):
     """Registrar el tiempo de expiración de un bunker en este Discord guild"""
-    await interaction.response.defer()
+    # El decorador @check_limits ya maneja defer()
     
     try:
         # Validaciones
