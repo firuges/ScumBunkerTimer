@@ -16,7 +16,7 @@ class PremiumCommands:
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ba_premium", description="Ver información sobre planes premium y suscripciones")
+    @app_commands.command(name="ba_subscription", description="Ver información sobre planes premium y suscripciones")
     async def premium_info(self, interaction: discord.Interaction):
         """Mostrar información sobre planes premium"""
         await interaction.response.defer()

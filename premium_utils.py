@@ -35,7 +35,7 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                 )
                 embed.add_field(
                     name="🔗 Actualizar",
-                    value="Usa `/ba_premium` para más información",
+                    value="Usa `/ba_subscription` para más información",
                     inline=False
                 )
                 
@@ -82,7 +82,7 @@ def check_limits(limit_type: str):
                     )
                     embed.add_field(
                         name="💎 Solución",
-                        value="Actualiza a Premium para bunkers ilimitados\n`/ba_premium`",
+                        value="Actualiza a Premium para bunkers ilimitados\n`/ba_subscription`",
                         inline=True
                     )
                     
@@ -112,7 +112,7 @@ def check_limits(limit_type: str):
                     )
                     embed.add_field(
                         name="💎 Solución",
-                        value="Actualiza a Premium para servidores ilimitados\n`/ba_premium`",
+                        value="Actualiza a Premium para servidores ilimitados\n`/ba_subscription`",
                         inline=True
                     )
                     
@@ -167,5 +167,5 @@ async def get_subscription_embed(guild_id: str) -> discord.Embed:
                 inline=True
             )
     
-    embed.set_footer(text="Usa /ba_premium para gestionar tu suscripción")
+    embed.set_footer(text="Usa /ba_subscription para gestionar tu suscripción")
     return embed
