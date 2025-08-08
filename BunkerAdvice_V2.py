@@ -80,6 +80,15 @@ class BunkerBotV2(commands.Bot):
         except Exception as e:
             logger.error(f"Error en notificaciones: {e}")
 
+    async def send_notification(self, notification):
+        """Enviar notificación a los canales configurados"""
+        try:
+            # Aquí puedes configurar el canal donde enviar notificaciones
+            # Por ahora solo loguea
+            logger.info(f"Notificación: {notification['type']} para bunker {notification['sector']} en servidor {notification['server_name']}")
+        except Exception as e:
+            logger.error(f"Error enviando notificación: {e}")
+
 bot = BunkerBotV2()
 
 # === AUTOCOMPLETADO ===
@@ -568,15 +577,6 @@ async def help_command(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
 
 # === EVENTOS Y NOTIFICACIONES ===
-
-async def send_notification(notification):
-    """Enviar notificación a los canales configurados"""
-    try:
-        # Aquí puedes configurar el canal donde enviar notificaciones
-        # Por ahora solo loguea
-        logger.info(f"Notificación: {notification['type']} para bunker {notification['sector']} en servidor {notification['server_name']}")
-    except Exception as e:
-        logger.error(f"Error enviando notificación: {e}")
 
 # === INICIAR BOT ===
 
