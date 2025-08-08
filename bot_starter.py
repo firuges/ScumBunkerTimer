@@ -52,10 +52,17 @@ def load_config():
         logger.info("ℹ️ Usando variables de entorno del sistema")
     
     # Verificar token
-    if not os.getenv('DISCORD_TOKEN'):
+    token = os.getenv('DISCORD_TOKEN')
+    if not token:
         logger.error("❌ DISCORD_TOKEN no configurado")
         return False
     
+    # Verificar que el token no esté vacío o sea un placeholder
+    if len(token) < 50 or token.startswith('tu_token') or token.startswith('TU_TOKEN'):
+        logger.error("❌ DISCORD_TOKEN parece ser inválido o un placeholder")
+        return False
+    
+    logger.info("✅ Token de Discord configurado correctamente")
     return True
 
 def cleanup_old_processes():
