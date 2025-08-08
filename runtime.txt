@@ -1,0 +1,2 @@
+# Especificar versión de Python para deploy
+python-3.11.*

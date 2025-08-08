@@ -1,0 +1,9 @@
+# Archivo de configuración para Railway
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python BunkerAdvice_V2.py"
+
+[env]
+PYTHONPATH = "/app"

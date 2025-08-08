@@ -1,0 +1,12 @@
+# Archivo de configuración para Render
+version: 1
+services:
+  - type: worker
+    name: scum-bunker-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python BunkerAdvice_V2.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false

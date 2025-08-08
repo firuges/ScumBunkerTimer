@@ -1,0 +1,33 @@
+# Ignorar archivos para Git/Deploy
+.env
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Base de datos local (usar PostgreSQL en producción)
+*.db
+test_*.db
+*_backup_*.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archivos de desarrollo
+legacy/
+test_files/
