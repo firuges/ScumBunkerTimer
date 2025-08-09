@@ -14,6 +14,7 @@ if not exist "requirements.txt" (
 
 copy "BunkerAdvice_V2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "database_v2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_status_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "premium_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -58,6 +59,16 @@ if not exist "BunkerAdvice_V2.py" (
     exit /b 1
 )
 
+if not exist "bot_status_system.py" (
+    color 0C
+    echo ❌ ERROR: No se encuentra bot_status_system.py
+    echo.
+    echo    Este archivo es requerido para el sistema de estado del bot.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo ✅ Archivos fuente verificados
 
 :: Definir directorio de build
@@ -88,6 +99,7 @@ echo 📄 Copiando archivos del bot...
 
 copy "BunkerAdvice_V2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "database_v2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_status_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "premium_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -120,7 +132,10 @@ if defined DISCORD_TOKEN_VALUE (
     echo ⚠️ No se pudo leer el token del .env, usando placeholder
 )
 
-echo BOT_CREATOR_ID = 123456789012345678  # CAMBIAR POR TU ID DE DISCORD >> "%BUILD_FULL_DIR%\config.py"
+echo BOT_CREATOR_ID = 418198613210955776  # Tu Discord User ID >> "%BUILD_FULL_DIR%\config.py"
+echo. >> "%BUILD_FULL_DIR%\config.py"
+echo # Administradores del bot ^(para comandos admin^) >> "%BUILD_FULL_DIR%\config.py"
+echo BOT_ADMIN_IDS = [418198613210955776]  # Lista de IDs que pueden usar comandos admin >> "%BUILD_FULL_DIR%\config.py"
 echo PREFIX = '/' >> "%BUILD_FULL_DIR%\config.py"
 echo DEBUG = True >> "%BUILD_FULL_DIR%\config.py"
 echo. >> "%BUILD_FULL_DIR%\config.py"
@@ -169,6 +184,15 @@ echo     echo    Asegúrate de ejecutar start_bot.bat desde >> "%BUILD_FULL_DIR%
 echo     echo    la carpeta que contiene los archivos del bot. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo     echo    Directorio actual: %%CD%% >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     pause >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     exit /b 1 >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo if not exist "bot_status_system.py" ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     color 0C >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo ❌ ERROR: No se encuentra bot_status_system.py >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo    Este archivo es requerido para el sistema de estado. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo     pause >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo     exit /b 1 >> "%BUILD_FULL_DIR%\start_bot.bat"

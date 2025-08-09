@@ -256,58 +256,175 @@
             </div>
         </div>
 
-        <!-- Comandos de Servidores -->
+        <!-- Comandos Públicos -->
         <div class="section">
-            <h2>🖥️ Gestión de Servidores</h2>
-            <div class="commands-grid">
-                <div class="command-card">
-                    <h3>Agregar Servidor</h3>
-                    <div class="command">/ba_add_server name:NombreServidor</div>
-                    <p>Registra un nuevo servidor SCUM en el bot. Cada servidor mantiene sus propios bunkers separados.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Eliminar Servidor</h3>
-                    <div class="command">/ba_remove_server server:NombreServidor</div>
-                    <p>Elimina un servidor y todos sus bunkers asociados. ⚠️ Acción irreversible.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Listar Servidores</h3>
-                    <div class="command">/ba_list_servers</div>
-                    <p>Muestra todos los servidores registrados en tu Discord con estadísticas básicas.</p>
-                </div>
+            <h2>🌟 Comandos Públicos (14 comandos)</h2>
+            <div class="premium-section">
+                <h4>✅ Disponibles para todos los usuarios</h4>
+                <p>Estos comandos pueden ser usados por cualquier usuario en cualquier servidor.</p>
             </div>
-        </div>
-
-        <!-- Comandos de Bunkers -->
-        <div class="section">
-            <h2>🏰 Gestión de Bunkers</h2>
+            
+            <h3>🏰 Comandos Principales de Bunkers</h3>
             <div class="commands-grid">
                 <div class="command-card">
                     <h3>Registrar Bunker</h3>
                     <div class="command">/ba_register_bunker sector:D1 hours:5</div>
-                    <p>Registra cuando encontraste un bunker cerrado. El bot calculará automáticamente cuándo se abrirá.</p>
+                    <p><strong>Función principal:</strong> Registra cuando encontraste un bunker cerrado. El bot calculará automáticamente cuándo se abrirá.</p>
+                    <p><strong>Limitación gratuita:</strong> 1 bunker cada 72 horas por servidor</p>
                 </div>
                 <div class="command-card">
                     <h3>Verificar Bunker</h3>
                     <div class="command">/ba_check_bunker sector:D1</div>
-                    <p>Consulta el estado actual de un bunker específico con tiempo restante.</p>
+                    <p><strong>Consulta:</strong> Ver el estado actual de un bunker específico con tiempo restante exacto.</p>
+                    <p><strong>Acceso:</strong> Sin límites</p>
                 </div>
                 <div class="command-card">
-                    <h3>Estado de Todos</h3>
-                    <div class="command">/ba_status_all</div>
-                    <p>Muestra el estado de todos los bunkers en un servidor con tiempos actualizados.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Lista Detallada</h3>
+                    <h3>Lista de Bunkers</h3>
                     <div class="command">/ba_list_bunkers</div>
-                    <p>Lista completa con detalles de registro, usuario que lo registró y estadísticas.</p>
+                    <p><strong>Vista general:</strong> Muestra todos los bunkers del servidor con sus estados actuales.</p>
+                    <p><strong>Incluye:</strong> Detalles de registro y estadísticas</p>
                 </div>
                 <div class="command-card">
-                    <h3>Cerrar Bunker</h3>
-                    <div class="command">/ba_close_bunker sector:D1</div>
-                    <p>Marca un bunker como permanentemente cerrado cuando lo confirmes in-game.</p>
+                    <h3>Actualizar Bunker</h3>
+                    <div class="command">/ba_update_bunker sector:D1 hours:3</div>
+                    <p><strong>Corrección:</strong> Actualiza el tiempo de un bunker que registraste previamente.</p>
+                    <p><strong>Restricción:</strong> Solo quien lo registró</p>
+                </div>
+                <div class="command-card">
+                    <h3>Eliminar Bunker</h3>
+                    <div class="command">/ba_delete_bunker sector:D1</div>
+                    <p><strong>Borrar:</strong> Elimina un bunker que registraste por error o duplicado.</p>
+                    <p><strong>Restricción:</strong> Solo quien lo registró</p>
                 </div>
             </div>
+
+            <h3>🖥️ Comandos de Servidores SCUM</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Agregar Servidor</h3>
+                    <div class="command">/ba_add_server name:MiServidor-PVP</div>
+                    <p><strong>Configuración:</strong> Registra un nuevo servidor SCUM en el bot.</p>
+                    <p><strong>Beneficio:</strong> Cada servidor mantiene bunkers separados</p>
+                </div>
+                <div class="command-card">
+                    <h3>Listar Servidores</h3>
+                    <div class="command">/ba_list_servers</div>
+                    <p><strong>Vista:</strong> Muestra todos los servidores SCUM registrados en tu Discord.</p>
+                    <p><strong>Incluye:</strong> Estadísticas básicas de cada servidor</p>
+                </div>
+            </div>
+
+            <h3>📊 Comandos de Información Personal</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Estado del Bot</h3>
+                    <div class="command">/ba_bot_status</div>
+                    <p><strong>Información:</strong> Estado del bot específico para tu servidor Discord.</p>
+                    <p><strong>Incluye:</strong> Plan de suscripción, uptime, estadísticas</p>
+                </div>
+                <div class="command-card">
+                    <h3>Mi Uso del Sistema</h3>
+                    <div class="command">/ba_my_usage</div>
+                    <p><strong>Control personal:</strong> Verifica tu uso del sistema de 72 horas.</p>
+                    <p><strong>Útil para:</strong> Saber cuándo puedes registrar otro bunker</p>
+                </div>
+                <div class="command-card">
+                    <h3>Planes de Suscripción</h3>
+                    <div class="command">/ba_suscripcion</div>
+                    <p><strong>Información:</strong> Ver planes de suscripción disponibles y beneficios.</p>
+                    <p><strong>Compara:</strong> Plan gratuito vs Premium</p>
+                </div>
+                <div class="command-card">
+                    <h3>Ayuda Básica</h3>
+                    <div class="command">/ba_help</div>
+                    <p><strong>Guía rápida:</strong> Muestra los comandos esenciales para empezar.</p>
+                    <p><strong>Perfecto para:</strong> Nuevos usuarios del bot</p>
+                </div>
+            </div>
+
+            <h3>🔧 Comandos de Administración Discord</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Limpiar Expirados</h3>
+                    <div class="command">/ba_clear_expired</div>
+                    <p><strong>Mantenimiento:</strong> Elimina bunkers expirados del servidor Discord.</p>
+                    <p><strong>Restricción:</strong> Solo administradores del Discord</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos Premium -->
+        <div class="section">
+            <h2>� Comandos Premium (2 comandos)</h2>
+            <div class="premium-section">
+                <h4>🔒 Requiere Plan Premium</h4>
+                <p>Estos comandos están disponibles solo para servidores con suscripción Premium activa.</p>
+            </div>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>Estadísticas Avanzadas</h3>
+                    <div class="command">/ba_premium_stats</div>
+                    <p><strong>Análisis profundo:</strong> Estadísticas detalladas de uso, bunkers más activos, análisis temporal y tendencias.</p>
+                    <p><strong>Incluye:</strong> Gráficos, patrones de uso, optimización</p>
+                </div>
+                <div class="command-card">
+                    <h3>Exportar Datos</h3>
+                    <div class="command">/ba_export_data</div>
+                    <p><strong>Respaldo:</strong> Exporta todos los datos de bunkers en formato CSV para análisis externo.</p>
+                    <p><strong>Útil para:</strong> Backup, análisis en Excel, reportes</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Diferencias entre Planes -->
+        <div class="section">
+            <h2>📋 Comparación de Planes</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Característica</th>
+                        <th>🆓 Plan Gratuito</th>
+                        <th>👑 Plan Premium</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Comandos disponibles</strong></td>
+                        <td>14 comandos públicos</td>
+                        <td>16 comandos (públicos + premium)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Registro de bunkers</strong></td>
+                        <td>1 bunker cada 72 horas por servidor</td>
+                        <td>Bunkers ilimitados sin cooldown</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Gestión de servidores</strong></td>
+                        <td>✅ Completa</td>
+                        <td>✅ Completa</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Consulta de bunkers</strong></td>
+                        <td>✅ Sin límites</td>
+                        <td>✅ Sin límites</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Estadísticas avanzadas</strong></td>
+                        <td>❌ No disponible</td>
+                        <td>✅ Análisis completo</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Exportación de datos</strong></td>
+                        <td>❌ No disponible</td>
+                        <td>✅ Formato CSV</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Soporte prioritario</strong></td>
+                        <td>Estándar</td>
+                        <td>✅ Prioritario</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <!-- Estados de Bunkers -->
@@ -315,77 +432,24 @@
             <h2>📊 Estados de Bunkers</h2>
             <div class="status-grid">
                 <div class="status-card">
-                    <div class="status-icon">🔒</div>
-                    <h4>CERRADO</h4>
-                    <p>El bunker está esperando a abrirse. Muestra tiempo restante.</p>
+                    <div class="status-icon">🔴</div>
+                    <h4>REGISTRADO</h4>
+                    <p>Bunker cerrado esperando a abrirse. Muestra tiempo restante exacto.</p>
                 </div>
                 <div class="status-card">
                     <div class="status-icon">🟢</div>
                     <h4>ACTIVO</h4>
-                    <p>Bunker abierto con acceso por 24 horas. ¡Ve rápido!</p>
+                    <p>Bunker abierto con acceso por 24 horas. ¡Ve rápido a saquearlo!</p>
                 </div>
                 <div class="status-card">
-                    <div class="status-icon">🔴</div>
+                    <div class="status-icon">🟡</div>
                     <h4>EXPIRADO</h4>
-                    <p>Bunker cerrado permanentemente. Ya no se puede acceder.</p>
+                    <p>Bunker cerrado después de estar activo. Necesita nuevo registro.</p>
                 </div>
                 <div class="status-card">
-                    <div class="status-icon">❓</div>
+                    <div class="status-icon">⚫</div>
                     <h4>SIN REGISTRO</h4>
                     <p>No hay información sobre este bunker en el sector.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Comandos Personales -->
-        <div class="section">
-            <h2>📊 Información Personal</h2>
-            <div class="commands-grid">
-                <div class="command-card">
-                    <h3>Mi Uso Diario</h3>
-                    <div class="command">/ba_my_usage</div>
-                    <p>Verifica cuántos bunkers has registrado hoy y tu límite diario actual.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Información de Planes</h3>
-                    <div class="command">/ba_subscription</div>
-                    <p>Consulta tu plan actual (Gratuito o Premium) y los beneficios disponibles.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Ayuda Básica</h3>
-                    <div class="command">/ba_help</div>
-                    <p>Muestra los comandos esenciales para empezar a usar el bot.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Comandos Premium -->
-        <div class="section">
-            <h2>💎 Comandos Premium</h2>
-            <div class="premium-section">
-                <h4>🔒 Requiere Plan Premium</h4>
-                <p>Los siguientes comandos están disponibles solo para usuarios con plan Premium activo.</p>
-            </div>
-            <div class="commands-grid">
-                <div class="command-card">
-                    <h3>Estadísticas Avanzadas</h3>
-                    <div class="command">/ba_stats</div>
-                    <p>Estadísticas detalladas de uso, bunkers más activos, y análisis temporal.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Configurar Notificaciones</h3>
-                    <div class="command">/ba_notifications</div>
-                    <p>Configura alertas automáticas por DM cuando los bunkers estén por abrirse.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Verificar Notificaciones</h3>
-                    <div class="command">/ba_check_notifications</div>
-                    <p>Ve el estado de tus notificaciones y próximas alertas programadas.</p>
-                </div>
-                <div class="command-card">
-                    <h3>Exportar Datos</h3>
-                    <div class="command">/ba_export</div>
-                    <p>Exporta todos los datos de bunkers en formato JSON para respaldo.</p>
                 </div>
             </div>
         </div>
@@ -529,7 +593,7 @@
         <!-- Footer -->
         <div class="footer">
             <p>🤖 <strong>SCUM Bunker Timer V2.0.0</strong></p>
-            <p>Bot desarrollado para la comunidad SCUM | 13 comandos disponibles</p>
+            <p>Bot desarrollado para la comunidad SCUM | 20 comandos disponibles (14 públicos + 2 premium + 4 admin)</p>
             <p>Para soporte técnico, contacta al administrador del servidor Discord</p>
         </div>
     </div>

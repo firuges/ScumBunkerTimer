@@ -19,7 +19,7 @@ from subscription_manager import subscription_manager
 from premium_utils import check_limits, premium_required
 from premium_commands import setup_premium_commands
 from premium_exclusive_commands import setup_premium_exclusive_commands
-from simple_admin import setup_simple_admin
+from bot_status_system import setup_bot_status
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -64,7 +64,6 @@ class BunkerBotV2(commands.Bot):
         # Configurar comandos premium
         setup_premium_commands(self)
         setup_premium_exclusive_commands(self)
-        # setup_simple_admin(self)  # Deshabilitado, usando comando directo
         
         self.notification_task.start()
         
@@ -104,6 +103,13 @@ class BunkerBotV2(commands.Bot):
             logger.info(f"EXITO: Sincronizados {len(synced)} comandos con Discord")
         except Exception as e:
             logger.error(f"ERROR: Error sincronizando comandos: {e}")
+        
+        # Inicializar sistema de estado del bot
+        try:
+            self.status_system = setup_bot_status(self)
+            logger.info("Sistema de estado del bot inicializado")
+        except Exception as e:
+            logger.error(f"Error inicializando sistema de estado: {e}")
 
     @tasks.loop(minutes=5)
     async def notification_task(self):
@@ -992,13 +998,214 @@ async def subscription_info(interaction: discord.Interaction):
             logger.error(f"Error enviando mensaje de error: {follow_error}")
         await interaction.response.send_message(embed=embed)
 
+# === COMANDO PÚBLICO DE ESTADO DEL BOT ===
+
+@bot.tree.command(name="ba_bot_status", description="Ver el estado del bot en este servidor")
+async def bot_status_command(interaction: discord.Interaction):
+    """Comando público para ver el estado del bot específico del servidor"""
+    try:
+        # Defer para operaciones de base de datos
+        await interaction.response.defer()
+        
+        guild_id = str(interaction.guild.id) if interaction.guild else "default"
+        guild_name = interaction.guild.name if interaction.guild else "DM"
+        
+        # Obtener información del servidor
+        subscription = await subscription_manager.get_subscription(guild_id)
+        
+        # Obtener estadísticas de bunkers del servidor
+        server_bunker_stats = await get_server_bunker_stats(guild_id)
+        
+        # Calcular uptime
+        if hasattr(bot, 'status_system'):
+            uptime = datetime.now() - bot.status_system.start_time
+            uptime_str = f"{uptime.days}d {uptime.seconds//3600}h {(uptime.seconds//60)%60}m"
+        else:
+            uptime_str = "Desconocido"
+        
+        # Crear embed
+        embed = discord.Embed(
+            title=f"🤖 Estado del Bot - {guild_name}",
+            description="Información del bot específica para este servidor",
+            color=0x00ff00 if subscription['plan_type'] == 'premium' else 0x3498db
+        )
+        
+        # Estado general del bot
+        embed.add_field(
+            name="🟢 Estado General",
+            value=f"```yaml\nEstado: Online\nUptime: {uptime_str}\nPing: {round(bot.latency * 1000)}ms\nComandos: {len(bot.tree.get_commands())}```",
+            inline=False
+        )
+        
+        # Información de suscripción del servidor
+        plan_name = "💎 Premium" if subscription['plan_type'] != 'free' else "🆓 Gratuito"
+        plan_description = "Acceso completo" if subscription['plan_type'] != 'free' else "1 bunker activo por servidor"
+        
+        embed.add_field(
+            name="📋 Plan de Suscripción",
+            value=f"```yaml\nPlan: {subscription['plan_type'].title()}\nEstado: {subscription['status'].title()}\nLímite: {plan_description}```",
+            inline=True
+        )
+        
+        # Estadísticas de bunkers del servidor
+        embed.add_field(
+            name="🏠 Bunkers en este Servidor",
+            value=f"```yaml\nTotal registrados: {server_bunker_stats['total']}\nActivos ahora: {server_bunker_stats['active']}\nRegistrados hoy: {server_bunker_stats['today']}\nServidores SCUM: {server_bunker_stats['scum_servers']}```",
+            inline=True
+        )
+        
+        # Actividad reciente
+        if server_bunker_stats['last_activity']:
+            embed.add_field(
+                name="⏰ Última Actividad",
+                value=f"```yaml\nÚltimo bunker: {server_bunker_stats['last_activity']}\nSector: {server_bunker_stats['last_sector']}\nServidor: {server_bunker_stats['last_server']}```",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="⏰ Actividad",
+                value="```yaml\nÚltimo bunker: Sin actividad reciente\nSector: -\nServidor: -```",
+                inline=False
+            )
+        
+        # Información adicional según el plan
+        if subscription['plan_type'] == 'free':
+            embed.add_field(
+                name="💡 Plan Gratuito",
+                value="• Solo 1 bunker activo por servidor\n• Cooldown de 72 horas\n• Perfecto para coordinación de clan\n• Actualiza a Premium para más funciones",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="⭐ Premium Activo",
+                value="• Bunkers ilimitados\n• Sin cooldowns\n• Todas las funciones desbloqueadas\n• ¡Gracias por tu apoyo!",
+                inline=False
+            )
+        
+        # Footer con información útil
+        embed.set_footer(text=f"Servidor: {guild_name} • Usa /ba_help para comandos básicos")
+        embed.timestamp = datetime.now()
+        
+        await interaction.followup.send(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en bot_status_command: {e}")
+        try:
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description="Error obteniendo estado del bot.",
+                color=0xff0000
+            )
+            await interaction.followup.send(embed=error_embed)
+        except:
+            try:
+                await interaction.response.send_message("❌ Error obteniendo estado del bot.", ephemeral=True)
+            except:
+                pass
+
+async def get_server_bunker_stats(guild_id: str):
+    """Obtener estadísticas de bunkers específicas del servidor"""
+    try:
+        # Total de bunkers registrados en este servidor
+        total_query = "SELECT COUNT(*) FROM bunkers WHERE discord_guild_id = ?"
+        async with bot.db.get_connection() as db:
+            cursor = await db.execute(total_query, (guild_id,))
+            total_result = await cursor.fetchone()
+            total_bunkers = total_result[0] if total_result else 0
+        
+        # Bunkers activos en este servidor
+        current_time = datetime.now()
+        active_query = "SELECT COUNT(*) FROM bunkers WHERE discord_guild_id = ? AND expiry_time > ?"
+        async with bot.db.get_connection() as db:
+            cursor = await db.execute(active_query, (guild_id, current_time))
+            active_result = await cursor.fetchone()
+            active_bunkers = active_result[0] if active_result else 0
+        
+        # Bunkers registrados hoy en este servidor
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_query = "SELECT COUNT(*) FROM bunkers WHERE discord_guild_id = ? AND registered_time >= ?"
+        async with bot.db.get_connection() as db:
+            cursor = await db.execute(today_query, (guild_id, today_start))
+            today_result = await cursor.fetchone()
+            today_bunkers = today_result[0] if today_result else 0
+        
+        # Servidores SCUM únicos en este Discord
+        servers_query = "SELECT COUNT(DISTINCT server_name) FROM bunkers WHERE discord_guild_id = ?"
+        async with bot.db.get_connection() as db:
+            cursor = await db.execute(servers_query, (guild_id,))
+            servers_result = await cursor.fetchone()
+            scum_servers = servers_result[0] if servers_result else 0
+        
+        # Última actividad
+        last_activity_query = """
+            SELECT sector, server_name, registered_time 
+            FROM bunkers 
+            WHERE discord_guild_id = ? 
+            ORDER BY registered_time DESC 
+            LIMIT 1
+        """
+        async with bot.db.get_connection() as db:
+            cursor = await db.execute(last_activity_query, (guild_id,))
+            last_result = await cursor.fetchone()
+            
+            if last_result:
+                last_time = datetime.fromisoformat(last_result[2]) if isinstance(last_result[2], str) else last_result[2]
+                time_diff = datetime.now() - last_time
+                if time_diff.days > 0:
+                    last_activity = f"Hace {time_diff.days} días"
+                elif time_diff.seconds > 3600:
+                    last_activity = f"Hace {time_diff.seconds//3600} horas"
+                else:
+                    last_activity = f"Hace {time_diff.seconds//60} minutos"
+                last_sector = last_result[0]
+                last_server = last_result[1]
+            else:
+                last_activity = None
+                last_sector = None
+                last_server = None
+        
+        return {
+            'total': total_bunkers,
+            'active': active_bunkers,
+            'today': today_bunkers,
+            'scum_servers': scum_servers,
+            'last_activity': last_activity,
+            'last_sector': last_sector,
+            'last_server': last_server
+        }
+        
+    except Exception as e:
+        logger.error(f"Error obteniendo estadísticas del servidor: {e}")
+        return {
+            'total': 0,
+            'active': 0,
+            'today': 0,
+            'scum_servers': 0,
+            'last_activity': None,
+            'last_sector': None,
+            'last_server': None
+        }
+
 # === COMANDOS ADMIN SIMPLES ===
 
 def is_bot_admin():
     """Decorator para verificar si el usuario es admin del bot"""
     def predicate(interaction: discord.Interaction) -> bool:
-        admin_ids = os.getenv('BOT_ADMIN_IDS', '').split(',')
-        return str(interaction.user.id) in admin_ids
+        # Primero intentar desde variables de entorno (.env)
+        admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
+        admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
+        
+        # Si no hay IDs en .env, usar config.py como respaldo
+        if not admin_ids_from_env:
+            from config import BOT_ADMIN_IDS
+            admin_ids_from_config = [str(id) for id in BOT_ADMIN_IDS]
+            admin_ids = admin_ids_from_config
+        else:
+            admin_ids = admin_ids_from_env
+        
+        user_id = str(interaction.user.id)
+        is_admin = user_id in admin_ids
+        return is_admin
     return app_commands.check(predicate)
 
 @bot.tree.command(name="ba_admin_status", description="[ADMIN] Ver estado de suscripción del servidor")
@@ -1009,15 +1216,30 @@ async def admin_status(interaction: discord.Interaction):
     try:
         # Respuesta rápida sin defer
         guild_id = str(interaction.guild.id)
+        guild_name = interaction.guild.name
         subscription = await subscription_manager.get_subscription(guild_id)
         
         embed = discord.Embed(
-            title="📊 Estado de Suscripción",
+            title="📊 Estado de Suscripción - Admin",
             color=0x3498db
         )
-        embed.add_field(name="Guild ID", value=guild_id[:8] + "...", inline=True)
-        embed.add_field(name="Plan", value=subscription['plan_type'], inline=True)
-        embed.add_field(name="Estado", value=subscription['status'], inline=True)
+        
+        # Información básica del servidor
+        embed.add_field(name="🏰 Servidor", value=guild_name, inline=True)
+        embed.add_field(name="📊 Miembros", value=f"{interaction.guild.member_count:,}", inline=True)
+        embed.add_field(name="🆔 Guild ID", value=f"`{guild_id}`", inline=False)
+        
+        # Información de suscripción
+        embed.add_field(name="📋 Plan", value=subscription['plan_type'].upper(), inline=True)
+        embed.add_field(name="📈 Estado", value=subscription['status'].upper(), inline=True)
+        embed.add_field(name="📅 Expira", value=subscription.get('expires_at', 'N/A'), inline=True)
+        
+        # Información adicional
+        embed.add_field(name="💰 Límites", value=f"Bunkers: {subscription.get('max_bunkers', 'Ilimitado')}", inline=True)
+        embed.add_field(name="⚙️ Bot Owner", value=f"<@{interaction.user.id}>", inline=True)
+        embed.add_field(name="🤖 Bot ID", value=f"`{bot.user.id}`", inline=True)
+        
+        embed.set_footer(text="🔒 Este mensaje es solo visible para ti")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
         
@@ -1121,11 +1343,181 @@ async def admin_list(interaction: discord.Interaction):
         except:
             await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
 
+@bot.tree.command(name="ba_admin_setup_status", description="[ADMIN] Configurar canal de estado del bot")
+@is_bot_admin()
+async def admin_setup_status(interaction: discord.Interaction, channel: discord.TextChannel):
+    """Configurar el canal de estado del bot"""
+    
+    try:
+        await interaction.response.send_message("⚙️ Configurando canal de estado...", ephemeral=True)
+        
+        # Configurar el canal de estado
+        if hasattr(bot, 'status_system'):
+            await bot.status_system.setup_status_channel(channel.id)
+            
+            embed = discord.Embed(
+                title="✅ Canal de Estado Configurado",
+                description=f"Canal {channel.mention} configurado como canal de estado del bot.\n\n"
+                           f"🔄 Se actualizará automáticamente cada 5 minutos\n"
+                           f"📊 Mostrará estadísticas en tiempo real",
+                color=0x00ff00
+            )
+            
+            await interaction.edit_original_response(content=None, embed=embed)
+        else:
+            await interaction.edit_original_response(content="❌ Sistema de estado no disponible")
+        
+    except Exception as e:
+        logger.error(f"Error en admin_setup_status: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_public_status", description="[ADMIN] Configurar canal de estado público simplificado")
+@is_bot_admin()
+async def admin_setup_public_status(interaction: discord.Interaction, channel: discord.TextChannel):
+    """Configurar el canal de estado público simplificado"""
+    
+    try:
+        await interaction.response.send_message("⚙️ Configurando canal de estado público...", ephemeral=True)
+        
+        # Configurar el canal de estado público
+        if hasattr(bot, 'status_system'):
+            await bot.status_system.setup_public_status_channel(channel.id)
+            
+            embed = discord.Embed(
+                title="✅ Canal de Estado Público Configurado",
+                description=f"Canal {channel.mention} configurado como canal de estado público del bot.\n\n"
+                           f"📊 **Información que mostrará:**\n"
+                           f"• Estado del bot (online, uptime, ping)\n"
+                           f"• Estadísticas de bunkers globales\n"
+                           f"• Información básica y simplificada\n\n"
+                           f"🔄 Se actualizará automáticamente cada 5 minutos\n"
+                           f"👥 Perfecto para que todos los usuarios vean el estado",
+                color=0x00ff00
+            )
+            
+            await interaction.edit_original_response(content=None, embed=embed)
+        else:
+            await interaction.edit_original_response(content="❌ Sistema de estado no disponible")
+        
+    except Exception as e:
+        logger.error(f"Error en admin_setup_public_status: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+async def admin_setup_public_status(interaction: discord.Interaction, channel: discord.TextChannel):
+    """Configurar el canal de estado público simplificado"""
+    
+    try:
+        await interaction.response.send_message("⚙️ Configurando canal de estado público...", ephemeral=True)
+        
+        # Configurar el canal de estado público
+        if hasattr(bot, 'status_system'):
+            await bot.status_system.setup_public_status_channel(channel.id)
+            
+            embed = discord.Embed(
+                title="✅ Canal de Estado Público Configurado",
+                description=f"Canal {channel.mention} configurado como canal de estado público del bot.\n\n"
+                           f"📊 **Información que mostrará:**\n"
+                           f"• Estado del bot (online, uptime, ping)\n"
+                           f"• Estadísticas de bunkers globales\n"
+                           f"• Información básica y simplificada\n\n"
+                           f"🔄 Se actualizará automáticamente cada 5 minutos\n"
+                           f"👥 Perfecto para que todos los usuarios vean el estado",
+                color=0x00ff00
+            )
+            
+            await interaction.edit_original_response(content=None, embed=embed)
+        else:
+            await interaction.edit_original_response(content="❌ Sistema de estado no disponible")
+        
+    except Exception as e:
+        logger.error(f"Error en admin_setup_public_status: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_guide", description="[ADMIN] Obtener URL de la guía completa")
+@is_bot_admin()
+async def admin_guide(interaction: discord.Interaction):
+    """Obtener la URL de la guía HTML"""
+    try:
+        await interaction.response.defer(ephemeral=True)
+        
+        # Buscar el puerto del servidor web
+        web_port = getattr(bot, '_web_port', None)
+        
+        if web_port:
+            embed = discord.Embed(
+                title="📚 Guía Completa del Bot",
+                description=f"La guía completa con todos los **20 comandos** está disponible en:",
+                color=0x3498db
+            )
+            
+            embed.add_field(
+                name="🔗 URLs Disponibles",
+                value=f"• **Principal:** http://localhost:{web_port}\n"
+                      f"• **Alternativa:** http://localhost:{web_port}/guide\n"
+                      f"• **IP Local:** http://127.0.0.1:{web_port}",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📋 Contenido de la Guía",
+                value="• **14 comandos públicos** (para todos los usuarios)\n"
+                      "• **2 comandos premium** (solo servidores premium)\n"
+                      "• **Estados de bunkers** explicados\n"
+                      "• **Comparación de planes** gratuito vs premium\n"
+                      "• **Ejemplos de uso** y flujos de trabajo",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💡 Información",
+                value="• La guía se actualiza automáticamente\n"
+                      "• Incluye todos los comandos excepto los de administración\n"
+                      "• Accesible mientras el bot esté funcionando\n"
+                      "• Diseño responsivo para cualquier dispositivo",
+                inline=False
+            )
+            
+            embed.set_footer(text="💡 Comparte estas URLs con administradores de Discord para que conozcan todas las funciones")
+            
+            await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="❌ Servidor Web No Disponible",
+                description="El servidor web para la guía no está funcionando.",
+                color=0xff0000
+            )
+            
+            embed.add_field(
+                name="📝 Archivo Local",
+                value="La guía está disponible en el archivo `guide.html` del bot.\n"
+                      "Puedes abrirlo directamente en cualquier navegador web.",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_guide: {e}")
+        try:
+            await interaction.followup.send("❌ Error obteniendo información de la guía.", ephemeral=True)
+        except:
+            await interaction.response.send_message("❌ Error interno del bot.", ephemeral=True)
+
 # Manejador de errores para comandos admin
 @admin_status.error
-@admin_upgrade.error
+@admin_upgrade.error  
 @admin_cancel.error
 @admin_list.error
+@admin_setup_status.error
+@admin_guide.error
 async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Manejador de errores para comandos de administración"""
     if isinstance(error, app_commands.CheckFailure):
@@ -1170,6 +1562,43 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
     except Exception as handler_error:
         logger.error(f"Error en el manejador de errores: {handler_error}")
 
+# === SERVIDOR WEB PARA LA GUÍA ===
+
+async def guide_handler(request):
+    """Servir la guía HTML"""
+    try:
+        with open('guide.html', 'r', encoding='utf-8') as f:
+            content = f.read()
+        return web.Response(text=content, content_type='text/html')
+    except FileNotFoundError:
+        return web.Response(text="Guía no encontrada", status=404)
+
+async def create_web_server():
+    """Crear servidor web para la guía"""
+    app = web.Application()
+    app.router.add_get('/', guide_handler)
+    app.router.add_get('/guide', guide_handler)
+    
+    # Encontrar un puerto disponible
+    for port in range(8080, 8090):
+        try:
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, 'localhost', port)
+            await site.start()
+            logger.info(f"📚 Guía HTML disponible en: http://localhost:{port}")
+            logger.info(f"📚 También disponible en: http://localhost:{port}/guide")
+            
+            # Guardar puerto en el bot para uso posterior
+            bot._web_port = port
+            
+            return runner, port
+        except OSError:
+            continue
+    
+    logger.warning("No se pudo encontrar un puerto disponible para el servidor web")
+    return None, None
+
 # === INICIAR BOT ===
 
 async def main():
@@ -1181,9 +1610,17 @@ async def main():
         return
     
     try:
+        # Iniciar servidor web para la guía
+        web_runner, web_port = await create_web_server()
+        
+        # Iniciar bot de Discord
         await bot.start(token)
     except Exception as e:
         logger.error(f"Error al iniciar el bot: {e}")
+    finally:
+        # Limpiar servidor web si existe
+        if 'web_runner' in locals() and web_runner:
+            await web_runner.cleanup()
 
 if __name__ == "__main__":
     asyncio.run(main())

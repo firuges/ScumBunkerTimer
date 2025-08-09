@@ -113,6 +113,35 @@ class BunkerDatabaseV2:
             
             await db.commit()
             logger.info("Base de datos V2 inicializada correctamente")
+    
+    async def get_total_bunkers_count(self):
+        """Obtener conteo total de bunkers registrados"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM bunkers")
+            result = await cursor.fetchone()
+            return result[0] if result else 0
+    
+    async def get_active_bunkers_count(self):
+        """Obtener conteo de bunkers activos"""
+        current_time = datetime.now()
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM bunkers WHERE expiry_time > ?",
+                (current_time,)
+            )
+            result = await cursor.fetchone()
+            return result[0] if result else 0
+    
+    async def get_today_bunkers_count(self):
+        """Obtener conteo de bunkers registrados hoy"""
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "SELECT COUNT(*) FROM bunkers WHERE registered_time >= ?",
+                (today_start,)
+            )
+            result = await cursor.fetchone()
+            return result[0] if result else 0
 
     # === GESTIÓN DE SERVIDORES ===
     
@@ -634,3 +663,123 @@ class BunkerDatabaseV2:
                 })
             
             return stats
+
+    async def get_all_bunkers_global_status(self) -> Dict[str, Dict]:
+        """Obtiene el estado de todos los bunkers globalmente (todos los servidores)"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Obtener todos los bunkers únicos por sector
+            cursor = await db.execute("""
+                SELECT sector, 
+                       COUNT(*) as total_registrations,
+                       SUM(CASE WHEN expiry_time > datetime('now') THEN 1 ELSE 0 END) as registered_count,
+                       SUM(CASE WHEN expiry_time <= datetime('now') AND 
+                                   expiry_time > datetime('now', '-1 day') THEN 1 ELSE 0 END) as active_count,
+                       SUM(CASE WHEN expiry_time <= datetime('now', '-1 day') THEN 1 ELSE 0 END) as expired_count
+                FROM bunkers 
+                WHERE expiry_time IS NOT NULL
+                GROUP BY sector
+                ORDER BY sector
+            """)
+            
+            bunkers_status = {}
+            
+            async for row in cursor:
+                sector, total, registered, active, expired = row
+                
+                # Determinar estado principal
+                if registered > 0:
+                    status = "Registrado"
+                elif active > 0:
+                    status = "Activo" 
+                elif expired > 0:
+                    status = "Expirado"
+                else:
+                    status = "NoRegistrado"
+                
+                bunkers_status[sector] = {
+                    "status": status,
+                    "total_registrations": total,
+                    "registered_count": registered,
+                    "active_count": active,
+                    "expired_count": expired
+                }
+            
+            # Asegurar que todos los sectores estén incluidos
+            all_sectors = ["D1", "C4", "A1", "A3"]
+            for sector in all_sectors:
+                if sector not in bunkers_status:
+                    bunkers_status[sector] = {
+                        "status": "NoRegistrado",
+                        "total_registrations": 0,
+                        "registered_count": 0,
+                        "active_count": 0,
+                        "expired_count": 0
+                    }
+            
+            return bunkers_status
+
+    async def get_bunkers_by_server_status(self) -> Dict[str, Dict[str, Dict]]:
+        """Obtiene el estado de bunkers organizados por servidor SCUM"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Obtener todos los bunkers con sus servidores
+            cursor = await db.execute("""
+                SELECT server_name, sector, 
+                       COUNT(*) as total_registrations,
+                       SUM(CASE WHEN expiry_time > datetime('now') THEN 1 ELSE 0 END) as registered_count,
+                       SUM(CASE WHEN expiry_time <= datetime('now') AND 
+                                   expiry_time > datetime('now', '-1 day') THEN 1 ELSE 0 END) as active_count,
+                       SUM(CASE WHEN expiry_time <= datetime('now', '-1 day') THEN 1 ELSE 0 END) as expired_count,
+                       MAX(registered_time) as last_activity
+                FROM bunkers 
+                WHERE expiry_time IS NOT NULL
+                GROUP BY server_name, sector
+                ORDER BY server_name, sector
+            """)
+            
+            servers_bunkers = {}
+            
+            async for row in cursor:
+                server_name, sector, total, registered, active, expired, last_activity = row
+                
+                if server_name not in servers_bunkers:
+                    servers_bunkers[server_name] = {}
+                
+                # Determinar estado principal
+                if registered > 0:
+                    status = "Registrado"
+                elif active > 0:
+                    status = "Activo" 
+                elif expired > 0:
+                    status = "Expirado"
+                else:
+                    status = "NoRegistrado"
+                
+                servers_bunkers[server_name][sector] = {
+                    "status": status,
+                    "total_registrations": total,
+                    "registered_count": registered,
+                    "active_count": active,
+                    "expired_count": expired,
+                    "last_activity": last_activity
+                }
+            
+            # Asegurar que todos los servidores tengan todos los sectores
+            all_sectors = ["D1", "C4", "A1", "A3"]
+            
+            # Si no hay servidores, crear uno por defecto
+            if not servers_bunkers:
+                servers_bunkers["Default"] = {}
+            
+            for server_name in servers_bunkers:
+                for sector in all_sectors:
+                    if sector not in servers_bunkers[server_name]:
+                        servers_bunkers[server_name][sector] = {
+                            "status": "NoRegistrado",
+                            "total_registrations": 0,
+                            "registered_count": 0,
+                            "active_count": 0,
+                            "expired_count": 0,
+                            "last_activity": None
+                        }
+            
+            return servers_bunkers
