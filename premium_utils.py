@@ -225,3 +225,21 @@ async def get_subscription_embed(guild_id: str) -> discord.Embed:
     
     embed.set_footer(text="Usa /ba_suscripcion para gestionar tu suscripción")
     return embed
+
+async def check_premium_status(guild_id: str) -> bool:
+    """Verificar si un guild tiene suscripción premium activa"""
+    try:
+        subscription = await subscription_manager.get_subscription(guild_id)
+        return subscription['plan_type'] != 'free'
+    except Exception as e:
+        logger.error(f"Error verificando estado premium para guild {guild_id}: {e}")
+        return False
+
+async def check_premium_status(guild_id: str) -> bool:
+    """Verificar si un servidor tiene suscripción premium activa"""
+    try:
+        subscription = await subscription_manager.get_subscription(guild_id)
+        return subscription['plan_type'] != 'free' and subscription['status'] == 'active'
+    except Exception as e:
+        logger.error(f"Error verificando estado premium para guild {guild_id}: {e}")
+        return False

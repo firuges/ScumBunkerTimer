@@ -7,40 +7,83 @@ from discord import app_commands
 from discord.ext import commands
 from subscription_manager import subscription_manager
 from premium_utils import get_subscription_embed
+from typing import List
 import logging
 import os
 
 logger = logging.getLogger(__name__)
 
-async def action_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+async def action_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> List[app_commands.Choice[str]]:
     """Autocompletado para actions del comando admin_premium"""
-    actions = [
-        ("🔴 cancel - Cancelar premium (volver a gratuito)", "cancel"),
-        ("✅ upgrade - Dar premium al servidor", "upgrade"), 
-        ("📊 status - Ver estado de suscripción", "status"),
-        ("📋 list - Listar todas las suscripciones", "list")
-    ]
-    
-    return [
-        app_commands.Choice(name=name, value=value)
-        for name, value in actions
-        if current.lower() in name.lower() or current.lower() in value.lower()
-    ][:25]
+    try:
+        actions = [
+            ("cancel", "🔴 cancel - Cancelar premium (volver a gratuito)"),
+            ("upgrade", "✅ upgrade - Dar premium al servidor"), 
+            ("status", "📊 status - Ver estado de suscripción"),
+            ("list", "📋 list - Listar todas las suscripciones")
+        ]
+        
+        # Filtrar por texto actual si se proporciona
+        if current:
+            filtered_actions = [a for a in actions if current.lower() in a[0].lower()]
+        else:
+            filtered_actions = actions
+        
+        # Asegurar que siempre hay al menos una opción
+        if not filtered_actions:
+            filtered_actions = [("upgrade", "✅ upgrade - Dar premium al servidor")]  # Default fallback
+        
+        return [
+            app_commands.Choice(name=name, value=value)
+            for value, name in filtered_actions
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error en action_autocomplete: {e}")
+        # Fallback básico en caso de error
+        return [
+            app_commands.Choice(name="✅ upgrade - Dar premium al servidor", value="upgrade"),
+            app_commands.Choice(name="🔴 cancel - Cancelar premium", value="cancel"),
+        ]
 
-async def plan_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+async def plan_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> List[app_commands.Choice[str]]:
     """Autocompletado para planes del comando admin_premium"""
-    plans = [
-        ("💎 premium - Plan Premium", "premium"),
-        ("🆓 free - Plan Gratuito", "free")
-    ]
-    
-    return [
-        app_commands.Choice(name=name, value=value)
-        for name, value in plans
-        if current.lower() in name.lower() or current.lower() in value.lower()
-    ][:25]
+    try:
+        plans = [
+            ("premium", "💎 premium - Plan Premium"),
+            ("free", "🆓 free - Plan Gratuito")
+        ]
+        
+        # Filtrar por texto actual si se proporciona
+        if current:
+            filtered_plans = [p for p in plans if current.lower() in p[0].lower()]
+        else:
+            filtered_plans = plans
+        
+        # Asegurar que siempre hay al menos una opción
+        if not filtered_plans:
+            filtered_plans = [("premium", "💎 premium - Plan Premium")]  # Default fallback
+        
+        return [
+            app_commands.Choice(name=name, value=value)
+            for value, name in filtered_plans
+        ]
+        
+    except Exception as e:
+        logger.error(f"Error en plan_autocomplete: {e}")
+        # Fallback básico en caso de error
+        return [
+            app_commands.Choice(name="💎 premium - Plan Premium", value="premium"),
+            app_commands.Choice(name="🆓 free - Plan Gratuito", value="free"),
+        ]
 
-class PremiumCommands:
+class PremiumCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -128,13 +171,12 @@ class PremiumCommands:
             )
             await interaction.response.send_message(embed=embed)
 
-    # @app_commands.autocomplete(action=action_autocomplete)
-    # @app_commands.autocomplete(plan=plan_autocomplete)
     @app_commands.command(name="ba_admin_subs", description="[ADMIN] Gestionar suscripciones premium")
+    @app_commands.autocomplete(action=action_autocomplete, plan=plan_autocomplete)
     @app_commands.describe(
-        action="Acción a realizar",
+        action="Acción a realizar (cancel, upgrade, status, list)",
         guild_id="ID del servidor Discord (opcional, usa servidor actual si no se especifica)",
-        plan="Tipo de plan para upgrade (solo para action=upgrade)"
+        plan="Tipo de plan para upgrade (solo para action=premium)"
     )
     async def admin_subscriptions(self, interaction: discord.Interaction, 
                           action: str, 
@@ -188,13 +230,33 @@ class PremiumCommands:
                 
                 free_count = len([s for s in subscriptions if s['plan_type'] == 'free'])
                 premium_count = len([s for s in subscriptions if s['plan_type'] != 'free'])
-                total_revenue = sum([s['monthly_price'] for s in subscriptions if s['plan_type'] != 'free'])
                 
-                embed.add_field(name="📊 Estadísticas", value=f"• Gratuitos: {free_count}\n• Premium: {premium_count}\n• Ingresos/mes: ${total_revenue:.2f}", inline=False)
+                # Calcular ingresos estimados (precio estándar del plan premium)
+                premium_price = 9.99  # Precio estándar del plan premium
+                estimated_revenue = premium_count * premium_price
+                
+                embed.add_field(
+                    name="📊 Estadísticas", 
+                    value=f"• Gratuitos: {free_count}\n• Premium: {premium_count}\n• Ingresos estimados/mes: ${estimated_revenue:.2f}", 
+                    inline=False
+                )
                 
                 if premium_count > 0:
-                    premium_list = [f"• {s['guild_id'][:8]}... ({s['plan_type']})" for s in subscriptions if s['plan_type'] != 'free'][:10]
+                    premium_list = []
+                    for s in subscriptions:
+                        if s['plan_type'] != 'free':
+                            guild_id_short = s['guild_id'][:8] if len(s['guild_id']) > 8 else s['guild_id']
+                            premium_list.append(f"• {guild_id_short}... ({s['plan_type']} - {s['status']})")
+                    
+                    # Mostrar máximo 10 suscripciones
+                    if len(premium_list) > 10:
+                        premium_list = premium_list[:10]
+                        premium_list.append("...")
+                    
                     embed.add_field(name="💎 Suscripciones Premium", value="\n".join(premium_list), inline=False)
+                
+                if len(subscriptions) == 0:
+                    embed.add_field(name="ℹ️ Información", value="No hay suscripciones registradas", inline=False)
             
             else:
                 embed = discord.Embed(
@@ -214,9 +276,6 @@ class PremiumCommands:
             )
             await interaction.response.send_message(embed=embed)
 
-def setup_premium_commands(bot):
-    """Agregar comandos premium al bot"""
-    premium = PremiumCommands(bot)
-    # Comando ba_plans temporalmente deshabilitado por CommandSignatureMismatch
-    # bot.tree.add_command(premium.subscription_plans)
-    bot.tree.add_command(premium.admin_subscriptions)
+async def setup_premium_commands(bot):
+    """Agregar comandos premium al bot como Cog"""
+    await bot.add_cog(PremiumCommands(bot))

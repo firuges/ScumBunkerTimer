@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 import os
 from database_v2 import BunkerDatabaseV2
 from subscription_manager import subscription_manager
+from server_database import server_db
+from server_monitor import server_monitor
 
 class BotStatusSystem:
     def __init__(self, bot):
@@ -75,6 +77,9 @@ class BotStatusSystem:
         # Estadísticas de suscripciones
         subscription_stats = await self.get_subscription_stats()
         
+        # Estadísticas de servidores monitoreados
+        server_stats = await self.get_server_monitor_stats()
+        
         # Estado del sistema
         system_stats = self.get_system_stats()
         
@@ -110,10 +115,17 @@ class BotStatusSystem:
             inline=True
         )
         
+        # Estadísticas de servidores SCUM monitoreados
+        embed.add_field(
+            name="🎮 Servidores SCUM",
+            value=f"```yaml\nMonitoreados: {server_stats['total_servers']}\nOnline: {server_stats['online_servers']}\nOffline: {server_stats['offline_servers']}\nJugadores: {server_stats['total_players']:,}```",
+            inline=True
+        )
+        
         # Estadísticas de suscripciones
         embed.add_field(
             name="💎 Suscripciones",
-            value=f"```yaml\nGratuitas: {subscription_stats['free']}\nPremium: {subscription_stats['premium']}\nTotal: {subscription_stats['total']}```",
+            value=f"```yaml\nGratuitas: {subscription_stats['free']}\nPremium: {subscription_stats['premium']}\nTotal: {subscription_stats['total']}\nMonitoreo: {server_stats['guilds_monitoring']}```",
             inline=True
         )
         
@@ -130,13 +142,16 @@ class BotStatusSystem:
         return embed
     
     async def create_public_status_embed(self):
-        """Crear embed público simplificado con estado del bot"""
+        """Crear embed público simplificado con estado del bot y top servidores SCUM"""
         
         # Obtener estadísticas básicas
         guild_count = len(self.bot.guilds)
         
         # Estadísticas de bunkers por servidor
         servers_bunkers = await self.get_bunkers_by_server_status()
+        
+        # TOP DE SERVIDORES SCUM
+        top_servers = await self.get_top_scum_servers()
         
         # Uptime
         uptime = datetime.now() - self.start_time
@@ -155,6 +170,33 @@ class BotStatusSystem:
             value=f"```yaml\nUptime: {uptime_str}\nPing: {round(self.bot.latency * 1000)}ms\nServidores: {guild_count}```",
             inline=True
         )
+        
+        # TOP SERVIDORES SCUM
+        if top_servers:
+            servers_text = ""
+            for i, server in enumerate(top_servers[:2], 1):  # Top 2
+                name = server['name'][:25]  # Limitar nombre
+                if len(server['name']) > 25:
+                    name += "..."
+                
+                players = server.get('players', 0)
+                max_players = server.get('max_players', 0)
+                status_emoji = "🟢" if server.get('online', False) else "🔴"
+                
+                servers_text += f"{i}. {name}\n"
+                servers_text += f"   {status_emoji} {players}/{max_players} jugadores\n\n"
+            
+            embed.add_field(
+                name="🏆 Top Servidores SCUM",
+                value=f"```yaml\n{servers_text.strip()}```",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="🏆 Servidores SCUM",
+                value="```yaml\nSin servidores monitoreados```",
+                inline=True
+            )
         
         # Mostrar bunkers organizados por servidor
         if not servers_bunkers:
@@ -255,6 +297,93 @@ class BotStatusSystem:
             }
         except Exception as e:
             return {'free': 0, 'premium': 0, 'total': 0}
+    
+    async def get_server_monitor_stats(self):
+        """Obtener estadísticas de servidores monitoreados"""
+        try:
+            total_servers = 0
+            online_servers = 0
+            total_players = 0
+            guilds_with_monitoring = set()
+            
+            # Obtener todos los servidores monitoreados de todas las guilds
+            for guild in self.bot.guilds:
+                servers = await server_db.get_monitored_servers(str(guild.id))
+                if servers:
+                    guilds_with_monitoring.add(guild.id)
+                    total_servers += len(servers)
+                    
+                    # Verificar estado de cada servidor
+                    for server in servers:
+                        if server['battlemetrics_id']:
+                            try:
+                                status_data = await server_monitor.get_server_status_by_id(server['battlemetrics_id'])
+                                if status_data and status_data.get('online'):
+                                    online_servers += 1
+                                    total_players += status_data.get('players', 0)
+                            except:
+                                pass  # Si falla obtener estado, simplemente continuar
+            
+            return {
+                'total_servers': total_servers,
+                'online_servers': online_servers,
+                'offline_servers': total_servers - online_servers,
+                'total_players': total_players,
+                'guilds_monitoring': len(guilds_with_monitoring)
+            }
+        except Exception as e:
+            return {
+                'total_servers': 0,
+                'online_servers': 0,
+                'offline_servers': 0,
+                'total_players': 0,
+                'guilds_monitoring': 0
+            }
+    
+    async def get_top_scum_servers(self):
+        """Obtener top servidores SCUM monitoreados ordenados por jugadores"""
+        try:
+            top_servers = []
+            
+            # Obtener todos los servidores monitoreados de todas las guilds
+            for guild in self.bot.guilds:
+                servers = await server_db.get_monitored_servers(str(guild.id))
+                if servers:
+                    for server in servers:
+                        if server['battlemetrics_id']:
+                            try:
+                                # Obtener estado actual del servidor
+                                status_data = await server_monitor.get_server_status_by_id(server['battlemetrics_id'])
+                                if status_data:
+                                    server_info = {
+                                        'name': server['server_name'],
+                                        'players': status_data.get('players', 0),
+                                        'max_players': status_data.get('max_players', 0),
+                                        'online': status_data.get('online', False),
+                                        'battlemetrics_id': server['battlemetrics_id'],
+                                        'guild_name': guild.name if guild else 'Unknown'
+                                    }
+                                    top_servers.append(server_info)
+                            except Exception as e:
+                                # Si falla obtener estado, agregar con datos básicos
+                                server_info = {
+                                    'name': server['server_name'],
+                                    'players': 0,
+                                    'max_players': 0,
+                                    'online': False,
+                                    'battlemetrics_id': server['battlemetrics_id'],
+                                    'guild_name': guild.name if guild else 'Unknown'
+                                }
+                                top_servers.append(server_info)
+            
+            # Ordenar por número de jugadores (descendente) y luego por estado online
+            top_servers.sort(key=lambda x: (x['online'], x['players']), reverse=True)
+            
+            return top_servers
+            
+        except Exception as e:
+            print(f"Error en get_top_scum_servers: {e}")
+            return []
     
     def get_system_stats(self):
         """Obtener estadísticas del sistema"""

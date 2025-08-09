@@ -20,6 +20,7 @@ from premium_utils import check_limits, premium_required
 from premium_commands import setup_premium_commands
 from premium_exclusive_commands import setup_premium_exclusive_commands
 from bot_status_system import setup_bot_status
+from server_database import server_db
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -61,9 +62,17 @@ class BunkerBotV2(commands.Bot):
         await subscription_manager.initialize()
         logger.info("Sistema de suscripciones inicializado")
         
+        # Inicializar tablas de monitoreo de servidores
+        await server_db.initialize_server_tables()
+        logger.info("Sistema de monitoreo de servidores inicializado")
+        
         # Configurar comandos premium
-        setup_premium_commands(self)
+        await setup_premium_commands(self)
         setup_premium_exclusive_commands(self)
+        
+        # Cargar cog de comandos de servidor
+        await self.load_extension('server_commands')
+        logger.info("Comandos de monitoreo de servidores cargados")
         
         self.notification_task.start()
         
@@ -99,8 +108,26 @@ class BunkerBotV2(commands.Bot):
         try:
             total_commands = len([cmd for cmd in self.tree.walk_commands()])
             logger.info(f"Comandos registrados antes de sync: {total_commands}")
-            synced = await self.tree.sync()
-            logger.info(f"EXITO: Sincronizados {len(synced)} comandos con Discord")
+            
+            # Sync global con retry si hay errores de signature mismatch
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    synced = await self.tree.sync()
+                    logger.info(f"EXITO: Sincronizados {len(synced)} comandos con Discord (intento {attempt + 1})")
+                    break
+                except Exception as e:
+                    if "signature" in str(e).lower() and attempt < max_retries - 1:
+                        logger.warning(f"Error de signature en intento {attempt + 1}, reintentando en 2 segundos...")
+                        await asyncio.sleep(2)
+                        # Force sync clearing cache
+                        try:
+                            await self.tree.sync()
+                        except:
+                            pass
+                    else:
+                        logger.error(f"ERROR: Error sincronizando comandos después de {attempt + 1} intentos: {e}")
+                        raise
         except Exception as e:
             logger.error(f"ERROR: Error sincronizando comandos: {e}")
         
