@@ -508,6 +508,90 @@ class BunkerDatabaseV2:
                 "next_available": next_available
             }
     
+    async def check_server_bunker_limit(self, guild_id: str) -> dict:
+        """Verificar si el servidor ya tiene bunkers activos (para plan gratuito)"""
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        async with aiosqlite.connect(self.db_path) as db:
+            # Buscar cualquier bunker registrado en el servidor que aún esté activo
+            cursor = await db.execute("""
+                SELECT sector, server_name, registered_time, expiry_time, registered_by, discord_user_id
+                FROM bunkers 
+                WHERE discord_guild_id = ? 
+                AND registered_time IS NOT NULL 
+                AND expiry_time IS NOT NULL
+                AND datetime(expiry_time) > datetime(?)
+                ORDER BY registered_time DESC
+                LIMIT 1
+            """, (guild_id, now.isoformat()))
+            
+            row = await cursor.fetchone()
+            
+            if not row:
+                # No hay bunkers activos
+                return {
+                    "has_active_bunker": False,
+                    "can_register": True,
+                    "active_bunker": None,
+                    "time_remaining": 0,
+                    "registered_by": None
+                }
+            
+            sector, server_name, registered_time_str, expiry_time_str, registered_by, discord_user_id = row
+            
+            # Parse timestamps
+            try:
+                if '.' in expiry_time_str:
+                    # Formato con microsegundos
+                    expiry_time = datetime.fromisoformat(expiry_time_str)
+                else:
+                    # Formato sin microsegundos
+                    expiry_time = datetime.fromisoformat(expiry_time_str)
+                
+                if '.' in registered_time_str:
+                    registered_time = datetime.fromisoformat(registered_time_str)
+                else:
+                    registered_time = datetime.fromisoformat(registered_time_str)
+            except Exception as e:
+                logger.error(f"Error parsing timestamps: {e}")
+                return {
+                    "has_active_bunker": False,
+                    "can_register": True,
+                    "active_bunker": None,
+                    "time_remaining": 0,
+                    "registered_by": None
+                }
+            
+            # Calcular tiempo restante
+            time_remaining = expiry_time - now
+            hours_remaining = time_remaining.total_seconds() / 3600
+            
+            # Si el tiempo ya expiró, considerar que no hay bunker activo
+            if hours_remaining <= 0:
+                return {
+                    "has_active_bunker": False,
+                    "can_register": True,
+                    "active_bunker": None,
+                    "time_remaining": 0,
+                    "registered_by": None
+                }
+            
+            return {
+                "has_active_bunker": True,
+                "can_register": False,
+                "active_bunker": {
+                    "sector": sector,
+                    "server_name": server_name,
+                    "registered_by": registered_by,
+                    "discord_user_id": discord_user_id,
+                    "hours_remaining": round(max(0, hours_remaining), 1),
+                    "expiry_time": f"<t:{int(expiry_time.timestamp())}:R>"
+                },
+                "time_remaining": round(max(0, hours_remaining), 1),
+                "registered_by": registered_by
+            }
+    
     async def increment_daily_usage(self, guild_id: str, user_id: str):
         """Registrar nuevo uso del usuario (sistema 72 horas)"""
         from datetime import datetime, date

@@ -159,21 +159,20 @@ class SubscriptionManager:
         """Obtener todas las suscripciones activas"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
-                SELECT s.*, p.monthly_price_usd FROM subscriptions s
-                LEFT JOIN plan_limits p ON s.plan_type = p.plan_type
-                WHERE s.status = 'active'
-                ORDER BY s.plan_type DESC, s.created_at DESC
+                SELECT discord_guild_id, plan_type, status, current_period_end, created_at
+                FROM subscriptions 
+                WHERE status = 'active'
+                ORDER BY plan_type DESC, created_at DESC
             """)
             
             subscriptions = []
             async for row in cursor:
                 subscriptions.append({
-                    'guild_id': row[1],
-                    'plan_type': row[2],
-                    'status': row[3],
-                    'current_period_end': row[6],
-                    'monthly_price': row[15] or 0,
-                    'created_at': row[7]
+                    'guild_id': row[0],
+                    'plan_type': row[1],
+                    'status': row[2],
+                    'current_period_end': row[3],
+                    'created_at': row[4]
                 })
             
             return subscriptions

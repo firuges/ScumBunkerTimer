@@ -27,7 +27,7 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                 )
                 embed.add_field(
                     name="🆓 Plan Actual: Gratuito",
-                    value="• 1 bunker cada 72 horas\n• 1 servidor SCUM\n• Comandos básicos",
+                    value="• 1 bunker activo por servidor Discord\n• 1 servidor SCUM\n• Comandos básicos",
                     inline=False
                 )
                 embed.add_field(
@@ -71,29 +71,34 @@ def check_limits(limit_type: str):
                 subscription = await subscription_manager.get_subscription(guild_id)
                 
                 if subscription['plan_type'] == 'free':
-                    # Verificar uso del usuario (72 horas)
-                    user_id = str(interaction.user.id)
-                    usage_check = await db.check_daily_usage(guild_id, user_id)
+                    # NUEVA LÓGICA: Verificar límite global del servidor para plan gratuito
+                    server_limit = await db.check_server_bunker_limit(guild_id)
                     
-                    if not usage_check['can_register']:
+                    if server_limit['has_active_bunker']:
+                        active = server_limit['active_bunker']
                         embed = discord.Embed(
-                            title="⏰ Límite de Tiempo Activo",
-                            description=f"Ya registraste un bunker hace **{72 - usage_check['hours_remaining']:.1f} horas**.\n\nPlan Gratuito: **1 bunker cada 72 horas**",
+                            title="🔒 Servidor con Bunker Activo",
+                            description=f"**Plan Gratuito**: Solo 1 bunker activo por servidor Discord.\n\nYa hay un bunker registrado por otro usuario.",
                             color=0xff6b6b
                         )
                         embed.add_field(
-                            name="⏳ Próximo registro disponible",
-                            value=f"{usage_check['next_available']}\n({usage_check['hours_remaining']:.1f} horas restantes)",
+                            name="🎯 Bunker Activo",
+                            value=f"**Sector:** {active['sector']}\n**Servidor SCUM:** {active['server_name']}\n**Registrado por:** <@{active['discord_user_id']}>",
+                            inline=True
+                        )
+                        embed.add_field(
+                            name="⏰ Tiempo Restante",
+                            value=f"{active['hours_remaining']:.1f} horas\n{active['expiry_time']}",
                             inline=True
                         )
                         embed.add_field(
                             name="💎 Solución",
-                            value="Actualiza a Premium para bunkers ilimitados\n`/ba_suscripcion`",
-                            inline=True
+                            value="• Espera a que expire el bunker actual\n• Actualiza a Premium para bunkers ilimitados\n`/ba_suscripcion`",
+                            inline=False
                         )
                         embed.add_field(
-                            name="🎯 ¿Por qué 72 horas?",
-                            value="Los bunkers en SCUM duran 72 horas, así que puedes gestionar eficientemente tu bunker principal",
+                            name="� Filosofía del Plan Gratuito",
+                            value="Un bunker por servidor fomenta la coordinación del equipo y evita el spam. ¡Organízense!",
                             inline=False
                         )
                         
@@ -102,6 +107,9 @@ def check_limits(limit_type: str):
                         else:
                             await interaction.followup.send(embed=embed, ephemeral=True)
                         return
+                    
+                    # Si no hay bunkers activos en el servidor, permitir registro
+                    # (Ya no verificamos uso individual del usuario, solo el límite del servidor)
                 
                 # Para verificación de bunkers simultáneos (ya no se usa para free, pero se mantiene para compatibilidad)
                 bunkers = await db.get_all_bunkers_status(guild_id)

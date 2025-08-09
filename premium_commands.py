@@ -12,6 +12,34 @@ import os
 
 logger = logging.getLogger(__name__)
 
+async def action_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """Autocompletado para actions del comando admin_premium"""
+    actions = [
+        ("🔴 cancel - Cancelar premium (volver a gratuito)", "cancel"),
+        ("✅ upgrade - Dar premium al servidor", "upgrade"), 
+        ("📊 status - Ver estado de suscripción", "status"),
+        ("📋 list - Listar todas las suscripciones", "list")
+    ]
+    
+    return [
+        app_commands.Choice(name=name, value=value)
+        for name, value in actions
+        if current.lower() in name.lower() or current.lower() in value.lower()
+    ][:25]
+
+async def plan_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """Autocompletado para planes del comando admin_premium"""
+    plans = [
+        ("💎 premium - Plan Premium", "premium"),
+        ("🆓 free - Plan Gratuito", "free")
+    ]
+    
+    return [
+        app_commands.Choice(name=name, value=value)
+        for name, value in plans
+        if current.lower() in name.lower() or current.lower() in value.lower()
+    ][:25]
+
 class PremiumCommands:
     def __init__(self, bot):
         self.bot = bot
@@ -100,8 +128,15 @@ class PremiumCommands:
             )
             await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="ba_admin_premium", description="[ADMIN] Gestionar suscripciones")
-    async def admin_premium(self, interaction: discord.Interaction, 
+    # @app_commands.autocomplete(action=action_autocomplete)
+    # @app_commands.autocomplete(plan=plan_autocomplete)
+    @app_commands.command(name="ba_admin_subs", description="[ADMIN] Gestionar suscripciones premium")
+    @app_commands.describe(
+        action="Acción a realizar",
+        guild_id="ID del servidor Discord (opcional, usa servidor actual si no se especifica)",
+        plan="Tipo de plan para upgrade (solo para action=upgrade)"
+    )
+    async def admin_subscriptions(self, interaction: discord.Interaction, 
                           action: str, 
                           guild_id: str = None,
                           plan: str = "premium"):
@@ -171,7 +206,7 @@ class PremiumCommands:
             await interaction.response.send_message(embed=embed)
             
         except Exception as e:
-            logger.error(f"Error en admin_premium: {e}")
+            logger.error(f"Error en admin_subscriptions: {e}")
             embed = discord.Embed(
                 title="❌ Error",
                 description=f"Error ejecutando acción: {str(e)}",
@@ -184,4 +219,4 @@ def setup_premium_commands(bot):
     premium = PremiumCommands(bot)
     # Comando ba_plans temporalmente deshabilitado por CommandSignatureMismatch
     # bot.tree.add_command(premium.subscription_plans)
-    bot.tree.add_command(premium.admin_premium)
+    bot.tree.add_command(premium.admin_subscriptions)

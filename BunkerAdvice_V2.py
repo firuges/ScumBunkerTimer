@@ -19,6 +19,7 @@ from subscription_manager import subscription_manager
 from premium_utils import check_limits, premium_required
 from premium_commands import setup_premium_commands
 from premium_exclusive_commands import setup_premium_exclusive_commands
+from simple_admin import setup_simple_admin
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde .env
@@ -63,6 +64,7 @@ class BunkerBotV2(commands.Bot):
         # Configurar comandos premium
         setup_premium_commands(self)
         setup_premium_exclusive_commands(self)
+        # setup_simple_admin(self)  # Deshabilitado, usando comando directo
         
         self.notification_task.start()
         
@@ -797,7 +799,7 @@ async def my_usage_command(interaction: discord.Interaction):
         
         embed = discord.Embed(
             title="📊 Mi Estado de Uso",
-            description=f"Estado del sistema de 72 horas para {interaction.user.display_name}",
+            description=f"Estado del servidor para {interaction.user.display_name}",
             color=0x3498db if subscription['plan_type'] == 'premium' else 0x95a5a6
         )
         
@@ -813,13 +815,22 @@ async def my_usage_command(interaction: discord.Interaction):
         
         # Uso actual
         if subscription['plan_type'] == 'free':
-            # Para plan gratuito, usar el nuevo sistema de 72 horas
-            if daily_usage['can_register']:
+            # Para plan gratuito, verificar si el servidor tiene bunker activo
+            from database_v2 import BunkerDatabaseV2
+            db = BunkerDatabaseV2()
+            server_limit = await db.check_server_bunker_limit(guild_id)
+            
+            if server_limit['has_active_bunker']:
+                active = server_limit['active_bunker']
+                if active['discord_user_id'] == user_id:
+                    usage_text = f"✅ **Tu bunker está activo**\nSector {active['sector']} en {active['server_name']}"
+                    reset_info = f"{active['expiry_time']}\n({active['hours_remaining']:.1f} horas restantes)"
+                else:
+                    usage_text = f"⏳ **Servidor ocupado**\nOtro usuario tiene un bunker activo"
+                    reset_info = f"{active['expiry_time']}\n({active['hours_remaining']:.1f} horas restantes)"
+            else:
                 usage_text = "✅ **Disponible** - Puedes registrar un bunker"
                 reset_info = "Disponible ahora"
-            else:
-                usage_text = f"⏳ **En espera** - Último registro hace {72 - daily_usage['hours_remaining']:.1f}h"
-                reset_info = f"{daily_usage['next_available']}\n({daily_usage['hours_remaining']:.1f} horas restantes)"
         else:
             usage_text = "🚀 **Ilimitado**"
             reset_info = "N/A - Plan Premium"
@@ -872,7 +883,7 @@ async def my_usage_command(interaction: discord.Interaction):
                 inline=False
             )
         
-        embed.set_footer(text=f"Sistema de 72 horas | Plan {plan_name} | 1 bunker cada 72 horas")
+        embed.set_footer(text=f"Servidor Discord | Plan {plan_name} | 1 bunker por servidor")
         embed.timestamp = datetime.now()
         
         await interaction.followup.send(embed=embed)
@@ -920,21 +931,21 @@ async def subscription_info(interaction: discord.Interaction):
         # Plan Gratuito actualizado
         embed.add_field(
             name="🆓 Plan Gratuito",
-            value="• **1 bunker cada 72 horas**\n• Comandos básicos\n• Perfecto para uso personal\n• Sistema de 72h alineado con SCUM",
+            value="• **1 bunker activo por servidor Discord**\n• Solo 1 usuario puede registrar a la vez\n• Fomenta coordinación del equipo\n• Perfecto para clanes organizados",
             inline=True
         )
         
         # Plan Premium sin precio
         embed.add_field(
             name="⭐ Plan Premium",
-            value="• **Bunkers ilimitados**\n• Sin restricciones de tiempo\n• Estadísticas avanzadas\n• Soporte prioritario",
+            value="• **Bunkers ilimitados**\n• Múltiples usuarios simultáneos\n• Sin restricciones de tiempo\n• Estadísticas avanzadas",
             inline=True
         )
         
         # Comparación rápida
         embed.add_field(
-            name="🎯 ¿Por qué 72 horas?",
-            value="Los bunkers en SCUM duran exactamente 72 horas desde su apertura, así que este límite te permite gestionar eficientemente tu bunker principal.",
+            name="🎯 ¿Por qué 1 bunker por servidor?",
+            value="Evita spam y fomenta que los equipos se coordinen. Un bunker bien gestionado es mejor que muchos desorganizados.",
             inline=False
         )
         
@@ -949,7 +960,7 @@ async def subscription_info(interaction: discord.Interaction):
         if plan == 'free':
             embed.add_field(
                 name="💡 Ventajas del Plan Gratuito",
-                value="• No tienes spam de bunkers\n• Enfoque en calidad vs cantidad\n• Perfecto para jugadores organizados",
+                value="• Fomenta trabajo en equipo\n• Evita spam de bunkers\n• Un bunker bien coordinado\n• Perfecto para clanes organizados",
                 inline=True
             )
         else:
@@ -980,6 +991,151 @@ async def subscription_info(interaction: discord.Interaction):
         except Exception as follow_error:
             logger.error(f"Error enviando mensaje de error: {follow_error}")
         await interaction.response.send_message(embed=embed)
+
+# === COMANDOS ADMIN SIMPLES ===
+
+def is_bot_admin():
+    """Decorator para verificar si el usuario es admin del bot"""
+    def predicate(interaction: discord.Interaction) -> bool:
+        admin_ids = os.getenv('BOT_ADMIN_IDS', '').split(',')
+        return str(interaction.user.id) in admin_ids
+    return app_commands.check(predicate)
+
+@bot.tree.command(name="ba_admin_status", description="[ADMIN] Ver estado de suscripción del servidor")
+@is_bot_admin()
+async def admin_status(interaction: discord.Interaction):
+    """Ver estado de suscripción del servidor actual"""
+    
+    try:
+        # Respuesta rápida sin defer
+        guild_id = str(interaction.guild.id)
+        subscription = await subscription_manager.get_subscription(guild_id)
+        
+        embed = discord.Embed(
+            title="📊 Estado de Suscripción",
+            color=0x3498db
+        )
+        embed.add_field(name="Guild ID", value=guild_id[:8] + "...", inline=True)
+        embed.add_field(name="Plan", value=subscription['plan_type'], inline=True)
+        embed.add_field(name="Estado", value=subscription['status'], inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_status: {e}")
+        await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_upgrade", description="[ADMIN] Dar premium al servidor actual")
+@is_bot_admin()
+async def admin_upgrade(interaction: discord.Interaction):
+    """Dar premium al servidor actual"""
+    
+    try:
+        await interaction.response.send_message("⏳ Procesando...", ephemeral=True)
+        
+        guild_id = str(interaction.guild.id)
+        await subscription_manager.upgrade_subscription(guild_id, "premium")
+        
+        embed = discord.Embed(
+            title="✅ Suscripción Actualizada",
+            description=f"Servidor actualizado a plan **premium**",
+            color=0x00ff00
+        )
+        
+        await interaction.edit_original_response(content=None, embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_upgrade: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_cancel", description="[ADMIN] Quitar premium del servidor actual")
+@is_bot_admin()
+async def admin_cancel(interaction: discord.Interaction):
+    """Quitar premium del servidor actual"""
+    
+    try:
+        await interaction.response.send_message("⏳ Procesando...", ephemeral=True)
+        
+        guild_id = str(interaction.guild.id)
+        await subscription_manager.cancel_subscription(guild_id)
+        
+        embed = discord.Embed(
+            title="✅ Suscripción Cancelada",
+            description=f"Servidor devuelto a plan **gratuito**",
+            color=0x00ff00
+        )
+        
+        await interaction.edit_original_response(content=None, embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_cancel: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_list", description="[ADMIN] Listar todas las suscripciones")
+@is_bot_admin()
+async def admin_list(interaction: discord.Interaction):
+    """Listar todas las suscripciones"""
+    
+    try:
+        await interaction.response.send_message("🔍 Cargando...", ephemeral=True)
+        
+        subscriptions = await subscription_manager.get_all_subscriptions()
+        
+        embed = discord.Embed(
+            title="📊 Suscripciones",
+            color=0x3498db
+        )
+        
+        if not subscriptions:
+            embed.add_field(name="📊 Estado", value="Sin suscripciones registradas", inline=False)
+        else:
+            free_count = len([s for s in subscriptions if s.get('plan_type') == 'free'])
+            premium_count = len([s for s in subscriptions if s.get('plan_type') != 'free'])
+            
+            embed.add_field(name="📊 Totales", value=f"Gratuitos: {free_count}\nPremium: {premium_count}", inline=False)
+            
+            if premium_count > 0:
+                premium_list = []
+                for s in subscriptions:
+                    if s.get('plan_type') != 'free':
+                        guild_short = s.get('guild_id', 'N/A')[:8]
+                        premium_list.append(f"• {guild_short}...")
+                        if len(premium_list) >= 5:  # Limitar a 5
+                            break
+                
+                if premium_list:
+                    embed.add_field(name="💎 Premium", value="\n".join(premium_list), inline=False)
+        
+        await interaction.edit_original_response(content=None, embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_list: {e}")
+        try:
+            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
+        except:
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+# Manejador de errores para comandos admin
+@admin_status.error
+@admin_upgrade.error
+@admin_cancel.error
+@admin_list.error
+async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Manejador de errores para comandos de administración"""
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
+    else:
+        logger.error(f"Error en comando admin: {error}")
+        try:
+            await interaction.response.send_message("❌ Error interno del bot.", ephemeral=True)
+        except:
+            pass
 
 # === EVENTOS Y NOTIFICACIONES ===
 

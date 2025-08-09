@@ -18,6 +18,16 @@ venv.bak/
 test_*.db
 *_backup_*.db
 
+# Archivos temporales y de debug
+debug_*.py
+test_*.py
+clear_*.py
+migrate_*.py
+*_temp.py
+
+# Archivos de desarrollo
+simple_*.py
+
 # IDEs
 .vscode/
 .idea/
