@@ -31,3 +31,4 @@ Thumbs.db
 # Archivos de desarrollo
 legacy/
 test_files/
+build/

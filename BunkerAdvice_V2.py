@@ -26,10 +26,11 @@ load_dotenv()
 
 # Importar configuración del bot
 try:
-    from config import BOT_CREATOR_ID
+    from config import BOT_CREATOR_ID, DISCORD_TOKEN
 except ImportError:
     # ID del creador del bot (reemplazar con tu Discord User ID)
     BOT_CREATOR_ID = 123456789012345678  # CAMBIAR POR TU ID DE DISCORD
+    DISCORD_TOKEN = None
 
 # Configuración de logging
 logging.basicConfig(
@@ -936,9 +937,10 @@ async def subscription_info(interaction: discord.Interaction):
 
 async def main():
     """Función principal"""
-    token = os.getenv('DISCORD_TOKEN')
+    # Intentar obtener token desde config.py primero, luego desde variables de entorno
+    token = DISCORD_TOKEN or os.getenv('DISCORD_TOKEN')
     if not token:
-        logger.error("No se encontró DISCORD_TOKEN en las variables de entorno")
+        logger.error("No se encontró DISCORD_TOKEN en config.py ni en las variables de entorno")
         return
     
     try:
