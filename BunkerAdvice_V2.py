@@ -1130,6 +1130,28 @@ async def bot_status_command(interaction: discord.Interaction):
             except:
                 pass
 
+# === COMANDO TEMPORAL PARA VERIFICAR ID ===
+@bot.tree.command(name="mi_id", description="🔍 [TEMPORAL] Mostrar tu ID de Discord")
+async def mi_id_command(interaction: discord.Interaction):
+    """Comando temporal para verificar ID de usuario"""
+    embed = discord.Embed(
+        title="🆔 Tu ID de Discord",
+        description=f"**Tu ID es:** `{interaction.user.id}`",
+        color=0x00ff00
+    )
+    embed.add_field(
+        name="📋 Para configurar admin:",
+        value=f"```python\nBOT_ADMIN_IDS = [{interaction.user.id}]```",
+        inline=False
+    )
+    embed.add_field(
+        name="📝 Instrucciones:",
+        value="1. Copia el ID de arriba\n2. Actualiza `BOT_ADMIN_IDS` en `config.py`\n3. Reinicia el bot\n4. Prueba `/ba_admin_subs` otra vez",
+        inline=False
+    )
+    embed.set_footer(text="⚠️ Este es un comando temporal para diagnosis")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 async def get_server_bunker_stats(guild_id: str):
     """Obtener estadísticas de bunkers específicas del servidor"""
     try:

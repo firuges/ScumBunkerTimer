@@ -1,38 +1,24 @@
 @echo off
 chcp 65001 >nul 2>&1
-setlocal enabledelayedexp::: Copiar archivos principales del bot
+setlocal enabledelayedexpansion
+
+:: ===========================================
+::   SCUM Bunker Timer V2 - Build Generator
+:: ===========================================
+title SCUM Bunker Timer - Build Generator
+color 0B
+
+echo ========================================
+echo   SCUM Bunker Timer V2 - Build Generator
+echo ========================================
 echo.
-echo 📄 Copiando archivos del bot...
+echo   Genera una carpeta portable para despliegue
+echo   Lista para llevar a cualquier servidor
+echo.
+echo ========================================
 
-:: Verificar que cada archivo existe antes de copiarlo
-if not exist "requirements.txt" (
-    color 0C
-    echo ❌ ERROR: No se encuentra requirements.txt
-    pause
-    exit /b 1
-)
-
-copy "BunkerAdvice_V2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "database_v2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "bot_status_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "server_monitor.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "server_database.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "server_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "premium_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
-
-:: Verificar que requirements.txt se copió correctamente
-if not exist "%BUILD_FULL_DIR%\requirements.txt" (
-    color 0C
-    echo ❌ ERROR: No se pudo copiar requirements.txt
-    pause
-    exit /b 1
-)
-
-echo ✅ Archivos principales copiados
-echo    ✅ requirements.txt verificado: %BUILD_FULL_DIR%\requirements.txttle SCUM Bunker Timer - Build Generator
+:: Cambiar al directorio del script
+cd /d "%~dp0"
 color 0B
 
 echo ========================================

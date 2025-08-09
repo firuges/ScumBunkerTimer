@@ -184,8 +184,20 @@ class PremiumCommands(commands.Cog):
                           plan: str = "premium"):
         """Comando de administración para gestionar suscripciones"""
         
-        # Verificar permisos de administrador
-        admin_ids = os.getenv('BOT_ADMIN_IDS', 'TU_DISCORD_ID_AQUI').split(',')
+        # Verificar permisos de administrador (con fallback a config.py)
+        admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
+        admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
+        
+        # Si no hay IDs en .env, usar config.py como respaldo
+        if not admin_ids_from_env:
+            try:
+                from config import BOT_ADMIN_IDS
+                admin_ids = [str(id) for id in BOT_ADMIN_IDS]
+            except ImportError:
+                admin_ids = []
+        else:
+            admin_ids = admin_ids_from_env
+        
         if str(interaction.user.id) not in admin_ids:
             await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
             return
