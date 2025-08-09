@@ -49,7 +49,7 @@ class SubscriptionManager:
             
             # Insertar planes por defecto
             plans = [
-                ('free', 1, 1, False, False, False, 0.00),  # 1 bunker por día
+                ('free', 1, 1, False, False, False, 0.00),  # 1 bunker cada 72 horas
                 ('premium', -1, -1, True, True, True, 5.99),
                 ('enterprise', -1, -1, True, True, True, 15.99)
             ]

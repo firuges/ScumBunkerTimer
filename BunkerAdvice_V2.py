@@ -37,7 +37,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('bot.log'),
+        logging.FileHandler('bot.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -200,22 +200,22 @@ async def server_autocomplete(
 ) -> List[app_commands.Choice[str]]:
     """Autocompletado para nombres de servidores del Discord guild actual"""
     try:
-        # Verificar que la interacción sea válida
-        if not interaction.guild:
+        # Verificar que la interacción sea válida y no haya expirado
+        if not interaction.guild or not interaction.response:
             return [app_commands.Choice(name="Default", value="Default")]
         
         guild_id = str(interaction.guild.id)
         
-        # Usar un timeout corto para evitar problemas de timing
+        # Usar un timeout muy corto para evitar problemas de timing
         import asyncio
         async def get_servers_with_timeout():
             return await bot.db.get_servers(guild_id)
         
         try:
-            # Timeout de 2 segundos para evitar interacciones expiradas
-            servers = await asyncio.wait_for(get_servers_with_timeout(), timeout=2.0)
-        except asyncio.TimeoutError:
-            # Si hay timeout, usar valores por defecto
+            # Timeout de 1 segundo para evitar interacciones expiradas
+            servers = await asyncio.wait_for(get_servers_with_timeout(), timeout=1.0)
+        except (asyncio.TimeoutError, Exception):
+            # Si hay cualquier error, usar valores por defecto
             return [
                 app_commands.Choice(name="Default", value="Default"),
                 app_commands.Choice(name="convictos", value="convictos")
@@ -243,7 +243,7 @@ async def server_autocomplete(
         ]
         
     except Exception as e:
-        # Log del error pero no fallar
+        # Log del error pero sin emojis para evitar UnicodeEncodeError
         logger.error(f"Error en server_autocomplete: {e}")
         # Devolver opciones básicas en caso de error
         return [
@@ -718,6 +718,8 @@ async def help_command(interaction: discord.Interaction):
     """Mostrar ayuda esencial del bot"""
     
     try:
+        # Defer para evitar timeout
+        await interaction.response.defer(ephemeral=True)
         embed = discord.Embed(
             title="🤖 SCUM Bunker Timer - Guía Básica",
             description="Los 3 comandos esenciales para empezar",
@@ -760,19 +762,27 @@ async def help_command(interaction: discord.Interaction):
         
         embed.set_footer(text="¿Necesitas más ayuda? Usa el enlace de la guía completa")
         
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en help_command: {e}")
-        if not interaction.response.is_done():
-            await interaction.response.send_message("❌ Error mostrando ayuda")
-        else:
-            await interaction.followup.send("❌ Error mostrando ayuda")
+        try:
+            # La interacción ya fue deferida, usar followup
+            await interaction.followup.send("❌ Error mostrando ayuda", ephemeral=True)
+        except discord.NotFound:
+            logger.warning("Interacción no encontrada al enviar mensaje de error")
+        except discord.HTTPException as http_error:
+            logger.warning(f"Error HTTP al enviar mensaje de error: {http_error}")
+        except Exception as follow_error:
+            logger.error(f"Error enviando mensaje de error: {follow_error}")
 
 @bot.tree.command(name="ba_my_usage", description="Ver tu uso diario de bunkers")
 async def my_usage_command(interaction: discord.Interaction):
     """Ver el uso diario personal"""
     try:
+        # Defer para evitar timeout
+        await interaction.response.defer(ephemeral=True)
+        
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         user_id = str(interaction.user.id)
         
@@ -786,8 +796,8 @@ async def my_usage_command(interaction: discord.Interaction):
         weekly_stats = await bot.db.get_daily_usage_stats(guild_id, user_id, 7)
         
         embed = discord.Embed(
-            title="📊 Mi Uso Diario",
-            description=f"Estadísticas de uso para {interaction.user.display_name}",
+            title="📊 Mi Estado de Uso",
+            description=f"Estado del sistema de 72 horas para {interaction.user.display_name}",
             color=0x3498db if subscription['plan_type'] == 'premium' else 0x95a5a6
         )
         
@@ -801,29 +811,30 @@ async def my_usage_command(interaction: discord.Interaction):
             inline=True
         )
         
-        # Uso de hoy
+        # Uso actual
         if subscription['plan_type'] == 'free':
-            usage_text = f"**{daily_usage['bunkers_today']}/1** bunkers hoy"
+            # Para plan gratuito, usar el nuevo sistema de 72 horas
             if daily_usage['can_register']:
-                usage_text += "\n✅ Puedes registrar 1 bunker más"
+                usage_text = "✅ **Disponible** - Puedes registrar un bunker"
+                reset_info = "Disponible ahora"
             else:
-                usage_text += "\n❌ Límite diario alcanzado"
+                usage_text = f"⏳ **En espera** - Último registro hace {72 - daily_usage['hours_remaining']:.1f}h"
+                reset_info = f"{daily_usage['next_available']}\n({daily_usage['hours_remaining']:.1f} horas restantes)"
         else:
             usage_text = "🚀 **Ilimitado**"
+            reset_info = "N/A - Plan Premium"
         
         embed.add_field(
-            name="🗓️ Uso de Hoy",
+            name="⏱️ Estado Actual",
             value=usage_text,
             inline=True
         )
         
-        # Próximo reset (solo para plan gratuito)
+        # Próximo disponible (solo para plan gratuito)
         if subscription['plan_type'] == 'free':
-            from datetime import time
-            tomorrow = datetime.combine(datetime.now().date() + timedelta(days=1), time.min)
             embed.add_field(
-                name="🔄 Próximo Reset",
-                value=f"<t:{int(tomorrow.timestamp())}:R>",
+                name="🔄 Próximo Disponible", 
+                value=reset_info,
                 inline=True
             )
         
@@ -857,23 +868,31 @@ async def my_usage_command(interaction: discord.Interaction):
         if subscription['plan_type'] == 'free':
             embed.add_field(
                 name="💎 ¿Quieres más?",
-                value="Actualiza a Premium para bunkers ilimitados\nUsa `/ba_subscription` para más información",
+                value="Actualiza a Premium para bunkers ilimitados\nUsa `/ba_suscripcion` para más información",
                 inline=False
             )
         
-        embed.set_footer(text=f"Uso monitoreado desde hoy | Plan {plan_name}")
+        embed.set_footer(text=f"Sistema de 72 horas | Plan {plan_name} | 1 bunker cada 72 horas")
         embed.timestamp = datetime.now()
         
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en my_usage_command: {e}")
-        embed = discord.Embed(
-            title="❌ Error",
-            description="Error obteniendo estadísticas de uso.",
-            color=0xff0000
-        )
-        await interaction.response.send_message(embed=embed)
+        try:
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description="Error obteniendo estadísticas de uso.",
+                color=0xff0000
+            )
+            # La interacción ya fue deferida, usar followup
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except discord.NotFound:
+            logger.warning("Interacción no encontrada al enviar mensaje de error")
+        except discord.HTTPException as http_error:
+            logger.warning(f"Error HTTP al enviar mensaje de error: {http_error}")
+        except Exception as follow_error:
+            logger.error(f"Error enviando mensaje de error: {follow_error}")
 
 # === COMANDO SIMPLE DE SUSCRIPCIONES ===
 
@@ -881,57 +900,119 @@ async def my_usage_command(interaction: discord.Interaction):
 async def subscription_info(interaction: discord.Interaction):
     """Comando simple de información de suscripciones"""
     try:
+        # Defer para evitar timeout
+        await interaction.response.defer(ephemeral=True)
+        
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         
         # Obtener suscripción actual
         subscription = await subscription_manager.get_subscription(guild_id)
         plan = subscription.get('plan', 'free') if subscription else 'free'
+        plan_name = "Gratuito" if plan == 'free' else "Premium"
         
-        # Crear embed básico
+        # Crear embed con la nueva lógica
         embed = discord.Embed(
             title="💎 Planes de Suscripción",
-            description="Obtén acceso a funciones premium del bot",
+            description="Compara los planes disponibles para el bot SCUM Bunker Timer",
             color=0x9b59b6
         )
         
+        # Plan Gratuito actualizado
         embed.add_field(
             name="🆓 Plan Gratuito",
-            value="• 5 bunkers por día\n• Comandos básicos\n• Soporte comunitario",
+            value="• **1 bunker cada 72 horas**\n• Comandos básicos\n• Perfecto para uso personal\n• Sistema de 72h alineado con SCUM",
             inline=True
         )
         
+        # Plan Premium sin precio
         embed.add_field(
-            name="⭐ Premium - $5.99/mes",
-            value="• 20 bunkers por día\n• Estadísticas avanzadas\n• Exportación de datos",
+            name="⭐ Plan Premium",
+            value="• **Bunkers ilimitados**\n• Sin restricciones de tiempo\n• Estadísticas avanzadas\n• Soporte prioritario",
             inline=True
         )
         
+        # Comparación rápida
         embed.add_field(
-            name="🚀 Enterprise - $15.99/mes",
-            value="• 100 bunkers por día\n• Soporte prioritario\n• API personalizada",
-            inline=True
-        )
-        
-        embed.add_field(
-            name="📊 Tu Plan Actual",
-            value=f"**{plan.capitalize()}**",
+            name="🎯 ¿Por qué 72 horas?",
+            value="Los bunkers en SCUM duran exactamente 72 horas desde su apertura, así que este límite te permite gestionar eficientemente tu bunker principal.",
             inline=False
         )
         
-        embed.set_footer(text="Para upgrade contacta al administrador del bot")
+        # Plan actual
+        embed.add_field(
+            name="📊 Tu Plan Actual",
+            value=f"**{plan_name}**",
+            inline=True
+        )
         
-        await interaction.response.send_message(embed=embed)
+        # Información adicional
+        if plan == 'free':
+            embed.add_field(
+                name="💡 Ventajas del Plan Gratuito",
+                value="• No tienes spam de bunkers\n• Enfoque en calidad vs cantidad\n• Perfecto para jugadores organizados",
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="🎉 Tienes Premium",
+                value="• Acceso completo a todas las funciones\n• Sin limitaciones de tiempo\n• ¡Gracias por tu apoyo!",
+                inline=True
+            )
+        
+        embed.set_footer(text="Para upgrade contacta al administrador del bot • Sistema optimizado para SCUM")
+        
+        await interaction.followup.send(embed=embed)
         
     except Exception as e:
         logger.error(f"Error en subscription_info: {e}")
-        embed = discord.Embed(
-            title="❌ Error",
-            description="Error obteniendo información de suscripción.",
-            color=0xff0000
-        )
+        try:
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description="Error obteniendo información de suscripción.",
+                color=0xff0000
+            )
+            # La interacción ya fue deferida, usar followup
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except discord.NotFound:
+            logger.warning("Interacción no encontrada al enviar mensaje de error")
+        except discord.HTTPException as http_error:
+            logger.warning(f"Error HTTP al enviar mensaje de error: {http_error}")
+        except Exception as follow_error:
+            logger.error(f"Error enviando mensaje de error: {follow_error}")
         await interaction.response.send_message(embed=embed)
 
 # === EVENTOS Y NOTIFICACIONES ===
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Manejo global de errores para app commands"""
+    try:
+        # Log del error específico
+        if isinstance(error, app_commands.CommandInvokeError):
+            original = error.original
+            if isinstance(original, discord.NotFound):
+                logger.warning(f"Interacción no encontrada para comando: {interaction.command.name if interaction.command else 'unknown'}")
+                return
+            elif isinstance(original, discord.HTTPException):
+                logger.warning(f"Error HTTP en comando {interaction.command.name if interaction.command else 'unknown'}: {original}")
+                return
+        
+        # Para otros errores, intentar responder al usuario
+        logger.error(f"Error en comando {interaction.command.name if interaction.command else 'unknown'}: {error}")
+        
+        try:
+            error_message = "❌ Ocurrió un error inesperado. Por favor, inténtalo de nuevo."
+            
+            if not interaction.response.is_done():
+                await interaction.response.send_message(error_message, ephemeral=True)
+            else:
+                await interaction.followup.send(error_message, ephemeral=True)
+        except (discord.NotFound, discord.HTTPException):
+            # Si no podemos responder, simplemente logeamos
+            logger.warning("No se pudo enviar mensaje de error al usuario")
+            
+    except Exception as handler_error:
+        logger.error(f"Error en el manejador de errores: {handler_error}")
 
 # === INICIAR BOT ===
 

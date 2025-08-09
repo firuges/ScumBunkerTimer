@@ -27,7 +27,7 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                 )
                 embed.add_field(
                     name="🆓 Plan Actual: Gratuito",
-                    value="• 1 bunker por día\n• 1 servidor SCUM\n• Comandos básicos",
+                    value="• 1 bunker cada 72 horas\n• 1 servidor SCUM\n• Comandos básicos",
                     inline=False
                 )
                 embed.add_field(
@@ -37,7 +37,7 @@ def premium_required(feature_name: str = "esta funcionalidad"):
                 )
                 embed.add_field(
                     name="🔗 Actualizar",
-                    value="Usa `/ba_subscription` para más información",
+                    value="Usa `/ba_suscripcion` para más información",
                     inline=False
                 )
                 
@@ -71,25 +71,30 @@ def check_limits(limit_type: str):
                 subscription = await subscription_manager.get_subscription(guild_id)
                 
                 if subscription['plan_type'] == 'free':
-                    # Verificar uso diario del usuario
+                    # Verificar uso del usuario (72 horas)
                     user_id = str(interaction.user.id)
-                    daily_usage = await db.check_daily_usage(guild_id, user_id)
+                    usage_check = await db.check_daily_usage(guild_id, user_id)
                     
-                    if not daily_usage['can_register']:
+                    if not usage_check['can_register']:
                         embed = discord.Embed(
-                            title="⚠️ Límite Diario Alcanzado",
-                            description=f"Ya registraste **{daily_usage['bunkers_today']} bunker** hoy.\n\nPlan Gratuito: **1 bunker por día**",
+                            title="⏰ Límite de Tiempo Activo",
+                            description=f"Ya registraste un bunker hace **{72 - usage_check['hours_remaining']:.1f} horas**.\n\nPlan Gratuito: **1 bunker cada 72 horas**",
                             color=0xff6b6b
                         )
                         embed.add_field(
-                            name="📅 Próximo registro",
-                            value="Podrás registrar otro bunker **mañana**",
+                            name="⏳ Próximo registro disponible",
+                            value=f"{usage_check['next_available']}\n({usage_check['hours_remaining']:.1f} horas restantes)",
                             inline=True
                         )
                         embed.add_field(
                             name="💎 Solución",
-                            value="Actualiza a Premium para bunkers ilimitados\n`/ba_subscription`",
+                            value="Actualiza a Premium para bunkers ilimitados\n`/ba_suscripcion`",
                             inline=True
+                        )
+                        embed.add_field(
+                            name="🎯 ¿Por qué 72 horas?",
+                            value="Los bunkers en SCUM duran 72 horas, así que puedes gestionar eficientemente tu bunker principal",
+                            inline=False
                         )
                         
                         if not interaction.response.is_done():
@@ -119,7 +124,7 @@ def check_limits(limit_type: str):
                     )
                     embed.add_field(
                         name="💎 Solución",
-                        value="Actualiza a Premium para bunkers ilimitados\n`/ba_subscription`",
+                        value="Actualiza a Premium para bunkers ilimitados\n`/ba_suscripcion`",
                         inline=True
                     )
                     
@@ -152,7 +157,7 @@ def check_limits(limit_type: str):
                     )
                     embed.add_field(
                         name="💎 Solución",
-                        value="Actualiza a Premium para servidores ilimitados\n`/ba_subscription`",
+                        value="Actualiza a Premium para servidores ilimitados\n`/ba_suscripcion`",
                         inline=True
                     )
                     
@@ -210,5 +215,5 @@ async def get_subscription_embed(guild_id: str) -> discord.Embed:
                 inline=True
             )
     
-    embed.set_footer(text="Usa /ba_subscription para gestionar tu suscripción")
+    embed.set_footer(text="Usa /ba_suscripcion para gestionar tu suscripción")
     return embed

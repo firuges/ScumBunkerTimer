@@ -451,41 +451,83 @@ class BunkerDatabaseV2:
             return configs
 
     async def check_daily_usage(self, guild_id: str, user_id: str) -> dict:
-        """Verificar el uso diario de un usuario"""
-        from datetime import date
-        today = date.today()
+        """Verificar el uso del usuario (1 bunker cada 72 horas)"""
+        from datetime import datetime, timedelta
         
         async with aiosqlite.connect(self.db_path) as db:
+            # Asegurar que la columna existe
+            try:
+                await db.execute("ALTER TABLE daily_usage ADD COLUMN last_bunker_timestamp TIMESTAMP")
+                await db.commit()
+            except:
+                pass  # Columna ya existe
+            
             cursor = await db.execute("""
-                SELECT bunkers_registered 
+                SELECT last_bunker_timestamp, bunkers_registered
                 FROM daily_usage 
-                WHERE discord_guild_id = ? AND discord_user_id = ? AND usage_date = ?
-            """, (guild_id, user_id, today))
+                WHERE discord_guild_id = ? AND discord_user_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (guild_id, user_id))
             
             row = await cursor.fetchone()
-            bunkers_today = row[0] if row else 0
+            
+            if not row or not row[0]:
+                # Usuario nunca ha registrado o no tiene timestamp
+                return {
+                    "bunkers_in_period": 0,
+                    "last_registration": None,
+                    "can_register": True,
+                    "hours_remaining": 0,
+                    "next_available": "Disponible ahora"
+                }
+            
+            last_timestamp_str, bunkers_registered = row
+            last_timestamp = datetime.fromisoformat(last_timestamp_str)
+            now = datetime.now()
+            
+            # Calcular tiempo transcurrido desde último registro
+            time_since_last = now - last_timestamp
+            hours_since_last = time_since_last.total_seconds() / 3600
+            
+            # Verificar si han pasado 72 horas
+            can_register = hours_since_last >= 72
+            hours_remaining = max(0, 72 - hours_since_last)
+            
+            if hours_remaining > 0:
+                next_available_time = last_timestamp + timedelta(hours=72)
+                next_available = f"<t:{int(next_available_time.timestamp())}:R>"
+            else:
+                next_available = "Disponible ahora"
             
             return {
-                "bunkers_today": bunkers_today,
-                "date": today.isoformat(),
-                "can_register": bunkers_today == 0  # Solo puede registrar si no ha registrado hoy
+                "bunkers_in_period": 1 if hours_since_last < 72 else 0,
+                "last_registration": last_timestamp.isoformat(),
+                "can_register": can_register,
+                "hours_remaining": round(hours_remaining, 1),
+                "next_available": next_available
             }
     
     async def increment_daily_usage(self, guild_id: str, user_id: str):
-        """Incrementar el contador de uso diario"""
-        from datetime import date
+        """Registrar nuevo uso del usuario (sistema 72 horas)"""
+        from datetime import datetime, date
+        now = datetime.now()
         today = date.today()
         
         async with aiosqlite.connect(self.db_path) as db:
-            # Usar INSERT OR REPLACE para crear o actualizar
+            # Asegurar que la columna existe
+            try:
+                await db.execute("ALTER TABLE daily_usage ADD COLUMN last_bunker_timestamp TIMESTAMP")
+                await db.commit()
+            except:
+                pass  # Columna ya existe
+            
+            # Insertar nuevo registro con timestamp actual
             await db.execute("""
                 INSERT OR REPLACE INTO daily_usage 
-                (discord_guild_id, discord_user_id, usage_date, bunkers_registered)
-                VALUES (?, ?, ?, 
-                    COALESCE((SELECT bunkers_registered FROM daily_usage 
-                             WHERE discord_guild_id = ? AND discord_user_id = ? AND usage_date = ?), 0) + 1
-                )
-            """, (guild_id, user_id, today, guild_id, user_id, today))
+                (discord_guild_id, discord_user_id, usage_date, bunkers_registered, last_bunker_timestamp)
+                VALUES (?, ?, ?, 1, ?)
+            """, (guild_id, user_id, today, now.isoformat()))
             
             await db.commit()
     
