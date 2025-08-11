@@ -296,15 +296,6 @@ class PremiumCommands(commands.Cog):
                 await interaction.followup.send(embed=error_embed)
             except:
                 pass  # Si también falla el followup, no hacer nada más
-            
-        except Exception as e:
-            logger.error(f"Error en admin_subscriptions: {e}")
-            embed = discord.Embed(
-                title="❌ Error",
-                description=f"Error ejecutando acción: {str(e)}",
-                color=0xff0000
-            )
-            await interaction.response.send_message(embed=embed)
 
 async def setup_premium_commands(bot):
     """Agregar comandos premium al bot como Cog"""
