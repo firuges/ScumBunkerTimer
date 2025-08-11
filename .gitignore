@@ -24,9 +24,17 @@ test_*.py
 clear_*.py
 migrate_*.py
 *_temp.py
+verificar_*.py
 
 # Archivos de desarrollo
 simple_*.py
+
+# Logs y archivos de ejecución
+logs/
+*.log
+
+# Build output
+build/
 
 # IDEs
 .vscode/
@@ -41,4 +49,3 @@ Thumbs.db
 # Archivos de desarrollo
 legacy/
 test_files/
-build/

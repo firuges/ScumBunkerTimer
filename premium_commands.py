@@ -34,7 +34,10 @@ async def action_autocomplete(
         
         # Asegurar que siempre hay al menos una opción
         if not filtered_actions:
-            filtered_actions = [("upgrade", "✅ upgrade - Dar premium al servidor")]  # Default fallback
+            filtered_actions = actions[:2]  # Default: primeras 2 opciones
+        
+        # Limitar a máximo 25 opciones (límite de Discord)
+        filtered_actions = filtered_actions[:25]
         
         return [
             app_commands.Choice(name=name, value=value)
@@ -43,9 +46,9 @@ async def action_autocomplete(
         
     except Exception as e:
         logger.error(f"Error en action_autocomplete: {e}")
-        # Fallback básico en caso de error
+        # Fallback seguro en caso de error
         return [
-            app_commands.Choice(name="✅ upgrade - Dar premium al servidor", value="upgrade"),
+            app_commands.Choice(name="✅ upgrade - Dar premium", value="upgrade"),
             app_commands.Choice(name="🔴 cancel - Cancelar premium", value="cancel"),
         ]
 
@@ -68,7 +71,7 @@ async def plan_autocomplete(
         
         # Asegurar que siempre hay al menos una opción
         if not filtered_plans:
-            filtered_plans = [("premium", "💎 premium - Plan Premium")]  # Default fallback
+            filtered_plans = plans  # Default: todas las opciones
         
         return [
             app_commands.Choice(name=name, value=value)
@@ -77,7 +80,7 @@ async def plan_autocomplete(
         
     except Exception as e:
         logger.error(f"Error en plan_autocomplete: {e}")
-        # Fallback básico en caso de error
+        # Fallback seguro en caso de error
         return [
             app_commands.Choice(name="💎 premium - Plan Premium", value="premium"),
             app_commands.Choice(name="🆓 free - Plan Gratuito", value="free"),
@@ -184,6 +187,9 @@ class PremiumCommands(commands.Cog):
                           plan: str = "premium"):
         """Comando de administración para gestionar suscripciones"""
         
+        # Defer la respuesta inmediatamente para evitar timeouts
+        await interaction.response.defer(ephemeral=True)
+        
         # Verificar permisos de administrador (con fallback a config.py)
         admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
         admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
@@ -199,7 +205,7 @@ class PremiumCommands(commands.Cog):
             admin_ids = admin_ids_from_env
         
         if str(interaction.user.id) not in admin_ids:
-            await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
+            await interaction.followup.send("❌ No tienes permisos para usar este comando.", ephemeral=True)
             return
         
         target_guild_id = guild_id or str(interaction.guild.id)
@@ -277,7 +283,19 @@ class PremiumCommands(commands.Cog):
                     color=0xff0000
                 )
             
-            await interaction.response.send_message(embed=embed)
+            await interaction.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error en admin_subscriptions: {e}")
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description=f"Error ejecutando comando admin: {str(e)}",
+                color=0xff0000
+            )
+            try:
+                await interaction.followup.send(embed=error_embed)
+            except:
+                pass  # Si también falla el followup, no hacer nada más
             
         except Exception as e:
             logger.error(f"Error en admin_subscriptions: {e}")
