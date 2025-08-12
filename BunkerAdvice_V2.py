@@ -66,6 +66,35 @@ class BunkerBotV2(commands.Bot):
         await server_db.initialize_server_tables()
         logger.info("Sistema de monitoreo de servidores inicializado")
         
+        # === INICIALIZAR SISTEMA DE TAXI MODULAR ===
+        try:
+            # Inicializar base de datos del taxi
+            from taxi_database import taxi_db
+            await taxi_db.initialize()
+            logger.info("✅ Sistema de taxi - Base de datos inicializada")
+            
+            # Cargar configuración del taxi
+            from taxi_config import taxi_config
+            taxi_config.load_config_from_db(taxi_db.db_path)
+            logger.info("✅ Sistema de taxi - Configuración cargada")
+            
+            # Cargar extensiones del taxi
+            await self.load_extension('welcome_system')
+            
+            # Cargar sistema bancario con manejo de errores específico
+            try:
+                await self.load_extension('banking_system')
+                logger.info("✅ Sistema bancario cargado exitosamente")
+            except Exception as bank_error:
+                logger.error(f"❌ Error cargando sistema bancario: {bank_error}")
+            
+            await self.load_extension('taxi_system')
+            await self.load_extension('taxi_admin')  # ✅ Rehabilitado con migración completa
+            logger.info("✅ Sistema de taxi - Extensiones principales cargadas")
+            
+        except Exception as e:
+                logger.error(f"❌ Error inicializando sistema de taxi: {e}")
+        
         # Configurar comandos premium
         await setup_premium_commands(self)
         setup_premium_exclusive_commands(self)

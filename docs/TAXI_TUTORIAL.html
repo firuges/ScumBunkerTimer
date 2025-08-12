@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚖 Sistema de Taxi SCUM - Guía Completa</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.2em;
+        }
+        
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        /* Specific layouts for better distribution */
+        .wide-card {
+            grid-column: span 2;
+        }
+        
+        @media (max-width: 900px) {
+            .wide-card {
+                grid-column: span 1;
+            }
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        
+        .card h3 {
+            color: #34495e;
+            margin: 20px 0 10px 0;
+            font-size: 1.2em;
+        }
+        
+        .step {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        
+        .step-number {
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            width: 25px;
+            height: 25px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        
+        .vehicle-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin: 15px 0;
+        }
+        
+        .vehicle-card {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            transition: transform 0.2s ease;
+        }
+        
+        .vehicle-card:hover {
+            transform: translateY(-2px);
+            border-color: #3498db;
+        }
+        
+        .emoji {
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+        
+        .zone-map {
+            background: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .grid-example {
+            font-family: 'Courier New', monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            text-align: center;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 30px 0;
+        }
+        
+        .btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🚖 Sistema de Taxi SCUM</h1>
+            <p>Guía completa de instalación, configuración y uso</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="nav-buttons">
+            <a href="#configuracion" class="btn">⚙️ Configuración</a>
+            <a href="#uso-pasajero" class="btn">👤 Para Pasajeros</a>
+            <a href="#uso-conductor" class="btn">🚗 Para Conductores</a>
+            <a href="#admin" class="btn">🔧 Administración</a>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <!-- Configuración -->
+            <div class="card wide-card" id="configuracion">
+                <h2>⚙️ Configuración del Sistema</h2>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+                    <div>
+                        <h3>💰 Configuración Económica</h3>
+                        <div class="step">
+                            <span class="step-number">1</span>
+                            <strong>Tarifas del Sistema</strong>
+                            <div class="code-block">
+TAXI_BASE_RATE = 15.0      # Tarifa base<br>
+TAXI_PER_KM_RATE = 3.5     # Por kilómetro<br>
+DRIVER_COMMISSION = 0.75    # 75% para conductor
+                            </div>
+                        </div>
+
+                        <h3>🗺️ Sistema de Coordenadas SCUM</h3>
+                        <div class="zone-map">
+                            <h4>Grid-Pad Layout</h4>
+                            <div class="grid-example">
+D4 | D3 | D2 | D1 | D0<br>
+C4 | C3 | C2 | C1 | C0<br>
+B4 | B3 | B2 | B1 | B0<br>
+A4 | A3 | A2 | A1 | A0<br>
+Z4 | Z3 | Z2 | Z1 | Z0
+                            </div>
+                            <p><strong>Formato:</strong> Grid-Pad (Ej: B2-5)</p>
+                            <p><strong>PADs:</strong> Numerados 1-9 dentro de cada grid</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3>🚗 Tipos de Vehículos</h3>
+                        <div class="vehicle-grid">
+                            <div class="vehicle-card">
+                                <div class="emoji">🚗</div>
+                                <strong>Automóvil</strong><br>
+                                <small>Transporte terrestre estándar</small>
+                            </div>
+                            <div class="vehicle-card">
+                                <div class="emoji">🏍️</div>
+                                <strong>Motocicleta</strong><br>
+                                <small>Rápido y ágil para distancias cortas</small>
+                            </div>
+                            <div class="vehicle-card">
+                                <div class="emoji">✈️</div>
+                                <strong>Avión</strong><br>
+                                <small>Solo entre aeropuertos</small>
+                            </div>
+                            <div class="vehicle-card">
+                                <div class="emoji">🚢</div>
+                                <strong>Barco</strong><br>
+                                <small>Transporte marítimo a islas</small>
+                            </div>
+                        </div>
+
+                        <h3>⚡ Validaciones Automáticas</h3>
+                        <div class="success">
+                            ✅ <strong>Validación de Vehículos:</strong><br>
+                            Los conductores solo pueden aceptar solicitudes si tienen el vehículo requerido registrado.
+                        </div>
+                        
+                        <div class="success">
+                            ✅ <strong>Validación de Rutas:</strong><br>
+                            • Aviones: Solo aeropuertos ✈️<br>
+                            • Barcos: Acceso a zonas con agua 🚢<br>
+                            • Terrestre: Todas las rutas válidas 🚗🏍️
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Uso para Pasajeros -->
+            <div class="card" id="uso-pasajero">
+                <h2>👤 Guía para Pasajeros</h2>
+
+                <h3>Solicitar un Taxi</h3>
+                
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Acceder al Sistema</strong>
+                    <p>Ve al canal de taxi y busca el panel principal.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>Hacer Solicitud</strong>
+                    <p>Presiona el botón <strong>"🚖 Solicitar Taxi"</strong></p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Seleccionar Origen</strong>
+                    <p>Elige tu ubicación actual desde el menú desplegable.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">4</span>
+                    <strong>Elegir Vehículo</strong>
+                    <p>Selecciona el tipo de transporte que necesitas.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">5</span>
+                    <strong>Definir Destino</strong>
+                    <p>Indica a dónde quieres ir.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">6</span>
+                    <strong>Confirmar Solicitud</strong>
+                    <p>Revisa el costo estimado y confirma tu viaje.</p>
+                </div>
+
+                <h3>Verificar Estado</h3>
+                <p>Usa el botón <strong>"📊 Estado Solicitud"</strong> para:</p>
+                <ul>
+                    <li>Ver el progreso de tu solicitud</li>
+                    <li>Conocer el conductor asignado</li>
+                    <li>Revisar detalles del viaje</li>
+                    <li>Cancelar si es necesario</li>
+                </ul>
+
+                <div class="success">
+                    💡 <strong>Consejo:</strong><br>
+                    Recibirás notificaciones automáticas cuando un conductor acepte tu solicitud.
+                </div>
+            </div>
+
+            <!-- Uso para Conductores -->
+            <div class="card" id="uso-conductor">
+                <h2>🚗 Guía para Conductores</h2>
+
+                <h3>Registro como Conductor</h3>
+                
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Acceder al Panel</strong>
+                    <p>Presiona <strong>"🚗 Panel Conductor"</strong> en el sistema de taxi.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>Registrarse</strong>
+                    <p>Si no estás registrado, presiona <strong>"📝 Registrarse como Conductor"</strong></p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Seleccionar Vehículos</strong>
+                    <p>Elige todos los tipos de vehículos que puedes manejar.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">4</span>
+                    <strong>Agregar Descripción</strong>
+                    <p>Opcionalmente, describe tus vehículos disponibles.</p>
+                </div>
+
+                <h3>Aceptar Solicitudes</h3>
+                
+                <div class="step">
+                    <span class="step-number">1</span>
+                    <strong>Ver Solicitudes</strong>
+                    <p>Usa <strong>"📋 Ver Solicitudes"</strong> para ver viajes disponibles.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">2</span>
+                    <strong>Elegir Viaje</strong>
+                    <p>Selecciona una solicitud del menú desplegable.</p>
+                </div>
+
+                <div class="step">
+                    <span class="step-number">3</span>
+                    <strong>Aceptar</strong>
+                    <p>El sistema validará que tengas el vehículo necesario.</p>
+                </div>
+
+                <h3>Gestionar Estado</h3>
+                <p>Cambia tu estado usando <strong>"🔄 Cambiar Estado"</strong>:</p>
+                <ul>
+                    <li><strong>🟢 Disponible:</strong> Listo para aceptar viajes</li>
+                    <li><strong>🟡 Ocupado:</strong> En viaje activo</li>
+                    <li><strong>🔴 Sin Conexión:</strong> No disponible</li>
+                </ul>
+
+                <div class="warning">
+                    ⚠️ <strong>Validaciones Automáticas:</strong><br>
+                    - Solo puedes aceptar solicitudes si tienes el vehículo requerido<br>
+                    - Los aviones solo van entre aeropuertos<br>
+                    - Los barcos son necesarios para islas
+                </div>
+            </div>
+
+            <!-- Administración -->
+            <div class="card wide-card" id="admin">
+                <h2>🔧 Administración del Sistema</h2>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+                    <div>
+                        <h3>⚡ Comandos Principales</h3>
+                        
+                        <div class="step">
+                            <span class="step-number">1</span>
+                            <strong>/taxi_admin_setup</strong>
+                            <p>Configurar el canal de taxi y crear el panel principal del sistema.</p>
+                        </div>
+
+                        <div class="step">
+                            <span class="step-number">2</span>
+                            <strong>/taxi_conductor</strong>
+                            <p>Gestionar conductores registrados y sus vehículos disponibles.</p>
+                        </div>
+
+                        <h3>🔍 Monitoreo del Sistema</h3>
+                        <ul>
+                            <li><strong>📋 Logs:</strong> Revisa <code>bot.log</code> para eventos</li>
+                            <li><strong>💾 Base de Datos:</strong> <code>taxi_system.db</code> contiene todos los datos</li>
+                            <li><strong>🟢 Estado del Bot:</strong> Monitorea la consola para errores</li>
+                            <li><strong>📊 Estadísticas:</strong> Tracking automático de viajes completados</li>
+                        </ul>
+
+                        <div class="success">
+                            🎯 <strong>Best Practices:</strong><br>
+                            • Hacer backup antes de actualizaciones<br>
+                            • Monitorear logs regularmente<br>
+                            • Ajustar tarifas según economía del servidor<br>
+                            • Verificar conductores activos semanalmente
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3>🗄️ Gestión de Base de Datos</h3>
+                        <div class="code-block">
+# Ver solicitudes activas<br>
+python -c "import asyncio; from taxi_database import taxi_db; asyncio.run(taxi_db.get_pending_requests())"<br><br>
+# Limpiar solicitudes antiguas<br>
+python -c "import asyncio; from taxi_database import taxi_db; asyncio.run(taxi_db.cleanup_old_requests())"<br><br>
+# Backup de la base de datos<br>
+cp taxi_system.db taxi_system.db.backup_$(date +%Y%m%d)
+                        </div>
+
+                        <h3>🔄 Mantenimiento Regular</h3>
+                        
+                        <div class="step">
+                            <span class="step-number">1</span>
+                            <strong>Backup Automático</strong>
+                            <div class="code-block">cp taxi_system.db taxi_system.db.backup_$(date +%Y%m%d_%H%M%S)</div>
+                        </div>
+
+                        <div class="step">
+                            <span class="step-number">2</span>
+                            <strong>Actualizar Configuración</strong>
+                            <p>Modifica <code>taxi_config.py</code> según las necesidades del servidor y reinicia el bot.</p>
+                        </div>
+
+                        <div class="step">
+                            <span class="step-number">3</span>
+                            <strong>Reiniciar Sistema</strong>
+                            <div class="code-block">
+# Detener bot gracefully<br>
+Ctrl+C<br><br>
+# Reiniciar con logging<br>
+python BunkerAdvice_V2.py
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Solución de Problemas -->
+        <div class="card">
+            <h2>🔧 Solución de Problemas Comunes</h2>
+            
+            <h3>Error: "Usuario no encontrado"</h3>
+            <p>El usuario debe registrarse primero en el canal de bienvenida del servidor.</p>
+            
+            <h3>Error: "No tienes el vehículo requerido"</h3>
+            <p>El conductor debe registrar el tipo de vehículo necesario en su perfil.</p>
+            
+            <h3>Error: "Ruta no válida"</h3>
+            <p>Algunas combinaciones no son permitidas (ej: avión a zona sin aeropuerto).</p>
+            
+            <h3>Bot no responde</h3>
+            <ul>
+                <li>Verificar que el bot esté en línea</li>
+                <li>Revisar logs para errores</li>
+                <li>Verificar permisos del bot en el canal</li>
+                <li>Reiniciar el bot si es necesario</li>
+            </ul>
+            
+            <h3>Interacciones duplicadas</h3>
+            <p>Espera 2 segundos entre interacciones para evitar problemas de rate limiting.</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="header">
+            <h3>🚀 ¡Sistema de Taxi SCUM Listo!</h3>
+            <p>Para soporte adicional, consulta la documentación técnica o contacta a los administradores.</p>
+            <div class="nav-buttons">
+                <a href="#top" class="btn">🔝 Volver Arriba</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Smooth scrolling para los enlaces de navegación
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

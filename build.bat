@@ -95,6 +95,11 @@ copy "server_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "premium_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+:: === SISTEMA DE TAXI ===
+copy "taxi_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "banking_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "welcome_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "migrate_taxi_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 echo ✅ Archivos principales copiados

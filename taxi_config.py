@@ -1,0 +1,806 @@
+#!/usr/bin/env python3
+"""
+Configuración del Sistema de Taxi Modular para SCUM
+Compatible con servidores PVE/PVP con restricciones de zona
+"""
+
+from typing import Dict, List, Tuple
+import json
+
+class TaxiConfig:
+    def __init__(self):
+        # === CONFIGURACIÓN GENERAL ===
+        self.FEATURE_ENABLED = True  # Master switch para todo el sistema
+        self.TAXI_ENABLED = True     # Switch específico para taxi
+        self.BANK_ENABLED = True     # Switch específico para banco
+        self.WELCOME_PACK_ENABLED = True  # Switch para welcome pack
+        
+        # === CONFIGURACIÓN ECONÓMICA ===
+        self.WELCOME_BONUS = 5000.0  # Dinero inicial
+        self.TAXI_BASE_RATE = 15.0   # Tarifa base
+        self.TAXI_PER_KM_RATE = 3.5  # Por kilómetro
+        self.TAXI_WAIT_RATE = 2.0    # Por minuto de espera
+        self.DRIVER_COMMISSION = 0.75  # 75% para el conductor
+        self.PLATFORM_FEE = 0.25      # 25% para la plataforma
+        
+        # === SISTEMA DE VEHÍCULOS ===
+        self.VEHICLE_TYPES = {
+            "auto": {
+                "name": "Automóvil",
+                "emoji": "🚗",
+                "description": "Vehículo terrestre estándar",
+                "capacity": 4,
+                "speed_multiplier": 1.0,
+                "cost_multiplier": 1.0,
+                "access_types": ["land", "road"],
+                "restricted_zones": ["water", "air_only"]
+            },
+            
+            "moto": {
+                "name": "Motocicleta", 
+                "emoji": "🏍️",
+                "description": "Vehículo rápido y ágil",
+                "capacity": 2,
+                "speed_multiplier": 1.3,
+                "cost_multiplier": 0.8,
+                "access_types": ["land", "road", "offroad"],
+                "restricted_zones": ["water", "air_only"]
+            },
+            
+            "avion": {
+                "name": "Avión",
+                "emoji": "✈️", 
+                "description": "Transporte aéreo rápido",
+                "capacity": 6,
+                "speed_multiplier": 3.0,
+                "cost_multiplier": 2.5,
+                "access_types": ["air", "airstrip"],
+                "restricted_zones": ["water_only"],
+                "landing_zones": ["Z0-8", "A4-3", "B4-1", "A0-1"]
+            },
+            
+            "hidroavion": {
+                "name": "Hidroavión",
+                "emoji": "🛩️",
+                "description": "Avión que aterriza en agua",
+                "capacity": 4,
+                "speed_multiplier": 2.5,
+                "cost_multiplier": 3.0,
+                "access_types": ["air", "water", "seaplane"],
+                "restricted_zones": [],
+                "landing_zones": ["water_zones"]  # Se define dinámicamente
+            },
+            
+            "barco": {
+                "name": "Barco",
+                "emoji": "🚢",
+                "description": "Transporte marítimo",
+                "capacity": 8,
+                "speed_multiplier": 0.8,
+                "cost_multiplier": 1.5,
+                "access_types": ["water", "port"],
+                "restricted_zones": ["land_only", "air_only"]
+            }
+        }
+        
+        # === SISTEMA DE ZONAS BASADO EN PADS DE SCUM ===
+        # Sistema de coordenadas: A0-D4 dividido en PADs 1-9
+        # PAD Layout: 7-8-9
+        #             4-5-6  
+        #             1-2-3
+        
+        # === PARADAS DE TAXI (PUNTOS DE ORIGEN) ===
+        self.TAXI_STOPS = {
+            # Paradas principales en ciudades (Terrestres)
+            "stop_b2_city": {
+                "id": "b2_city",
+                "grid": "B2",
+                "pad": 5,
+                "coordinates": "B2-5",
+                "name": "Parada Ciudad Central",
+                "type": "main_stop",
+                "description": "Parada principal frente al Ayuntamiento",
+                "always_available": True,
+                "max_taxis": 8,
+                "access_types": ["land", "road"],
+                "vehicle_types": ["auto", "moto"]
+            },
+            
+            "stop_c0_port": {
+                "id": "c0_port", 
+                "grid": "C0",
+                "pad": 4,
+                "coordinates": "C0-4",
+                "name": "Parada Puerto Este",
+                "type": "port_stop",
+                "description": "Parada en el puerto comercial",
+                "always_available": True,
+                "max_taxis": 5,
+                "access_types": ["land", "water", "port"],
+                "vehicle_types": ["auto", "moto", "barco"]
+            },
+            
+            "stop_b4_airport": {
+                "id": "b4_airport",
+                "grid": "B4", 
+                "pad": 1,
+                "coordinates": "B4-1",
+                "name": "Aeropuerto Principal",
+                "type": "airport_stop",
+                "description": "Terminal aérea principal del servidor",
+                "always_available": True,
+                "max_taxis": 6,
+                "access_types": ["land", "air", "airstrip"],
+                "vehicle_types": ["auto", "moto", "avion"]
+            },
+            
+            # Pistas de aterrizaje específicas
+            "stop_z0_airstrip": {
+                "id": "z0_airstrip",
+                "grid": "Z0",
+                "pad": 8,
+                "coordinates": "Z0-8",
+                "name": "Pista de Aterrizaje Sur",
+                "type": "airstrip",
+                "description": "Pista para aviones en zona sur",
+                "always_available": False,
+                "max_taxis": 3,
+                "access_types": ["air", "airstrip"],
+                "vehicle_types": ["avion"]
+            },
+            
+            "stop_a4_airstrip": {
+                "id": "a4_airstrip",
+                "grid": "A4",
+                "pad": 3,
+                "coordinates": "A4-3", 
+                "name": "Pista Militar Oeste",
+                "type": "airstrip",
+                "description": "Pista militar abandonada",
+                "always_available": False,
+                "max_taxis": 2,
+                "access_types": ["air", "airstrip"],
+                "vehicle_types": ["avion"]
+            },
+            
+            "stop_b3_airstrip": {
+                "id": "b3_airstrip",
+                "grid": "B3",
+                "pad": 8,
+                "coordinates": "B3-8",
+                "name": "Campo de Aviación Norte",
+                "type": "airstrip", 
+                "description": "Pequeño campo de aviación alternativo",
+                "always_available": False,
+                "max_taxis": 2,
+                "access_types": ["air", "airstrip"],
+                "vehicle_types": ["avion"]
+            },
+            
+            "stop_a0_airstrip": {
+                "id": "a0_airstrip",
+                "grid": "A0",
+                "pad": 1,
+                "coordinates": "A0-1",
+                "name": "Pista Costera Este",
+                "type": "airstrip",
+                "description": "Pista cerca de la costa",
+                "always_available": False,
+                "max_taxis": 2,
+                "access_types": ["air", "airstrip"],
+                "vehicle_types": ["avion"]
+            },
+            
+            # Puertos marítimos
+            "stop_seaport_north": {
+                "id": "seaport_north",
+                "grid": "C0",
+                "pad": 8,
+                "coordinates": "C0-8",
+                "name": "Puerto Marítimo Norte",
+                "type": "seaport",
+                "description": "Puerto para embarcaciones grandes",
+                "always_available": True,
+                "max_taxis": 4,
+                "access_types": ["water", "port"],
+                "vehicle_types": ["barco", "hidroavion"]
+            },
+            
+            "stop_seaport_south": {
+                "id": "seaport_south", 
+                "grid": "Z1",
+                "pad": 5,
+                "coordinates": "Z1-5",
+                "name": "Puerto Marítimo Sur",
+                "type": "seaport",
+                "description": "Puerto pesquero del sur",
+                "always_available": True,
+                "max_taxis": 3,
+                "access_types": ["water", "port"],
+                "vehicle_types": ["barco", "hidroavion"]
+            },
+            
+            # Paradas terrestres secundarias
+            "stop_a0_town": {
+                "id": "a0_town",
+                "grid": "A0",
+                "pad": 8,
+                "coordinates": "A0-8", 
+                "name": "Parada Pueblo Costero",
+                "type": "town_stop",
+                "description": "Parada en plaza del pueblo",
+                "always_available": False,
+                "max_taxis": 3,
+                "access_types": ["land", "road"],
+                "vehicle_types": ["auto", "moto"]
+            },
+            
+            "stop_c3_villa": {
+                "id": "c3_villa",
+                "grid": "C3",
+                "pad": 4,
+                "coordinates": "C3-4",
+                "name": "Parada Villa del Sur", 
+                "type": "town_stop",
+                "description": "Parada cerca de la iglesia",
+                "always_available": False,
+                "max_taxis": 2,
+                "access_types": ["land", "road"],
+                "vehicle_types": ["auto", "moto"]
+            },
+            
+            # Paradas industriales
+            "stop_b3_industrial": {
+                "id": "b3_industrial",
+                "grid": "B3",
+                "pad": 1,
+                "coordinates": "B3-1",
+                "name": "Parada Zona Industrial",
+                "type": "industrial_stop", 
+                "description": "Parada para trabajadores",
+                "always_available": False,
+                "max_taxis": 4,
+                "access_types": ["land", "road", "offroad"],
+                "vehicle_types": ["auto", "moto"]
+            },
+            
+            "stop_a2_mining": {
+                "id": "a2_mining",
+                "grid": "A2",
+                "pad": 7,
+                "coordinates": "A2-7",
+                "name": "Parada Zona Minera",
+                "type": "mining_stop",
+                "description": "Parada para mineros",
+                "always_available": False,
+                "max_taxis": 3,
+                "access_types": ["land", "offroad"],
+                "vehicle_types": ["auto", "moto"]
+            }
+        }
+        
+        # === ZONAS DE DESTINO ===
+        self.PVP_ZONES = {
+            # === CIUDADES PRINCIPALES (Zonas Seguras) ===
+            "city_b2_pad5": {
+                "grid": "B2",
+                "pad": 5,
+                "coordinates": "B2-5",
+                "name": "Ciudad Central",
+                "type": "city",
+                "restriction": "safe_zone",
+                "description": "Centro urbano principal - Zona completamente segura",
+                "landmarks": ["Ayuntamiento", "Mercado Central", "Hospital"],
+                "access_types": ["land", "road"],
+                "vehicle_access": ["auto", "moto"]
+            },
+            
+            "city_c0_pad4": {
+                "grid": "C0",
+                "pad": 4,
+                "coordinates": "C0-4",
+                "name": "Puerto Este",
+                "type": "port",
+                "restriction": "safe_zone", 
+                "description": "Puerto comercial - Zona de comercio segura",
+                "landmarks": ["Muelle", "Almacenes", "Oficina Aduanas"],
+                "access_types": ["land", "water", "port"],
+                "vehicle_access": ["auto", "moto", "barco", "hidroavion"]
+            },
+            
+            # === ISLAS REMOTAS (Solo Barco/Hidroavión) ===
+            "island_z0_pad1": {
+                "grid": "Z0",
+                "pad": 1,
+                "coordinates": "Z0-1",
+                "name": "Isla Sur Remote",
+                "type": "island",
+                "restriction": "neutral",
+                "description": "Isla alejada - Solo accesible por agua o aire",
+                "landmarks": ["Playa Desierta", "Cabaña Abandonada"],
+                "access_types": ["water", "air"],
+                "vehicle_access": ["barco", "hidroavion"]
+            },
+            
+            "island_a4_pad9": {
+                "grid": "A4", 
+                "pad": 9,
+                "coordinates": "A4-9",
+                "name": "Isla Norte Remote",
+                "type": "island",
+                "restriction": "neutral",
+                "description": "Isla del norte - Acceso limitado",
+                "landmarks": ["Faro Antiguo", "Rocas"],
+                "access_types": ["water", "air"],
+                "vehicle_access": ["barco", "hidroavion"]
+            },
+            
+            # === BASES MILITARES (Sin Taxi) ===
+            "military_b2_pad2": {
+                "grid": "B2",
+                "pad": 2,
+                "coordinates": "B2-2",
+                "name": "Base Militar Central",
+                "type": "military",
+                "restriction": "no_taxi",
+                "description": "Zona militar restringida - Sin acceso de taxi",
+                "landmarks": ["Cuartel General", "Armería", "Torre de Control"]
+            },
+            
+            # === BUNKERS (Zonas de Combate) ===
+            "bunker_d1_pad7": {
+                "grid": "D1",
+                "pad": 7,
+                "coordinates": "D1-7",
+                "name": "Bunker Noroeste",
+                "type": "bunker",
+                "restriction": "combat_zone",
+                "description": "Bunker abandonado - Zona de alto riesgo",
+                "landmarks": ["Entrada Principal", "Torre de Vigilancia"]
+            },
+            
+            "bunker_a1_pad9": {
+                "grid": "A1", 
+                "pad": 9,
+                "coordinates": "A1-9",
+                "name": "Bunker Noreste",
+                "type": "bunker",
+                "restriction": "combat_zone",
+                "description": "Complejo militar abandonado - Zona peligrosa",
+                "landmarks": ["Helipuerto", "Laboratorio"]
+            },
+            
+            "bunker_a3_pad3": {
+                "grid": "A3",
+                "pad": 3,
+                "coordinates": "A3-3",
+                "name": "Bunker Sureste", 
+                "type": "bunker",
+                "restriction": "combat_zone",
+                "description": "Instalación subterránea - Área de combate",
+                "landmarks": ["Túneles", "Sala de Comunicaciones"]
+            },
+            
+            "bunker_d3_pad1": {
+                "grid": "D3",
+                "pad": 1,
+                "coordinates": "D3-1",
+                "name": "Bunker Suroeste",
+                "type": "bunker", 
+                "restriction": "combat_zone",
+                "description": "Fortaleza abandonada - Zona de conflicto",
+                "landmarks": ["Murallas", "Arsenal"]
+            },
+            
+            # === AEROPUERTOS (Zonas Neutrales) ===
+            "airport_b4_pad1": {
+                "grid": "B4",
+                "pad": 1,
+                "coordinates": "B4-1",
+                "name": "Aeropuerto Principal",
+                "type": "airport",
+                "restriction": "neutral",
+                "description": "Terminal aérea principal - Zona neutral controlada",
+                "landmarks": ["Terminal", "Torre de Control", "Hangar"],
+                "access_types": ["land", "air", "airstrip"],
+                "vehicle_access": ["auto", "moto", "avion"]
+            },
+            
+            # === PUEBLOS Y ASENTAMIENTOS (Zonas Seguras) ===
+            "town_a0_pad8": {
+                "grid": "A0",
+                "pad": 8, 
+                "coordinates": "A0-8",
+                "name": "Pueblo Costero Norte",
+                "type": "town",
+                "restriction": "safe_zone",
+                "description": "Pequeño asentamiento pesquero - Zona segura",
+                "landmarks": ["Muelle Pesquero", "Tienda Local"]
+            },
+            
+            "town_c3_pad4": {
+                "grid": "C3",
+                "pad": 4,
+                "coordinates": "C3-4", 
+                "name": "Villa del Sur",
+                "type": "town",
+                "restriction": "safe_zone",
+                "description": "Comunidad rural - Zona protegida",
+                "landmarks": ["Plaza Central", "Iglesia", "Mercado"]
+            },
+            
+            # === ZONAS INDUSTRIALES (Neutrales) ===
+            "factory_b3_pad1": {
+                "grid": "B3",
+                "pad": 1,
+                "coordinates": "B3-1",
+                "name": "Complejo Industrial",
+                "type": "industrial",
+                "restriction": "neutral",
+                "description": "Zona de fábricas - Área neutral con precaución", 
+                "landmarks": ["Fábrica Principal", "Almacenes", "Chimeneas"]
+            },
+            
+            "mining_a2_pad7": {
+                "grid": "A2",
+                "pad": 7,
+                "coordinates": "A2-7", 
+                "name": "Zona Minera",
+                "type": "mining",
+                "restriction": "neutral",
+                "description": "Área de extracción - Zona de trabajo neutral",
+                "landmarks": ["Mina Principal", "Oficinas", "Depósito"]
+            },
+            
+            # === ZONAS FORESTALES (Seguras) ===
+            "forest_c1_pad9": {
+                "grid": "C1",
+                "pad": 9,
+                "coordinates": "C1-9",
+                "name": "Bosque Central",
+                "type": "forest", 
+                "restriction": "safe_zone",
+                "description": "Área boscosa - Zona segura para campamento",
+                "landmarks": ["Lago", "Senderos", "Cabaña de Guardabosques"]
+            },
+            
+            # === ZONAS DE RECURSOS (Neutrales) ===
+            "resource_d0_pad5": {
+                "grid": "D0",
+                "pad": 5,
+                "coordinates": "D0-5",
+                "name": "Zona de Recursos Norte",
+                "type": "resource",
+                "restriction": "neutral", 
+                "description": "Área de recolección - Zona neutral disputada",
+                "landmarks": ["Depósitos Minerales", "Vegetación Densa"]
+            }
+        }
+        
+        # === CONFIGURACIÓN DE RESTRICCIONES ===
+        self.ZONE_RULES = {
+            "no_taxi": {
+                "pickup_allowed": False,
+                "dropoff_allowed": False,
+                "message": "⚠️ Zona militar restringida - Sin servicio de taxi"
+            },
+            "combat_zone": {
+                "pickup_allowed": True,
+                "dropoff_allowed": False,  # No se puede dejar en zona de combate
+                "message": "⚔️ Zona de combate - Solo recogida de emergencia"
+            },
+            "safe_zone": {
+                "pickup_allowed": True,
+                "dropoff_allowed": True,
+                "message": "🛡️ Zona segura - Servicio completo disponible"
+            },
+            "neutral": {
+                "pickup_allowed": True,
+                "dropoff_allowed": True,
+                "message": "🤝 Zona neutral - Servicio disponible"
+            },
+            "trade_zone": {
+                "pickup_allowed": True,
+                "dropoff_allowed": True,
+                "message": "💼 Zona comercial - Servicio prioritario"
+            }
+        }
+        
+        # === CONFIGURACIÓN DE CANALES ===
+        self.CHANNEL_CONFIG = {
+            "taxi_channel_name": "🚖┃taxi-service",
+            "bank_channel_name": "🏦┃bank-service", 
+            "welcome_channel_name": "🎉┃welcome-center",
+            "logs_channel_name": "📊┃taxi-logs"
+        }
+        
+        # === TIPOS DE VEHÍCULOS ===
+        self.VEHICLE_TYPES = {
+            "auto": {
+                "name": "Automóvil",
+                "emoji": "🚗",
+                "description": "Vehículo terrestre estándar",
+                "capacity": 4,
+                "speed_multiplier": 1.0,
+                "cost_multiplier": 1.0,
+                "access_types": ["land", "road"],
+                "restricted_zones": ["water", "air_only"]
+            },
+            
+            "moto": {
+                "name": "Motocicleta", 
+                "emoji": "🏍️",
+                "description": "Vehículo rápido y ágil",
+                "capacity": 2,
+                "speed_multiplier": 1.3,
+                "cost_multiplier": 0.8,
+                "access_types": ["land", "road", "offroad"],
+                "restricted_zones": ["water", "air_only"]
+            },
+            
+            "avion": {
+                "name": "Avión",
+                "emoji": "✈️", 
+                "description": "Transporte aéreo rápido",
+                "capacity": 2,
+                "speed_multiplier": 3.0,
+                "cost_multiplier": 3.5,
+                "access_types": ["air", "airstrip"],
+                "restricted_zones": ["water_only"],
+                "landing_zones": ["Z0-8", "A4-3", "B4-1", "A0-1"]
+            },
+            
+            "hidroavion": {
+                "name": "Hidroavión",
+                "emoji": "🛩️",
+                "description": "Avión que aterriza en agua",
+                "capacity": 2,
+                "speed_multiplier": 2.5,
+                "cost_multiplier": 3.0,
+                "access_types": ["air", "water", "seaplane"],
+                "restricted_zones": [],
+                "landing_zones": ["water_zones"]  # Se define dinámicamente
+            },
+            
+            "barco": {
+                "name": "Barco",
+                "emoji": "🚢",
+                "description": "Transporte marítimo",
+                "capacity": 4,
+                "speed_multiplier": 0.8,
+                "cost_multiplier": 4.5,
+                "access_types": ["water", "port"],
+                "restricted_zones": ["land_only", "air_only"]
+            }
+        }
+        
+        # === NIVELES DE CONDUCTOR ===
+        self.DRIVER_LEVELS = {
+            0: {"name": "Novato", "emoji": "🟢", "bonus": 0.0},
+            10: {"name": "Conductor", "emoji": "🔵", "bonus": 0.05},
+            25: {"name": "Experto", "emoji": "🟡", "bonus": 0.10},
+            50: {"name": "Veterano", "emoji": "🟠", "bonus": 0.15},
+            100: {"name": "Leyenda", "emoji": "🔴", "bonus": 0.25}
+        }
+
+    def calculate_distance(self, x1: float, y1: float, x2: float, y2: float) -> float:
+        """Calcular distancia entre dos puntos"""
+        import math
+        return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
+    def get_zone_at_location(self, x: float, y: float) -> Dict:
+        """Obtener zona en ubicación específica - Versión simplificada"""
+        # Para simplificar, buscaremos la zona más cercana por grid/pad
+        min_distance = float('inf')
+        closest_zone = None
+        
+        for zone_id, zone_data in self.PVP_ZONES.items():
+            # Convertir grid/pad a coordenadas básicas
+            grid = zone_data.get('grid', 'B2')
+            pad = zone_data.get('pad', 5)
+            
+            # Grid: A=0, B=1000, C=2000, etc.
+            grid_letter = grid[0] if grid else 'B'
+            grid_number = grid[1:] if len(grid) > 1 else '2'
+            
+            zone_x = (ord(grid_letter.upper()) - ord('A')) * 1000
+            zone_y = int(grid_number) * 1000 if grid_number.isdigit() else 2000
+            
+            # PAD offset
+            pad_offsets = {
+                1: (-250, -250), 2: (0, -250), 3: (250, -250),
+                4: (-250, 0),    5: (0, 0),    6: (250, 0),
+                7: (-250, 250),  8: (0, 250),  9: (250, 250)
+            }
+            pad_offset = pad_offsets.get(pad, (0, 0))
+            zone_x += pad_offset[0]
+            zone_y += pad_offset[1]
+            
+            distance = self.calculate_distance(x, y, zone_x, zone_y)
+            
+            if distance < min_distance:
+                min_distance = distance
+                closest_zone = {
+                    "zone_id": zone_id,
+                    "zone_name": zone_data["name"],
+                    "restriction": zone_data.get("restriction", "neutral"),
+                    "rules": self.ZONE_RULES.get(zone_data.get("restriction", "neutral"), self.ZONE_RULES["neutral"])
+                }
+        
+        # Si encontramos una zona cercana (dentro de 1000 metros), la usamos
+        if closest_zone and min_distance <= 1000:
+            return closest_zone
+        
+        # Si no está en ninguna zona especial, es zona normal
+        return {
+            "zone_id": "normal",
+            "zone_name": "Zona Normal",
+            "restriction": "neutral",
+            "rules": self.ZONE_RULES["neutral"]
+        }
+
+    def can_pickup_at(self, x: float, y: float) -> Tuple[bool, str]:
+        """Verificar si se puede recoger en esta ubicación"""
+        zone = self.get_zone_at_location(x, y)
+        can_pickup = zone["rules"]["pickup_allowed"]
+        message = zone["rules"]["message"]
+        return can_pickup, message
+
+    def can_dropoff_at(self, x: float, y: float) -> Tuple[bool, str]:
+        """Verificar si se puede dejar en esta ubicación"""
+        zone = self.get_zone_at_location(x, y)
+        can_dropoff = zone["rules"]["dropoff_allowed"]
+        message = zone["rules"]["message"]
+        return can_dropoff, message
+
+    def calculate_fare(self, distance_meters: float, vehicle_type: str = "sedan") -> float:
+        """Calcular tarifa del viaje"""
+        if not self.TAXI_ENABLED:
+            return 0.0
+            
+        distance_km = distance_meters / 1000
+        base_fare = self.TAXI_BASE_RATE
+        distance_fare = distance_km * self.TAXI_PER_KM_RATE
+        
+        # Aplicar multiplicador de vehículo
+        vehicle_multiplier = self.VEHICLE_TYPES.get(vehicle_type, {}).get("multiplier", 1.0)
+        
+        total_fare = (base_fare + distance_fare) * vehicle_multiplier
+        return round(total_fare, 2)
+
+    def get_driver_level(self, total_rides: int) -> Dict:
+        """Obtener nivel del conductor basado en viajes completados"""
+        current_level = 0
+        for rides_required, level_data in self.DRIVER_LEVELS.items():
+            if total_rides >= rides_required:
+                current_level = rides_required
+            else:
+                break
+        
+        return self.DRIVER_LEVELS[current_level]
+
+    def save_config_to_db(self, db_path: str):
+        """Guardar configuración en base de datos"""
+        import sqlite3
+        
+        config_data = {
+            "feature_enabled": self.FEATURE_ENABLED,
+            "taxi_enabled": self.TAXI_ENABLED,
+            "bank_enabled": self.BANK_ENABLED,
+            "welcome_pack_enabled": self.WELCOME_PACK_ENABLED,
+            "welcome_bonus": self.WELCOME_BONUS,
+            "taxi_base_rate": self.TAXI_BASE_RATE,
+            "taxi_per_km_rate": self.TAXI_PER_KM_RATE,
+            "driver_commission": self.DRIVER_COMMISSION,
+            "pvp_zones": json.dumps(self.PVP_ZONES),
+            "zone_rules": json.dumps(self.ZONE_RULES),
+            "vehicle_types": json.dumps(self.VEHICLE_TYPES)
+        }
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Crear tabla de configuración si no existe
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS taxi_config (
+                config_key TEXT PRIMARY KEY,
+                config_value TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Insertar/actualizar configuración
+        for key, value in config_data.items():
+            cursor.execute("""
+                INSERT OR REPLACE INTO taxi_config (config_key, config_value)
+                VALUES (?, ?)
+            """, (key, str(value)))
+        
+        conn.commit()
+        conn.close()
+
+    def load_config_from_db(self, db_path: str):
+        """Cargar configuración desde base de datos"""
+        import sqlite3
+        
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT config_key, config_value FROM taxi_config")
+            config_rows = cursor.fetchall()
+            conn.close()
+            
+            for key, value in config_rows:
+                if key == "feature_enabled":
+                    self.FEATURE_ENABLED = value.lower() == 'true'
+                elif key == "taxi_enabled":
+                    self.TAXI_ENABLED = value.lower() == 'true'
+                elif key == "bank_enabled":
+                    self.BANK_ENABLED = value.lower() == 'true'
+                elif key == "welcome_pack_enabled":
+                    self.WELCOME_PACK_ENABLED = value.lower() == 'true'
+                elif key == "welcome_bonus":
+                    self.WELCOME_BONUS = float(value)
+                elif key == "taxi_base_rate":
+                    self.TAXI_BASE_RATE = float(value)
+                elif key == "taxi_per_km_rate":
+                    self.TAXI_PER_KM_RATE = float(value)
+                elif key == "driver_commission":
+                    self.DRIVER_COMMISSION = float(value)
+                elif key == "pvp_zones":
+                    self.PVP_ZONES = json.loads(value)
+                elif key == "zone_rules":
+                    self.ZONE_RULES = json.loads(value)
+                elif key == "vehicle_types":
+                    self.VEHICLE_TYPES = json.loads(value)
+                    
+        except Exception as e:
+            print(f"Error cargando configuración: {e}")
+            # Usar valores por defecto si falla
+
+    def coords_to_grid_pad(self, x: float, y: float) -> str:
+        """Convertir coordenadas x,y a formato Grid-Pad (ej: D4-5)"""
+        try:
+            # SCUM Grid system: -25000 to 25000 dividido en 5x5 grids
+            # A = -25000 to -15000, B = -15000 to -5000, C = -5000 to 5000, D = 5000 to 15000, E = 15000 to 25000
+            # 0 = -25000 to -15000, 1 = -15000 to -5000, 2 = -5000 to 5000, 3 = 5000 to 15000, 4 = 15000 to 25000
+            
+            # Calcular grid letter (A-Z)
+            grid_x_index = int((x + 25000) // 10000)  # 0-4 para A-E
+            grid_y_index = int((y + 25000) // 10000)  # 0-4 para 0-4
+            
+            # Ajustar límites
+            grid_x_index = max(0, min(4, grid_x_index))
+            grid_y_index = max(0, min(4, grid_y_index))
+            
+            # Convertir a letras y números
+            grid_letter = chr(ord('A') + grid_x_index)
+            grid_number = str(grid_y_index)
+            
+            # Calcular PAD dentro del grid (1-9)
+            # Cada grid es 10000x10000, dividido en 3x3 = ~3333x3333 por pad
+            local_x = x - (grid_x_index * 10000 - 25000)
+            local_y = y - (grid_y_index * 10000 - 25000)
+            
+            pad_x = int(local_x // 3333.33)  # 0-2
+            pad_y = int(local_y // 3333.33)  # 0-2
+            
+            # Ajustar límites
+            pad_x = max(0, min(2, pad_x))
+            pad_y = max(0, min(2, pad_y))
+            
+            # Convertir a PAD number (1-9)
+            # Layout: 7-8-9
+            #         4-5-6
+            #         1-2-3
+            pad_number = (2 - pad_y) * 3 + pad_x + 1
+            
+            return f"{grid_letter}{grid_number}-{pad_number}"
+            
+        except Exception as e:
+            print(f"Error convirtiendo coordenadas a Grid-Pad: {e}")
+            return ""
+
+# Instancia global
+taxi_config = TaxiConfig()
