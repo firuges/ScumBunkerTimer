@@ -13,6 +13,7 @@ import asyncio
 import json
 import uuid
 import time
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
 from taxi_database import taxi_db
@@ -25,6 +26,29 @@ PICKUP_ZONES = taxi_config.PVP_ZONES  # Usar PVP_ZONES como pickup zones
 # Sistema de cooldown para evitar rate limiting
 USER_COOLDOWNS = {}
 GLOBAL_COOLDOWN = 2.0  # 2 segundos entre interacciones por usuario
+
+def is_bot_admin_cog():
+    """Decorator para verificar si el usuario es admin del bot en el contexto de un cog"""
+    def predicate(interaction: discord.Interaction) -> bool:
+        # Primero intentar desde variables de entorno (.env)
+        admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
+        admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
+        
+        # Si no hay IDs en .env, usar config.py como respaldo
+        if not admin_ids_from_env:
+            try:
+                from config import BOT_ADMIN_IDS
+                admin_ids_from_config = [str(id) for id in BOT_ADMIN_IDS]
+                admin_ids = admin_ids_from_config
+            except ImportError:
+                admin_ids = []
+        else:
+            admin_ids = admin_ids_from_env
+        
+        user_id = str(interaction.user.id)
+        return user_id in admin_ids
+    
+    return app_commands.check(predicate)
 
 def format_zone_with_coordinates(zone_name: str, x: float = None, y: float = None) -> str:
     """Formatear zona con coordenadas Grid-Pad si están disponibles"""
@@ -3457,30 +3481,29 @@ class WelcomeSystemView(discord.ui.View):
                 inline=True
             )
             
-            # Obtener estadísticas adicionales si están disponibles
+            # Obtener estadísticas adicionales del sistema de bienvenida
             try:
                 async with aiosqlite.connect(taxi_db.db_path) as db:
-                    # Contar viajes como pasajero
+                    # Contar transacciones bancarias
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM taxi_rides WHERE passenger_id = ?",
-                        (user_data.get('user_id'),)
+                        "SELECT COUNT(*) FROM bank_transactions WHERE to_account = ? OR from_account = ?",
+                        (user_data.get('account_number'), user_data.get('account_number'))
                     )
-                    passenger_rides = (await cursor.fetchone())[0]
+                    total_transactions = (await cursor.fetchone())[0]
                     
-                    # Contar viajes como conductor
-                    cursor = await db.execute(
-                        "SELECT COUNT(*) FROM taxi_rides WHERE driver_id = ?",
-                        (user_data.get('user_id'),)
-                    )
-                    driver_rides = (await cursor.fetchone())[0]
-                    
+                    # Mostrar estadísticas del sistema general (no específicas de taxi)
                     embed.add_field(
-                        name="🚖 Historial de Viajes:",
-                        value=f"**Como pasajero:** {passenger_rides}\n**Como conductor:** {driver_rides}",
+                        name="📊 Actividad del Sistema:",
+                        value=f"**Transacciones:** {total_transactions}\n**Timezone:** {user_data.get('timezone', 'UTC')}",
                         inline=True
                     )
             except:
-                pass  # Si falla, simplemente no mostrar estadísticas de viajes
+                # Si falla, mostrar información básica
+                embed.add_field(
+                    name="📊 Información Adicional:",
+                    value=f"**Timezone:** {user_data.get('timezone', 'UTC')}\n**Sistema:** Activo",
+                    inline=True
+                )
             
             embed.set_footer(text=f"Sistema SCUM • Usuario ID: {user_data.get('user_id')}")
             
@@ -3499,17 +3522,123 @@ class TaxiAdminCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @app_commands.command(name="debug_shop_stock", description="[DEBUG] Ver stock actual de la tienda")
+    @app_commands.default_permissions(administrator=True)
+    async def debug_shop_stock(self, interaction: discord.Interaction):
+        """Comando temporal para debugging del stock"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            stock_data = await taxi_db.get_all_shop_stock()
+            
+            if not stock_data:
+                embed = discord.Embed(
+                    title="📦 Stock de Tienda - VACÍO",
+                    description="No hay registros de stock en la base de datos",
+                    color=discord.Color.orange()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            embed = discord.Embed(
+                title="📦 Stock Actual de la Tienda",
+                description="Estado actual del inventario por pack",
+                color=discord.Color.blue()
+            )
+            
+            # Agrupar por tier
+            tier_groups = {}
+            for item in stock_data:
+                tier = item['tier']
+                if tier not in tier_groups:
+                    tier_groups[tier] = []
+                tier_groups[tier].append(item)
+            
+            for tier, items in tier_groups.items():
+                stock_info = ""
+                for item in items:
+                    stock_info += f"**{item['pack_id']}**: {item['current_stock']}/{item['max_stock']}\n"
+                
+                embed.add_field(
+                    name=f"🏷️ {tier.upper()}",
+                    value=stock_info or "Sin packs",
+                    inline=True
+                )
+            
+            embed.set_footer(text="Comando temporal para debugging")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en debug_shop_stock: {e}")
+            await interaction.followup.send(f"❌ Error: {str(e)}", ephemeral=True)
+
+    @app_commands.command(name="pending_packages", description="[ADMIN] Ver paquetes pendientes de entrega")
+    @app_commands.default_permissions(administrator=True)
+    async def pending_packages_command(self, interaction: discord.Interaction):
+        """Comando para ver paquetes pendientes"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            pending = await taxi_db.get_pending_packages(str(interaction.guild.id))
+            
+            if not pending:
+                embed = discord.Embed(
+                    title="📦 Sin Paquetes Pendientes",
+                    description="No hay paquetes pendientes de entrega en este servidor.",
+                    color=discord.Color.green()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            embed = discord.Embed(
+                title="📋 Paquetes Pendientes de Entrega",
+                description=f"Hay **{len(pending)}** paquetes esperando ser entregados",
+                color=discord.Color.orange()
+            )
+            
+            for i, package in enumerate(pending[:10]):  # Mostrar máximo 10
+                from shop_config import get_pack_by_id
+                pack_info = get_pack_by_id(package['pack_id'])
+                pack_name = pack_info['name'] if pack_info else package['pack_id']
+                
+                from datetime import datetime
+                purchased_timestamp = int(datetime.fromisoformat(package['purchased_at']).timestamp())
+                
+                embed.add_field(
+                    name=f"#{package['purchase_id']} - {pack_name}",
+                    value=f"**Usuario:** {package['user_display_name']}\n**Tier:** {package['tier'].title()}\n**Precio:** ${package['amount_paid']:,.2f}\n**Comprado:** <t:{purchased_timestamp}:R>",
+                    inline=True
+                )
+            
+            if len(pending) > 10:
+                embed.add_field(
+                    name="ℹ️ Nota",
+                    value=f"Mostrando primeros 10 de {len(pending)} paquetes pendientes",
+                    inline=False
+                )
+            
+            embed.set_footer(text="Usa el canal shop-claimer para confirmar entregas")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo paquetes pendientes: {e}")
+            await interaction.followup.send("❌ Error obteniendo paquetes pendientes", ephemeral=True)
+
     @app_commands.command(name="taxi_admin_setup", description="[ADMIN] Configurar todos los canales del sistema")
     @app_commands.describe(
         welcome_channel="Canal para sistema de bienvenida",
         bank_channel="Canal para sistema bancario", 
-        taxi_channel="Canal para sistema de taxi"
+        taxi_channel="Canal para sistema de taxi",
+        shop_channel="Canal para tienda de supervivencia",
+        shop_claimer_channel="Canal para notificaciones de compras (solo admins)"
     )
     @app_commands.default_permissions(administrator=True)
     async def setup_all_channels(self, interaction: discord.Interaction, 
                                  welcome_channel: discord.TextChannel,
                                  bank_channel: discord.TextChannel,
-                                 taxi_channel: discord.TextChannel):
+                                 taxi_channel: discord.TextChannel,
+                                 shop_channel: discord.TextChannel,
+                                 shop_claimer_channel: discord.TextChannel):
         """Configurar todos los canales de una vez con limpieza de paneles anteriores"""
         await interaction.response.defer(ephemeral=True)
         
@@ -3592,7 +3721,7 @@ class TaxiAdminCommands(commands.Cog):
                                 """INSERT OR REPLACE INTO channel_config 
                                 (guild_id, channel_type, channel_id, updated_at, updated_by) 
                                 VALUES (?, ?, ?, ?, ?)""",
-                                (guild_id, 'bank', str(bank_channel.id), 
+                                (guild_id, 'banking', str(bank_channel.id), 
                                  datetime.now().isoformat(), str(interaction.user.id))
                             )
                             await db.commit()
@@ -3698,6 +3827,132 @@ class TaxiAdminCommands(commands.Cog):
                     results.append("🚖 Taxi: ❌ Cog no encontrado")
             except Exception as e:
                 results.append(f"🚖 Taxi: ❌ Error - {str(e)}")
+            
+            # === CONFIGURAR CANAL DE TIENDA ===
+            try:
+                guild_id = str(interaction.guild.id)
+                try:
+                    # Guardar configuración en la base de datos
+                    async with aiosqlite.connect(taxi_db.db_path) as db:
+                        await db.execute(
+                            """INSERT OR REPLACE INTO channel_config 
+                            (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                            VALUES (?, ?, ?, ?, ?)""",
+                            (guild_id, 'shop', str(shop_channel.id), 
+                             datetime.now().isoformat(), str(interaction.user.id))
+                        )
+                        await db.commit()
+                    results.append(f"🛒 Tienda: ✅ {shop_channel.mention}")
+                    
+                    # Limpiar mensajes anteriores del bot
+                    try:
+                        logger.info("Limpiando mensajes anteriores en canal de tienda...")
+                        deleted_count = 0
+                        async for message in shop_channel.history(limit=50):
+                            if message.author == self.bot.user:
+                                await message.delete()
+                                deleted_count += 1
+                                await asyncio.sleep(0.1)  # Evitar rate limits
+                        if deleted_count > 0:
+                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+                    except Exception as cleanup_e:
+                        logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
+                    
+                    # Crear panel nuevo
+                    try:
+                        shop_embed = discord.Embed(
+                            title="🛒 Tienda de Supervivencia SCUM",
+                            description="¡Intercambia tus recursos por equipamiento de supervivencia de alta gama!\n\nSelecciona tu tier para ver los packs disponibles.",
+                            color=discord.Color.gold()
+                        )
+                        shop_embed.add_field(
+                            name="💰 Métodos de Pago",
+                            value="• Dinero del sistema bancario\n• Recursos y materiales\n• Vehículos y equipamiento",
+                            inline=True
+                        )
+                        shop_embed.add_field(
+                            name="⏰ Disponibilidad",
+                            value="• **Tier 1:** Cada semana\n• **Tier 2:** Cada 2 semanas\n• **Tier 3:** Cada 3 semanas",
+                            inline=True
+                        )
+                        shop_embed.add_field(
+                            name="🎯 Especialidades",
+                            value="• Packs de construcción\n• Equipamiento de combate\n• Vehículos limitados\n• Suministros médicos",
+                            inline=False
+                        )
+                        shop_embed.set_footer(text="Habla con un administrador para realizar el canje")
+                        
+                        shop_view = ShopSystemView()
+                        await shop_channel.send(embed=shop_embed, view=shop_view)
+                        results[-1] += " + Panel"
+                    except Exception as panel_e:
+                        logger.error(f"Error creando panel de tienda: {panel_e}")
+                        results[-1] += " ⚠️ (error de panel)"
+                except Exception as db_e:
+                    logger.error(f"Error guardando configuración de tienda: {db_e}")
+                    results.append(f"🛒 Tienda: ⚠️ {shop_channel.mention} (sin persistencia)")
+            except Exception as e:
+                results.append(f"🛒 Tienda: ❌ Error - {str(e)}")
+            
+            # === CONFIGURAR CANAL DE SHOP CLAIMER ===
+            try:
+                guild_id = str(interaction.guild.id)
+                try:
+                    # Guardar configuración en la base de datos
+                    async with aiosqlite.connect(taxi_db.db_path) as db:
+                        await db.execute(
+                            """INSERT OR REPLACE INTO channel_config 
+                            (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                            VALUES (?, ?, ?, ?, ?)""",
+                            (guild_id, 'shop_claimer', str(shop_claimer_channel.id), 
+                             datetime.now().isoformat(), str(interaction.user.id))
+                        )
+                        await db.commit()
+                    results.append(f"🔔 Shop-Claimer: ✅ {shop_claimer_channel.mention}")
+                    
+                    # Limpiar mensajes anteriores del bot
+                    try:
+                        logger.info("Limpiando mensajes anteriores en canal de shop-claimer...")
+                        deleted_count = 0
+                        async for message in shop_claimer_channel.history(limit=50):
+                            if message.author == self.bot.user:
+                                await message.delete()
+                                deleted_count += 1
+                                await asyncio.sleep(0.1)  # Evitar rate limits
+                        if deleted_count > 0:
+                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+                    except Exception as cleanup_e:
+                        logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
+                    
+                    # Crear mensaje informativo
+                    try:
+                        claimer_embed = discord.Embed(
+                            title="🔔 Canal de Notificaciones de Compras",
+                            description="Este canal recibe notificaciones automáticas cuando los usuarios compran packs en la tienda.",
+                            color=discord.Color.purple()
+                        )
+                        claimer_embed.add_field(
+                            name="📋 Información que recibirás:",
+                            value="• Usuario que realizó la compra\n• Pack comprado y tier\n• Método de pago utilizado\n• Timestamp de la compra",
+                            inline=False
+                        )
+                        claimer_embed.add_field(
+                            name="👨‍💼 Acceso:",
+                            value="Solo administradores y owner del servidor pueden ver este canal",
+                            inline=False
+                        )
+                        claimer_embed.set_footer(text="Sistema de Tienda SCUM - Configurado automáticamente")
+                        
+                        await shop_claimer_channel.send(embed=claimer_embed)
+                        results[-1] += " + Panel"
+                    except Exception as panel_e:
+                        logger.error(f"Error creando panel de shop-claimer: {panel_e}")
+                        results[-1] += " ⚠️ (error de panel)"
+                except Exception as db_e:
+                    logger.error(f"Error guardando configuración de shop-claimer: {db_e}")
+                    results.append(f"🔔 Shop-Claimer: ⚠️ {shop_claimer_channel.mention} (sin persistencia)")
+            except Exception as e:
+                results.append(f"🔔 Shop-Claimer: ❌ Error - {str(e)}")
             
             # Resultado final
             embed = discord.Embed(
@@ -4091,46 +4346,809 @@ if __name__ == "__main__":
         logger.error("❌ No se encontró DISCORD_TOKEN en las variables de entorno")
         exit(1)
     
-    intents = discord.Intents.default()
-    intents.message_content = True
-    intents.guilds = True
-    # intents.members = True  # Comentado porque es privilegiado y no es necesario para el sistema de taxi
+    # === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===
+    # Este código está comentado porque taxi_admin ahora se carga como extensión
+    # en BunkerAdvice_V2.py, no como bot independiente
     
-    bot = commands.Bot(command_prefix='!', intents=intents)
+    # intents = discord.Intents.default()
+    # intents.message_content = True
+    # intents.guilds = True
+    # # intents.members = True  # Comentado porque es privilegiado y no es necesario para el sistema de taxi
     
-    @bot.event
-    async def on_ready():
-        logger.info(f"✅ Bot conectado como {bot.user}")
-        logger.info(f"🔧 Sincronizando comandos...")
+    # bot = commands.Bot(command_prefix='!', intents=intents)
+    
+    # @bot.event
+    # async def on_ready():
+    #     logger.info(f"✅ Bot conectado como {bot.user}")
+    #     logger.info(f"🔧 Sincronizando comandos...")
+        
+    #     try:
+    #         synced = await bot.tree.sync()
+    #         logger.info(f"✅ EXITO: Sincronizados {len(synced)} comandos con Discord")
+    #     except Exception as e:
+    #         logger.error(f"❌ ERROR sincronizando comandos: {e}")
+    
+    # async def load_extensions():
+    #     try:
+    #         logger.info("🔧 Cargando configuración de taxi...")
+    #         logger.info(f"✅ Sistema de taxi - Configuración cargada")
+    #         logger.info(f"🔧 Zonas PVP disponibles: {len(taxi_config.PVP_ZONES)}")
+    #         logger.info(f"🔧 Paradas de taxi disponibles: {len(taxi_config.TAXI_STOPS)}")
+    #         logger.info(f"🔧 Tipos de vehículos disponibles: {len(taxi_config.VEHICLE_TYPES)}")
+            
+    #         await setup(bot)
+            
+    #     except Exception as e:
+    #         logger.error(f"❌ Error cargando extensiones: {e}")
+    
+    # async def run_bot():
+    #     async with bot:
+    #         await load_extensions()
+    #         await bot.start(TOKEN)
+
+
+# ===============================
+# SISTEMA DE TIENDA DE SUPERVIVENCIA
+# ===============================
+
+class ShopSystemView(discord.ui.View):
+    """Vista principal del sistema de tienda"""
+    
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(
+        label="Tier 1 - Básico",
+        style=discord.ButtonStyle.success,
+        emoji="🟢",
+        custom_id="shop_tier1"
+    )
+    async def tier1_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar packs de Tier 1"""
+        await self.show_tier_packs(interaction, "tier1")
+    
+    @discord.ui.button(
+        label="Tier 2 - Intermedio", 
+        style=discord.ButtonStyle.primary,
+        emoji="🟡", 
+        custom_id="shop_tier2"
+    )
+    async def tier2_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar packs de Tier 2"""
+        await self.show_tier_packs(interaction, "tier2")
+    
+    @discord.ui.button(
+        label="Tier 3 - Élite",
+        style=discord.ButtonStyle.danger,
+        emoji="🟠",
+        custom_id="shop_tier3"  
+    )
+    async def tier3_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar packs de Tier 3"""
+        await self.show_tier_packs(interaction, "tier3")
+    
+    @discord.ui.button(
+        label="💰 Mi Saldo",
+        style=discord.ButtonStyle.secondary,
+        emoji="💳",
+        custom_id="shop_balance"
+    )
+    async def balance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar saldo del usuario"""
+        await interaction.response.defer(ephemeral=True)
+        
+        user_data = await taxi_db.get_user_by_discord_id(
+            str(interaction.user.id),
+            str(interaction.guild.id)
+        )
+        
+        if not user_data:
+            embed = discord.Embed(
+                title="❌ No Registrado",
+                description="No tienes una cuenta. Ve al canal de bienvenida para registrarte.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="💳 Tu Saldo Actual",
+            description=f"Tienes **${user_data['balance']:,.2f}** disponibles para compras",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="🛒 Consejos de Compra",
+            value="• Los packs tienen stock limitado\n• Revisa los cooldowns de cada tier\n• Considera los métodos de pago alternativos",
+            inline=False
+        )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    async def show_tier_packs(self, interaction: discord.Interaction, tier: str):
+        """Mostrar los packs disponibles de un tier específico"""
+        await interaction.response.defer(ephemeral=True)
         
         try:
-            synced = await bot.tree.sync()
-            logger.info(f"✅ EXITO: Sincronizados {len(synced)} comandos con Discord")
+            from shop_config import SHOP_PACKS, TIER_CONFIG, PACK_CATEGORIES
+            
+            tier_info = TIER_CONFIG[tier]
+            packs = SHOP_PACKS[tier]
+            
+            if not packs:
+                embed = discord.Embed(
+                    title="❌ Sin Packs Disponibles",
+                    description=f"No hay packs disponibles en {tier_info['name']}",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            embed = discord.Embed(
+                title=f"{tier_info['emoji']} {tier_info['name']}",
+                description=tier_info['description'],
+                color=discord.Color.gold()
+            )
+            
+            # Agregar información del tier
+            embed.add_field(
+                name="⏰ Información del Tier",
+                value=f"**Cooldown:** {tier_info['cooldown_days']} días\n**Stock máximo:** {tier_info.get('max_quantity', 'N/A')}\n**Restock:** Cada {tier_info.get('restock_days', 'N/A')} días",
+                inline=False
+            )
+            
+            # Mostrar cada pack con stock real de la base de datos
+            for pack_id, pack_data in packs.items():
+                category_info = PACK_CATEGORIES.get(pack_data['category'], {"emoji": "📦", "name": "General"})
+                
+                # Obtener stock real de la base de datos
+                real_stock = await taxi_db.get_pack_stock(pack_id, tier, str(interaction.guild.id))
+                stock_status = "🔴 AGOTADO" if real_stock <= 0 else f"✅ {real_stock} disponibles"
+                
+                pack_value = f"**Contenido:**\n"
+                for item in pack_data['items']:
+                    pack_value += f"• {item}\n"
+                pack_value += f"\n**💰 Precio:** ${pack_data['price_money']:,}"
+                pack_value += f"\n**🔄 Alternativo:** {pack_data['price_alt']}"
+                pack_value += f"\n**📦 Stock:** {stock_status}"
+                
+                embed.add_field(
+                    name=f"{category_info['emoji']} {pack_data['name']}",
+                    value=pack_value,
+                    inline=True
+                )
+            
+            embed.set_footer(text="Selecciona un pack y usa el botón Comprar para adquirirlo")
+            
+            # Vista con selector de pack y botón comprar
+            view = TierShopView(tier, packs, str(interaction.guild.id))
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
         except Exception as e:
-            logger.error(f"❌ ERROR sincronizando comandos: {e}")
+            logger.error(f"Error mostrando packs del tier {tier}: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error cargando los packs. Intenta nuevamente.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class BackToShopView(discord.ui.View):
+    """Vista para volver al menú principal de la tienda"""
     
-    async def load_extensions():
+    def __init__(self):
+        super().__init__(timeout=300)
+    
+    @discord.ui.button(
+        label="🔙 Volver al Menú Principal",
+        style=discord.ButtonStyle.secondary,
+        emoji="🏠"
+    )
+    async def back_to_main(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Volver al menú principal de la tienda"""
         try:
-            logger.info("🔧 Cargando configuración de taxi...")
-            logger.info(f"✅ Sistema de taxi - Configuración cargada")
-            logger.info(f"🔧 Zonas PVP disponibles: {len(taxi_config.PVP_ZONES)}")
-            logger.info(f"🔧 Paradas de taxi disponibles: {len(taxi_config.TAXI_STOPS)}")
-            logger.info(f"🔧 Tipos de vehículos disponibles: {len(taxi_config.VEHICLE_TYPES)}")
+            from shop_config import TIER_CONFIG
             
-            await setup(bot)
+            embed = discord.Embed(
+                title="🛒 Tienda de Supervivencia SCUM",
+                description="¡Intercambia tus recursos por equipamiento de supervivencia de alta gama!\n\nSelecciona tu tier para ver los packs disponibles.",
+                color=discord.Color.gold()
+            )
+            embed.add_field(
+                name="💰 Métodos de Pago",
+                value="• Dinero del sistema bancario\n• Recursos y materiales\n• Vehículos y equipamiento",
+                inline=True
+            )
+            embed.add_field(
+                name="⏰ Disponibilidad",
+                value="• **Tier 1:** Cada semana\n• **Tier 2:** Cada 2 semanas\n• **Tier 3:** Cada 3 semanas",
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Especialidades",
+                value="• Packs de construcción\n• Equipamiento de combate\n• Vehículos limitados\n• Suministros médicos",
+                inline=False
+            )
+            embed.set_footer(text="Habla con un administrador para realizar el canje")
+            
+            view = ShopSystemView()
+            await interaction.response.edit_message(embed=embed, view=view)
             
         except Exception as e:
-            logger.error(f"❌ Error cargando extensiones: {e}")
+            logger.error(f"Error volviendo al menú principal: {e}")
+            await interaction.response.send_message("❌ Error volviendo al menú", ephemeral=True)
+
+
+class PackSelect(discord.ui.Select):
+    """Selector de packs en un tier específico"""
     
-    async def run_bot():
-        async with bot:
-            await load_extensions()
-            await bot.start(TOKEN)
+    def __init__(self, tier: str, packs: dict, guild_id: str):
+        self.tier = tier
+        self.packs = packs
+        self.guild_id = guild_id
+        
+        options = []
+        for pack_id, pack_data in packs.items():
+            from shop_config import PACK_CATEGORIES
+            category_info = PACK_CATEGORIES.get(pack_data['category'], {"emoji": "📦"})
+            
+            # Nota: No podemos hacer await aquí, así que mostraremos stock dinámicamente
+            options.append(discord.SelectOption(
+                label=pack_data['name'],
+                description=f"${pack_data['price_money']:,} - {pack_data['description'][:50]}...",
+                value=pack_id,
+                emoji=category_info['emoji']
+            ))
+        
+        super().__init__(
+            placeholder="Selecciona un pack para comprar...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
     
-    try:
-        import asyncio
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        logger.info("🛑 Bot detenido por el usuario")
-    except Exception as e:
-        logger.error(f"❌ Error ejecutando bot: {e}")
+    async def callback(self, interaction: discord.Interaction):
+        """Callback cuando se selecciona un pack"""
+        await interaction.response.defer()
+
+
+class TierShopView(discord.ui.View):
+    """Vista para comprar packs de un tier específico"""
+    
+    def __init__(self, tier: str, packs: dict, guild_id: str):
+        super().__init__(timeout=300)
+        self.tier = tier
+        self.packs = packs
+        self.guild_id = guild_id
+        self.selected_pack = None
+        
+        # Agregar selector de pack
+        self.pack_select = PackSelect(tier, packs, guild_id)
+        self.add_item(self.pack_select)
+    
+    @discord.ui.button(
+        label="💳 Comprar Pack",
+        style=discord.ButtonStyle.success,
+        emoji="🛒"
+    )
+    async def buy_pack_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Comprar el pack seleccionado"""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Verificar que hay un pack seleccionado
+        selected_values = getattr(self.pack_select, 'values', [])
+        if not selected_values:
+            embed = discord.Embed(
+                title="❌ Pack No Seleccionado",
+                description="Primero debes seleccionar un pack del menú desplegable.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        pack_id = selected_values[0]
+        await self.process_purchase(interaction, pack_id)
+    
+    @discord.ui.button(
+        label="🔄 Actualizar Stock",
+        style=discord.ButtonStyle.secondary,
+        emoji="🔄"
+    )
+    async def refresh_stock_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Actualizar la vista con stock actual"""
+        await interaction.response.defer()
+        
+        try:
+            from shop_config import SHOP_PACKS, TIER_CONFIG, PACK_CATEGORIES
+            
+            tier_info = TIER_CONFIG[self.tier]
+            packs = SHOP_PACKS[self.tier]
+            
+            embed = discord.Embed(
+                title=f"{tier_info['emoji']} {tier_info['name']}",
+                description=tier_info['description'],
+                color=discord.Color.gold()
+            )
+            
+            # Agregar información del tier
+            embed.add_field(
+                name="⏰ Información del Tier",
+                value=f"**Cooldown:** {tier_info['cooldown_days']} días\n**Stock máximo:** {tier_info.get('max_quantity', 'N/A')}\n**Restock:** Cada {tier_info.get('restock_days', 'N/A')} días",
+                inline=False
+            )
+            
+            # Mostrar cada pack con stock real actualizado
+            for pack_id, pack_data in packs.items():
+                category_info = PACK_CATEGORIES.get(pack_data['category'], {"emoji": "📦", "name": "General"})
+                
+                # Obtener stock real de la base de datos
+                real_stock = await taxi_db.get_pack_stock(pack_id, self.tier, self.guild_id)
+                stock_status = "🔴 AGOTADO" if real_stock <= 0 else f"✅ {real_stock} disponibles"
+                
+                pack_value = f"**Contenido:**\n"
+                for item in pack_data['items']:
+                    pack_value += f"• {item}\n"
+                pack_value += f"\n**💰 Precio:** ${pack_data['price_money']:,}"
+                pack_value += f"\n**🔄 Alternativo:** {pack_data['price_alt']}"
+                pack_value += f"\n**📦 Stock:** {stock_status}"
+                
+                embed.add_field(
+                    name=f"{category_info['emoji']} {pack_data['name']}",
+                    value=pack_value,
+                    inline=True
+                )
+            
+            embed.set_footer(text="Stock actualizado • Selecciona un pack y usa el botón Comprar")
+            
+            # Mantener la vista actual
+            await interaction.edit_original_response(embed=embed, view=self)
+            
+        except Exception as e:
+            logger.error(f"Error actualizando stock: {e}")
+            await interaction.followup.send("❌ Error actualizando stock", ephemeral=True)
+
+    @discord.ui.button(
+        label="🔙 Volver al Menú",
+        style=discord.ButtonStyle.secondary,
+        emoji="🏠"
+    )
+    async def back_to_main_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Volver al menú principal de la tienda"""
+        try:
+            from shop_config import TIER_CONFIG
+            
+            embed = discord.Embed(
+                title="🛒 Tienda de Supervivencia SCUM",
+                description="¡Intercambia tus recursos por equipamiento de supervivencia de alta gama!\n\nSelecciona tu tier para ver los packs disponibles.",
+                color=discord.Color.gold()
+            )
+            embed.add_field(
+                name="💰 Métodos de Pago",
+                value="• Dinero del sistema bancario\n• Recursos y materiales\n• Vehículos y equipamiento",
+                inline=True
+            )
+            embed.add_field(
+                name="⏰ Disponibilidad",
+                value="• **Tier 1:** Cada semana\n• **Tier 2:** Cada 2 semanas\n• **Tier 3:** Cada 3 semanas",
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Especialidades",
+                value="• Packs de construcción\n• Equipamiento de combate\n• Vehículos limitados\n• Suministros médicos",
+                inline=False
+            )
+            embed.set_footer(text="Habla con un administrador para realizar el canje")
+            
+            view = ShopSystemView()
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error volviendo al menú principal: {e}")
+            await interaction.response.send_message("❌ Error volviendo al menú", ephemeral=True)
+    
+    async def process_purchase(self, interaction: discord.Interaction, pack_id: str):
+        """Procesar la compra de un pack"""
+        try:
+            from shop_config import get_pack_by_id
+            
+            # Obtener información del pack
+            pack_data = get_pack_by_id(pack_id)
+            if not pack_data:
+                embed = discord.Embed(
+                    title="❌ Pack No Encontrado",
+                    description="El pack seleccionado no existe.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener datos del usuario
+            user_data = await taxi_db.get_user_by_discord_id(
+                str(interaction.user.id),
+                str(interaction.guild.id)
+            )
+            
+            if not user_data:
+                embed = discord.Embed(
+                    title="❌ No Registrado",
+                    description="No tienes una cuenta. Ve al canal de bienvenida para registrarte.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar saldo suficiente
+            pack_price = pack_data['price_money']
+            user_balance = user_data['balance']
+            
+            if user_balance < pack_price:
+                embed = discord.Embed(
+                    title="💰 Saldo Insuficiente",
+                    description=f"No tienes suficiente dinero para comprar este pack.",
+                    color=discord.Color.red()
+                )
+                embed.add_field(
+                    name="💳 Tu Saldo",
+                    value=f"${user_balance:,.2f}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="💰 Precio del Pack",
+                    value=f"${pack_price:,.2f}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="❌ Faltante",
+                    value=f"${pack_price - user_balance:,.2f}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="💡 Consejo",
+                    value="Usa el canje diario o trabaja como conductor de taxi para ganar más dinero.",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar stock disponible del servidor
+            available_stock = await taxi_db.get_pack_stock(pack_id, self.tier, str(interaction.guild.id))
+            if available_stock <= 0:
+                embed = discord.Embed(
+                    title="🔴 Pack Agotado",
+                    description=f"El pack **{pack_data['name']}** está agotado en el servidor.",
+                    color=discord.Color.red()
+                )
+                embed.add_field(
+                    name="📦 Stock Actual",
+                    value="0 disponibles",
+                    inline=True
+                )
+                embed.add_field(
+                    name="⏰ Próximo Restock",
+                    value="Consulta con los administradores para más información",
+                    inline=True
+                )
+                embed.add_field(
+                    name="💡 Sugerencia",
+                    value="Vuelve al menú y elige otro pack disponible",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar cooldown del usuario para este tier
+            can_purchase, cooldown_info = await taxi_db.check_tier_cooldown(user_data['user_id'], self.tier)
+            if not can_purchase:
+                embed = discord.Embed(
+                    title="⏰ En Cooldown",
+                    description=f"Debes esperar antes de comprar otro pack de {self.tier.title()}.",
+                    color=discord.Color.orange()
+                )
+                embed.add_field(
+                    name="🕒 Disponible en",
+                    value=cooldown_info,
+                    inline=True
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # REALIZAR LA COMPRA
+            purchase_result = await taxi_db.process_pack_purchase(
+                user_data['user_id'],
+                pack_id,
+                self.tier,
+                pack_price,
+                str(interaction.guild.id)
+            )
+            
+            if purchase_result:
+                # Compra exitosa
+                new_balance = user_balance - pack_price
+                
+                embed = discord.Embed(
+                    title="✅ ¡Compra Exitosa!",
+                    description=f"Has comprado el **{pack_data['name']}** exitosamente.",
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="💰 Precio Pagado",
+                    value=f"${pack_price:,.2f}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="💳 Nuevo Saldo",
+                    value=f"${new_balance:,.2f}",
+                    inline=True
+                )
+                embed.add_field(
+                    name="📦 Contenido del Pack",
+                    value="\n".join([f"• {item}" for item in pack_data['items']]),
+                    inline=False
+                )
+                embed.add_field(
+                    name="📞 Próximos Pasos",
+                    value="Un administrador será notificado para entregar tu pack.",
+                    inline=False
+                )
+                embed.set_footer(text="Compra procesada exitosamente")
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+                # Enviar notificación al canal shop-claimer
+                await self.send_admin_notification(interaction, pack_data, pack_price, purchase_result)
+                
+            else:
+                embed = discord.Embed(
+                    title="❌ Error en la Compra",
+                    description="Hubo un error procesando tu compra. Intenta nuevamente.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error procesando compra: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error interno. Contacta a un administrador.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    async def send_admin_notification(self, interaction: discord.Interaction, pack_data: dict, price: float, purchase_id: int):
+        """Enviar notificación al canal shop-claimer"""
+        try:
+            # Obtener el canal shop-claimer
+            guild_id = str(interaction.guild.id)
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT channel_id FROM channel_config WHERE guild_id = ? AND channel_type = ?",
+                    (guild_id, 'shop_claimer')
+                )
+                result = await cursor.fetchone()
+            
+            if not result:
+                logger.warning("Canal shop-claimer no configurado")
+                return
+            
+            channel = interaction.guild.get_channel(int(result[0]))
+            if not channel:
+                logger.warning("Canal shop-claimer no encontrado")
+                return
+            
+            # Crear embed de notificación
+            embed = discord.Embed(
+                title="🛒 Nueva Compra en la Tienda",
+                description="Un usuario ha realizado una compra y necesita que le entreguen su pack.",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="👤 Usuario",
+                value=f"{interaction.user.mention} ({interaction.user.display_name})\n**ID de Compra:** #{purchase_id}",
+                inline=True
+            )
+            embed.add_field(
+                name="🏷️ Pack Comprado",
+                value=f"**{pack_data['name']}**",
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Tier",
+                value=f"{pack_data['tier'].title()}",
+                inline=True
+            )
+            embed.add_field(
+                name="💰 Precio Pagado",
+                value=f"${price:,.2f}",
+                inline=True
+            )
+            embed.add_field(
+                name="💳 Método de Pago",
+                value="Dinero del sistema bancario",
+                inline=True
+            )
+            embed.add_field(
+                name="⏰ Timestamp",
+                value=f"<t:{int(datetime.now().timestamp())}:f>",
+                inline=True
+            )
+            embed.add_field(
+                name="📦 Contenido a Entregar",
+                value="\n".join([f"• {item}" for item in pack_data['items']]),
+                inline=False
+            )
+            
+            embed.set_footer(text="Sistema de Tienda SCUM - Entrega pendiente")
+            embed.set_thumbnail(url=interaction.user.display_avatar.url)
+            
+            # Crear vista con botón de confirmar entrega persistente
+            view = PersistentDeliveryView()
+            await channel.send(embed=embed, view=view)
+            logger.info(f"Notificación enviada al canal shop-claimer para compra de {interaction.user.id}")
+            
+        except Exception as e:
+            logger.error(f"Error enviando notificación de admin: {e}")
+
+
+class PersistentDeliveryView(discord.ui.View):
+    """Vista persistente que maneja todos los botones de confirmación de entrega"""
+    
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(
+        label="✅ Confirmar Entrega",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="confirm_delivery"
+    )
+    async def confirm_delivery_persistent(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirmar entrega de paquete de forma persistente"""
+        await interaction.response.defer()
+        
+        try:
+            # Extraer purchase_id del embed o del mensaje
+            if not interaction.message.embeds:
+                await interaction.followup.send("❌ No se pudo encontrar información del paquete", ephemeral=True)
+                return
+            
+            embed = interaction.message.embeds[0]
+            purchase_id = None
+            
+            # Buscar purchase_id en los campos del embed
+            import re
+            for field in embed.fields:
+                if "Usuario" in field.name and "ID de Compra:" in field.value:
+                    # Extraer purchase_id del valor del campo
+                    match = re.search(r'ID de Compra:\*\*\s*#(\d+)', field.value)
+                    if match:
+                        purchase_id = int(match.group(1))
+                        break
+            
+            # Si no se encuentra en los campos, buscar en el título
+            if not purchase_id:
+                title_match = re.search(r'#(\d+)', embed.title or "")
+                if title_match:
+                    purchase_id = int(title_match.group(1))
+            
+            if not purchase_id:
+                await interaction.followup.send("❌ No se pudo identificar el ID de compra", ephemeral=True)
+                return
+            
+            # Marcar como entregado en la base de datos
+            success = await taxi_db.mark_package_delivered(purchase_id, str(interaction.user.id))
+            
+            if success:
+                # Actualizar el embed original
+                embed.color = discord.Color.green()
+                embed.title = "✅ Paquete Entregado"
+                embed.add_field(
+                    name="📦 Estado",
+                    value=f"Entregado por {interaction.user.mention}\n<t:{int(datetime.now().timestamp())}:f>",
+                    inline=False
+                )
+                
+                # Deshabilitar el botón
+                button.disabled = True
+                button.label = "✅ Entregado"
+                button.style = discord.ButtonStyle.secondary
+                
+                await interaction.edit_original_response(embed=embed, view=self)
+                await interaction.followup.send(f"✅ Paquete ID #{purchase_id} marcado como entregado", ephemeral=True)
+                
+                logger.info(f"Paquete {purchase_id} marcado como entregado por {interaction.user.id}")
+                
+            else:
+                await interaction.followup.send("❌ Error marcando el paquete como entregado", ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error en confirmación persistente de entrega: {e}")
+            await interaction.followup.send("❌ Error procesando la confirmación", ephemeral=True)
+
+
+class DeliveryConfirmationView(discord.ui.View):
+    """Vista para confirmar entrega de paquetes"""
+    
+    def __init__(self, purchase_id: int, user_id: int, pack_name: str):
+        super().__init__(timeout=None)
+        self.purchase_id = purchase_id
+        self.user_id = user_id
+        self.pack_name = pack_name
+    
+    @discord.ui.button(
+        label="✅ Confirmar Entrega",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="confirm_delivery"
+    )
+    async def confirm_delivery(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirmar que el paquete fue entregado"""
+        await interaction.response.defer()
+        
+        # Marcar como entregado en la base de datos
+        success = await taxi_db.mark_package_delivered(self.purchase_id, str(interaction.user.id))
+        
+        if success:
+            # Actualizar el embed original
+            original_embed = interaction.message.embeds[0]
+            original_embed.color = discord.Color.green()
+            original_embed.title = "✅ Paquete Entregado"
+            
+            # Agregar información de entrega
+            original_embed.add_field(
+                name="📋 Estado de Entrega",
+                value=f"**Entregado por:** {interaction.user.mention}\n**Fecha:** <t:{int(datetime.now().timestamp())}:f>",
+                inline=False
+            )
+            
+            original_embed.set_footer(text="Sistema de Tienda SCUM - Paquete entregado exitosamente")
+            
+            # Deshabilitar el botón
+            button.disabled = True
+            button.label = "Entregado"
+            button.style = discord.ButtonStyle.secondary
+            
+            await interaction.edit_original_response(embed=original_embed, view=self)
+            
+            # Opcional: Notificar al usuario que recibió su paquete
+            try:
+                user = interaction.guild.get_member(int(self.user_id))
+                if user:
+                    delivery_embed = discord.Embed(
+                        title="📦 ¡Paquete Entregado!",
+                        description=f"Tu **{self.pack_name}** ha sido entregado exitosamente.",
+                        color=discord.Color.green()
+                    )
+                    delivery_embed.add_field(
+                        name="👨‍💼 Entregado por",
+                        value=interaction.user.display_name,
+                        inline=True
+                    )
+                    delivery_embed.add_field(
+                        name="⏰ Fecha",
+                        value=f"<t:{int(datetime.now().timestamp())}:f>",
+                        inline=True
+                    )
+                    
+                    await user.send(embed=delivery_embed)
+            except:
+                pass  # Si no se puede enviar DM, no es crítico
+            
+        else:
+            await interaction.followup.send("❌ Error marcando paquete como entregado", ephemeral=True)
+
+
+
+
+# === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===
+# Este código está comentado porque taxi_admin ahora se carga como extensión
+# en BunkerAdvice_V2.py, no como bot independiente
+
+# if __name__ == "__main__":
+#     try:
+#         import asyncio
+#         asyncio.run(run_bot())
+#     except KeyboardInterrupt:
+#         logger.info("🛑 Bot detenido por el usuario")
+#     except Exception as e:
+#         logger.error(f"❌ Error ejecutando bot: {e}")

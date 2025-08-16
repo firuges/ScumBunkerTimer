@@ -20,9 +20,84 @@ class WelcomePackSystem(commands.Cog):
         self.bot = bot
         self.welcome_channels = {}  # {guild_id: channel_id}
 
+    async def load_channel_configs(self):
+        """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
+        try:
+            from taxi_database import taxi_db
+            configs = await taxi_db.load_all_channel_configs()
+            
+            for guild_id, channels in configs.items():
+                if "welcome" in channels:
+                    guild_id_int = int(guild_id)
+                    channel_id = channels["welcome"]
+                    
+                    # Cargar en memoria
+                    self.welcome_channels[guild_id_int] = channel_id
+                    
+                    # Recrear panel de bienvenida en el canal
+                    await self._recreate_welcome_panel(guild_id_int, channel_id)
+                    
+                    logger.info(f"Cargada y recreada configuración de welcome para guild {guild_id}: canal {channel_id}")
+            
+            logger.info(f"Sistema de bienvenida: {len(self.welcome_channels)} canales cargados con paneles recreados")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones de bienvenida: {e}")
+    
+    async def _recreate_welcome_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel de bienvenida en un canal específico"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal de bienvenida {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot (solo los más recientes)
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.bot.user and message.embeds:
+                        # Solo eliminar si es un embed del sistema de bienvenida
+                        for embed in message.embeds:
+                            if embed.title and ("Sistema de Bienvenida" in embed.title or "Bienvenido" in embed.title):
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles de bienvenida anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes de bienvenida anteriores: {cleanup_e}")
+            
+            # Crear embed de bienvenida
+            from taxi_admin import WelcomeSystemView
+            
+            embed = discord.Embed(
+                title="🎉 Sistema de Bienvenida",
+                description="Usa `/welcome_registro` para registrarte y `/welcome_status` para consultar tu estado.",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="🎁 ¿Qué incluye el registro?",
+                value="• **Cuenta bancaria** con balance inicial\n• **Welcome pack** con beneficios\n• **Acceso completo** a todos los sistemas\n• **Soporte 24/7** del equipo",
+                inline=False
+            )
+            
+            view = WelcomeSystemView()
+            await channel.send(embed=embed, view=view)
+            logger.info(f"Panel de bienvenida recreado exitosamente en canal {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error recreando panel de bienvenida para canal {channel_id}: {e}")
+
     async def setup_welcome_channel(self, guild_id: int, channel_id: int):
         """Configurar canal de bienvenida con embed interactivo"""
+        # Guardar en memoria (para acceso rápido)
         self.welcome_channels[guild_id] = channel_id
+        
+        # Guardar en base de datos (para persistencia)
+        from taxi_database import taxi_db
+        await taxi_db.save_channel_config(str(guild_id), "welcome", str(channel_id))
         channel = self.bot.get_channel(channel_id)
         
         if not channel:

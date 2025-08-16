@@ -444,6 +444,161 @@ class BotStatusSystem:
         if self.update_status.is_running():
             self.update_status.stop()
     
+    async def send_shutdown_notification(self):
+        """Enviar notificación de apagado a los canales de estado"""
+        try:
+            shutdown_time = datetime.now()
+            
+            # Crear embed de apagado para canal admin
+            admin_embed = discord.Embed(
+                title="🔴 Bot Desconectado",
+                description="El bot se ha desconectado del servidor",
+                color=0xff0000,  # Rojo
+                timestamp=shutdown_time
+            )
+            
+            admin_embed.add_field(
+                name="⏰ Hora de Desconexión",
+                value=f"<t:{int(shutdown_time.timestamp())}:F>",
+                inline=True
+            )
+            
+            uptime = shutdown_time - self.start_time
+            uptime_str = f"{uptime.days}d {uptime.seconds//3600}h {(uptime.seconds//60)%60}m"
+            
+            admin_embed.add_field(
+                name="⌛ Tiempo de Actividad",
+                value=uptime_str,
+                inline=True
+            )
+            
+            admin_embed.add_field(
+                name="🔄 Estado",
+                value="El bot será reiniciado automáticamente",
+                inline=False
+            )
+            
+            admin_embed.set_footer(text="Sistema de monitoreo automático")
+            
+            # Enviar a canal de estado admin
+            if self.status_channel_id:
+                try:
+                    channel = self.bot.get_channel(self.status_channel_id)
+                    if channel:
+                        await channel.send(embed=admin_embed)
+                except Exception as e:
+                    print(f"Error enviando notificación a canal admin: {e}")
+            
+            # Crear embed simplificado para canal público
+            public_embed = discord.Embed(
+                title="🔴 Bot Offline",
+                description="El bot está temporalmente desconectado",
+                color=0xff0000,
+                timestamp=shutdown_time
+            )
+            
+            public_embed.add_field(
+                name="⏰ Desconexión",
+                value=f"<t:{int(shutdown_time.timestamp())}:R>",
+                inline=True
+            )
+            
+            public_embed.add_field(
+                name="🔄 Estado",
+                value="Reiniciando...",
+                inline=True
+            )
+            
+            public_embed.set_footer(text="El servicio será restaurado en breve")
+            
+            # Enviar a canal público
+            if self.public_status_channel_id:
+                try:
+                    channel = self.bot.get_channel(self.public_status_channel_id)
+                    if channel:
+                        await channel.send(embed=public_embed)
+                except Exception as e:
+                    print(f"Error enviando notificación a canal público: {e}")
+                    
+        except Exception as e:
+            print(f"Error en send_shutdown_notification: {e}")
+    
+    async def send_startup_notification(self):
+        """Enviar notificación de inicio/reconexión a los canales de estado"""
+        try:
+            startup_time = datetime.now()
+            
+            # Crear embed de reconexión para canal admin
+            admin_embed = discord.Embed(
+                title="🟢 Bot Conectado",
+                description="El bot se ha conectado exitosamente al servidor",
+                color=0x00ff00,  # Verde
+                timestamp=startup_time
+            )
+            
+            admin_embed.add_field(
+                name="⏰ Hora de Conexión",
+                value=f"<t:{int(startup_time.timestamp())}:F>",
+                inline=True
+            )
+            
+            admin_embed.add_field(
+                name="🔧 Estado del Sistema",
+                value="✅ Todos los servicios operativos",
+                inline=True
+            )
+            
+            admin_embed.add_field(
+                name="📊 Información",
+                value=f"Servidores: {len(self.bot.guilds)}\nComandos: {len(self.bot.tree.get_commands())}",
+                inline=False
+            )
+            
+            admin_embed.set_footer(text="Sistema de monitoreo automático")
+            
+            # Enviar a canal de estado admin
+            if self.status_channel_id:
+                try:
+                    channel = self.bot.get_channel(self.status_channel_id)
+                    if channel:
+                        await channel.send(embed=admin_embed)
+                except Exception as e:
+                    print(f"Error enviando notificación startup a canal admin: {e}")
+            
+            # Crear embed simplificado para canal público
+            public_embed = discord.Embed(
+                title="🟢 Bot Online",
+                description="El bot está nuevamente disponible",
+                color=0x00ff00,
+                timestamp=startup_time
+            )
+            
+            public_embed.add_field(
+                name="⏰ Conexión",
+                value=f"<t:{int(startup_time.timestamp())}:R>",
+                inline=True
+            )
+            
+            public_embed.add_field(
+                name="🔄 Estado",
+                value="✅ Operativo",
+                inline=True
+            )
+            
+            public_embed.set_footer(text="Todos los servicios están disponibles")
+            
+            # Enviar a canal público
+            if self.public_status_channel_id:
+                try:
+                    channel = self.bot.get_channel(self.public_status_channel_id)
+                    if channel:
+                        await channel.send(embed=public_embed)
+                except Exception as e:
+                    print(f"Error enviando notificación startup a canal público: {e}")
+                    
+        except Exception as e:
+            print(f"Error en send_startup_notification: {e}")
+    
     async def get_bunkers_individual_status(self):
         """Obtener estado individual de cada bunker globalmente"""
         try:

@@ -20,9 +20,114 @@ class BankingSystem(commands.Cog):
         self.bot = bot
         self.bank_channels = {}  # {guild_id: channel_id}
 
+    async def load_channel_configs(self):
+        """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
+        try:
+            from taxi_database import taxi_db
+            configs = await taxi_db.load_all_channel_configs()
+            
+            for guild_id, channels in configs.items():
+                if "banking" in channels:
+                    guild_id_int = int(guild_id)
+                    channel_id = channels["banking"]
+                    
+                    # Cargar en memoria
+                    self.bank_channels[guild_id_int] = channel_id
+                    
+                    # Recrear panel bancario en el canal
+                    await self._recreate_bank_panel(guild_id_int, channel_id)
+                    
+                    logger.info(f"Cargada y recreada configuración de banking para guild {guild_id}: canal {channel_id}")
+            
+            logger.info(f"Sistema bancario: {len(self.bank_channels)} canales cargados con paneles recreados")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones bancarias: {e}")
+    
+    async def _recreate_bank_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel bancario en un canal específico"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal bancario {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot (solo los más recientes)
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.bot.user and message.embeds:
+                        # Solo eliminar si es un embed del sistema bancario
+                        for embed in message.embeds:
+                            if embed.title and "Sistema Bancario" in embed.title:
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles bancarios anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes bancarios anteriores: {cleanup_e}")
+            
+            # Crear embed bancario real (igual que en setup_bank_channel)
+            embed = discord.Embed(
+                title="🏦 Sistema Bancario SCUM",
+                description="Gestiona tu dinero de forma segura y eficiente",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="💳 Servicios Disponibles:",
+                value="""
+                🔍 **Consultar Saldo** - Ver tu balance actual
+                💸 **Transferir Dinero** - Enviar dinero a otros jugadores
+                📊 **Historial** - Ver tus últimas transacciones
+                📈 **Estadísticas** - Análisis de tu actividad financiera
+                🎁 **Canje Diario** - Recibe $250 gratis cada día
+                """,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔐 Seguridad:",
+                value="""
+                ✅ Todas las transacciones son seguras
+                ✅ Historial completo de movimientos
+                ✅ Protección contra fraudes
+                ✅ Soporte 24/7 por administradores
+                """,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💡 Consejos:",
+                value="""
+                • Verifica siempre el número de cuenta antes de transferir
+                • Guarda capturas de transacciones importantes
+                • Reporta cualquier actividad sospechosa
+                • Usa descripciones claras en tus transferencias
+                """,
+                inline=False
+            )
+            
+            embed.set_footer(text="Selecciona una opción para comenzar")
+            
+            # Usar la vista correcta del sistema bancario (BankingView está definida en este mismo archivo)
+            view = BankingView()
+            
+            await channel.send(embed=embed, view=view)
+            logger.info(f"Panel bancario recreado exitosamente en canal {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error recreando panel bancario para canal {channel_id}: {e}")
+
     async def setup_bank_channel(self, guild_id: int, channel_id: int):
         """Configurar canal bancario con embed interactivo"""
+        # Guardar en memoria (para acceso rápido)
         self.bank_channels[guild_id] = channel_id
+        
+        # Guardar en base de datos (para persistencia)
+        from taxi_database import taxi_db
+        await taxi_db.save_channel_config(str(guild_id), "banking", str(channel_id))
         channel = self.bot.get_channel(channel_id)
         
         if not channel:
@@ -50,6 +155,7 @@ class BankingSystem(commands.Cog):
             💸 **Transferir Dinero** - Enviar dinero a otros jugadores
             📊 **Historial** - Ver tus últimas transacciones
             📈 **Estadísticas** - Análisis de tu actividad financiera
+            🎁 **Canje Diario** - Recibe $250 gratis cada día
             """,
             inline=False
         )
@@ -403,7 +509,7 @@ class BankingView(discord.ui.View):
         emoji="💳",
         custom_id="check_balance"
     )
-    async def check_balance(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def check_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botón para consultar saldo"""
         await interaction.response.defer(ephemeral=True)
         
@@ -491,7 +597,7 @@ class BankingView(discord.ui.View):
         emoji="📤",
         custom_id="transfer_money"
     )
-    async def transfer_money(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def transfer_money(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botón para transferir dinero"""
         await interaction.response.defer(ephemeral=True)
         
@@ -530,7 +636,7 @@ class BankingView(discord.ui.View):
         emoji="📋",
         custom_id="transaction_history"
     )
-    async def transaction_history(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def transaction_history(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botón para ver historial de transacciones"""
         await interaction.response.defer(ephemeral=True)
         
@@ -559,6 +665,108 @@ class BankingView(discord.ui.View):
         
         # Obtener transacciones (implementar en taxi_database.py)
         await self.show_transaction_history(interaction, user_data)
+
+    @discord.ui.button(
+        label="🎁 Canje Diario", 
+        style=discord.ButtonStyle.success,
+        emoji="🎁",
+        custom_id="daily_reward"
+    )
+    async def daily_reward(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Botón para canje diario de $250"""
+        await interaction.response.defer(ephemeral=True)
+        
+        if not taxi_config.BANK_ENABLED:
+            embed = discord.Embed(
+                title="❌ Sistema Bancario Deshabilitado",
+                description="El canje diario está temporalmente deshabilitado",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Obtener datos del usuario
+        user_data = await taxi_db.get_user_by_discord_id(
+            str(interaction.user.id), 
+            str(interaction.guild.id)
+        )
+        
+        if not user_data:
+            embed = discord.Embed(
+                title="❌ No Registrado",
+                description="No tienes una cuenta bancaria. Ve al canal de bienvenida para registrarte.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Verificar si ya reclamó hoy
+        last_daily_claim = await taxi_db.get_last_daily_claim(user_data['user_id'])
+        now = datetime.now()
+        
+        if last_daily_claim:
+            last_claim_date = datetime.fromisoformat(last_daily_claim)
+            if last_claim_date.date() == now.date():
+                # Ya reclamó hoy
+                next_claim = (last_claim_date + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                next_claim_timestamp = int(next_claim.timestamp())
+                
+                embed = discord.Embed(
+                    title="⏰ Ya Reclamaste Hoy",
+                    description="Ya has reclamado tu canje diario de hoy",
+                    color=discord.Color.orange()
+                )
+                embed.add_field(
+                    name="🕒 Próximo Canje",
+                    value=f"<t:{next_claim_timestamp}:R>",
+                    inline=True
+                )
+                embed.add_field(
+                    name="💰 Cantidad",
+                    value="$250",
+                    inline=True
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+        
+        # Dar recompensa diaria
+        daily_amount = 250
+        success = await taxi_db.add_daily_reward(user_data['user_id'], daily_amount)
+        
+        if success:
+            # Actualizar balance
+            new_balance = user_data['balance'] + daily_amount
+            
+            embed = discord.Embed(
+                title="🎁 ¡Canje Diario Reclamado!",
+                description="Has recibido tu recompensa diaria",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="💰 Cantidad Recibida",
+                value=f"**+${daily_amount}**",
+                inline=True
+            )
+            embed.add_field(
+                name="💳 Nuevo Saldo",
+                value=f"**${new_balance:,.2f}**",
+                inline=True
+            )
+            embed.add_field(
+                name="⏰ Próximo Canje",
+                value="Mañana a las 00:00",
+                inline=True
+            )
+            embed.set_footer(text="¡Vuelve mañana para tu siguiente recompensa!")
+            
+        else:
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error al procesar tu canje diario. Intenta nuevamente.",
+                color=discord.Color.red()
+            )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def show_transaction_history(self, interaction, user_data):
         """Mostrar historial de transacciones"""
@@ -591,7 +799,7 @@ class TransferModalView(discord.ui.View):
         self.user_data = user_data
 
     @discord.ui.button(label="💸 Abrir Formulario", style=discord.ButtonStyle.primary)
-    async def open_modal(self, button: discord.ui.Button, interaction: discord.Interaction):
+    async def open_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(self.modal)
 
 class TransferModal(discord.ui.Modal):

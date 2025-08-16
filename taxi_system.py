@@ -22,9 +22,89 @@ class TaxiSystem(commands.Cog):
         self.taxi_channels = {}  # {guild_id: channel_id}
         self.active_requests = {}  # {request_id: request_data}
 
+    async def load_channel_configs(self):
+        """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
+        try:
+            configs = await taxi_db.load_all_channel_configs()
+            
+            for guild_id, channels in configs.items():
+                if "taxi" in channels:
+                    guild_id_int = int(guild_id)
+                    channel_id = channels["taxi"]
+                    
+                    # Cargar en memoria
+                    self.taxi_channels[guild_id_int] = channel_id
+                    
+                    # Recrear panel de taxi en el canal
+                    await self._recreate_taxi_panel(guild_id_int, channel_id)
+                    
+                    logger.info(f"Cargada y recreada configuración de taxi para guild {guild_id}: canal {channel_id}")
+            
+            logger.info(f"Sistema de taxi: {len(self.taxi_channels)} canales cargados con paneles recreados")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones de taxi: {e}")
+    
+    async def _recreate_taxi_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel de taxi en un canal específico"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal de taxi {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot (solo los más recientes para evitar spam)
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.bot.user and message.embeds:
+                        # Solo eliminar si es un embed del sistema (título contiene "Sistema de Taxi")
+                        for embed in message.embeds:
+                            if embed.title and "Sistema de Taxi" in embed.title:
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles de taxi anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes de taxi anteriores: {cleanup_e}")
+            
+            # Crear embed de taxi
+            try:
+                from taxi_admin import TaxiSystemView
+                view = TaxiSystemView()
+            except ImportError:
+                view = None
+            
+            embed = discord.Embed(
+                title="🚖 Sistema de Taxi SCUM",
+                description="Usa `/taxi_solicitar` para viajes, `/taxi_conductor` para ser taxista, y más comandos disponibles.",
+                color=discord.Color.yellow()
+            )
+            
+            embed.add_field(
+                name="🗺️ Zonas de Servicio:",
+                value="🛡️ **Zonas Seguras** - Servicio completo\n⚔️ **Zonas de Combate** - Solo emergencias\n💼 **Zonas Comerciales** - Servicio prioritario",
+                inline=False
+            )
+            
+            if view:
+                await channel.send(embed=embed, view=view)
+            else:
+                await channel.send(embed=embed)
+            logger.info(f"Panel de taxi recreado exitosamente en canal {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error recreando panel de taxi para canal {channel_id}: {e}")
+
     async def setup_taxi_channel(self, guild_id: int, channel_id: int):
         """Configurar canal de taxi con embed interactivo"""
+        # Guardar en memoria (para acceso rápido)
         self.taxi_channels[guild_id] = channel_id
+        
+        # Guardar en base de datos (para persistencia)
+        await taxi_db.save_channel_config(str(guild_id), "taxi", str(channel_id))
+        
         channel = self.bot.get_channel(channel_id)
         
         if not channel:
@@ -474,6 +554,271 @@ class TaxiSystem(commands.Cog):
         
         embed.set_footer(text="Los precios pueden variar según disponibilidad y condiciones del servidor")
         await interaction.followup.send(embed=embed)
+
+    async def server_name_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """Autocompletado para nombres de servidores"""
+        try:
+            from server_database import server_db
+            guild_id = str(interaction.guild.id)
+            servers = await server_db.get_monitored_servers(guild_id)
+            
+            # Filtrar servidores que coincidan con la entrada actual
+            matching_servers = []
+            for server in servers:
+                server_name = server['server_name']
+                if current.lower() in server_name.lower():
+                    # Verificar si tiene horarios configurados
+                    from taxi_database import taxi_db
+                    schedules = await taxi_db.get_reset_schedules(server_name)
+                    
+                    if schedules:
+                        label = f"{server_name} ✅ ({len(schedules)} horarios)"
+                    else:
+                        label = f"{server_name} ⚠️ (sin horarios)"
+                    
+                    matching_servers.append(app_commands.Choice(name=label, value=server_name))
+            
+            # Limitar a 25 resultados (límite de Discord)
+            return matching_servers[:25]
+            
+        except Exception as e:
+            logger.error(f"Error en autocompletado de servidores: {e}")
+            return []
+
+    @app_commands.command(name="ba_reset_alerts", description="🔔 Gestionar alertas de reinicio de servidores")
+    @app_commands.describe(
+        action="Acción a realizar",
+        server_name="Nombre del servidor SCUM (opcional)",
+        minutes_before="Minutos antes del reinicio para alertar (por defecto 15)"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="🔔 Suscribirme", value="subscribe"),
+        app_commands.Choice(name="🔕 Desuscribirme", value="unsubscribe"),
+        app_commands.Choice(name="📋 Ver mis alertas", value="list")
+    ])
+    @app_commands.autocomplete(server_name=server_name_autocomplete)
+    async def manage_reset_alerts(self, interaction: discord.Interaction, 
+                                action: app_commands.Choice[str], 
+                                server_name: str = None, 
+                                minutes_before: int = 15):
+        """Gestionar suscripciones a alertas de reinicio"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            user_id = str(interaction.user.id)
+            guild_id = str(interaction.guild.id)
+            
+            if action.value == "list":
+                # Obtener información del usuario para timezone
+                user_info = await taxi_db.get_user_by_discord_id(user_id, guild_id)
+                user_timezone = user_info.get('timezone', 'UTC') if user_info else 'UTC'
+                
+                # Auto-actualizar timezone si es UTC (usuarios existentes antes de la feature)
+                if user_timezone == 'UTC':
+                    from taxi_database import detect_user_timezone
+                    new_timezone = detect_user_timezone(interaction)
+                    await taxi_db.update_user_timezone(user_id, guild_id, new_timezone)
+                    user_timezone = new_timezone
+                    logger.info(f"Auto-actualizado timezone de usuario {user_id} a {new_timezone}")
+                
+                # Mostrar suscripciones del usuario
+                subscriptions = await taxi_db.get_user_reset_subscriptions(user_id, guild_id)
+                
+                if not subscriptions:
+                    embed = discord.Embed(
+                        title="🔔 Mis Alertas de Reinicio",
+                        description="No tienes alertas de reinicio configuradas.",
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(
+                        name="💡 Cómo suscribirte",
+                        value="Usa `/ba_reset_alerts` acción:`Suscribirme` server_name:`NombreServidor`",
+                        inline=False
+                    )
+                else:
+                    embed = discord.Embed(
+                        title="🔔 Mis Alertas de Reinicio",
+                        description=f"Tienes **{len(subscriptions)}** alertas configuradas:",
+                        color=discord.Color.blue()
+                    )
+                    
+                    # Agregar información del timezone del usuario
+                    embed.add_field(
+                        name="🌍 Tu Zona Horaria",
+                        value=f"{user_timezone}",
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="⏰ Horarios Mostrados",
+                        value="En tu zona horaria local",
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="", 
+                        value="",
+                        inline=True
+                    )  # Spacer for layout
+                    
+                    # Obtener horarios de cada servidor y convertirlos
+                    from taxi_database import convert_time_to_user_timezone
+                    
+                    for sub in subscriptions:
+                        status = "🔔 Activa" if sub['alert_enabled'] else "🔕 Desactivada"
+                        
+                        # Obtener horarios configurados para este servidor
+                        schedules = await taxi_db.get_reset_schedules(sub['server_name'])
+                        
+                        field_value = f"{status}\n⏰ {sub['minutes_before']} min antes"
+                        
+                        if schedules:
+                            field_value += "\n\n📅 **Horarios:**"
+                            days_names = {1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 7: "Dom"}
+                            
+                            for schedule in schedules[:3]:  # Mostrar máximo 3 horarios por servidor
+                                # Convertir tiempo al timezone del usuario
+                                original_time = schedule['reset_time']
+                                schedule_timezone = schedule['timezone']
+                                converted_time = convert_time_to_user_timezone(original_time, schedule_timezone, user_timezone)
+                                
+                                # Mostrar días
+                                try:
+                                    days_list = [int(d.strip()) for d in schedule['days_of_week'].split(',')]
+                                    days_str = ", ".join([days_names[d] for d in sorted(days_list)])
+                                except:
+                                    days_str = schedule['days_of_week']
+                                
+                                field_value += f"\n• {converted_time} - {days_str}"
+                            
+                            if len(schedules) > 3:
+                                field_value += f"\n... y {len(schedules) - 3} más"
+                        
+                        embed.add_field(
+                            name=f"🎮 {sub['server_name']}",
+                            value=field_value,
+                            inline=True
+                        )
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+                
+            # Para suscribir/desuscribir necesitamos el nombre del servidor
+            if not server_name:
+                # Mostrar servidores disponibles
+                from server_database import server_db
+                guild_id = str(interaction.guild.id)
+                servers = await server_db.get_monitored_servers(guild_id)
+                
+                if not servers:
+                    await interaction.followup.send("❌ No hay servidores registrados. Contacta con un administrador.", ephemeral=True)
+                    return
+                
+                embed = discord.Embed(
+                    title="🎯 Selecciona un Servidor",
+                    description="Servidores disponibles para alertas:",
+                    color=discord.Color.blue()
+                )
+                
+                server_list = []
+                for server in servers[:10]:  # Mostrar máximo 10
+                    # Verificar si hay horarios configurados para este servidor
+                    schedules = await taxi_db.get_reset_schedules(server['server_name'])
+                    if schedules:
+                        status = "🔔 Con horarios configurados"
+                        schedule_count = len(schedules)
+                    else:
+                        status = "⚠️ Sin horarios configurados"
+                        schedule_count = 0
+                    
+                    server_list.append(f"**{server['server_name']}** - {status} ({schedule_count} horarios)")
+                
+                embed.add_field(
+                    name="📋 Servidores Disponibles",
+                    value="\n".join(server_list) if server_list else "No hay servidores disponibles",
+                    inline=False
+                )
+                
+                embed.add_field(
+                    name="💡 Cómo usar",
+                    value=f"Usa `/ba_reset_alerts` acción:`{action.name}` server_name:`NombreDelServidor`",
+                    inline=False
+                )
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+                
+            # Verificar que el servidor existe y tiene horarios
+            schedules = await taxi_db.get_reset_schedules(server_name)
+            if not schedules:
+                await interaction.followup.send(f"❌ El servidor **{server_name}** no tiene horarios de reinicio configurados. Contacta con un administrador.", ephemeral=True)
+                return
+            
+            if action.value == "subscribe":
+                # Detectar y actualizar timezone del usuario
+                from taxi_database import detect_user_timezone
+                user_timezone = detect_user_timezone(interaction)
+                await taxi_db.update_user_timezone(user_id, guild_id, user_timezone)
+                
+                # Suscribir al usuario
+                success = await taxi_db.subscribe_to_reset_alerts(user_id, guild_id, server_name, minutes_before)
+                
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Suscripción Exitosa",
+                        description=f"Te has suscrito a las alertas de reinicio de **{server_name}**",
+                        color=discord.Color.green()
+                    )
+                    embed.add_field(name="⏰ Tiempo de Alerta", value=f"{minutes_before} minutos antes", inline=True)
+                    embed.add_field(name="📅 Horarios Activos", value=f"{len(schedules)} horarios configurados", inline=True)
+                    embed.add_field(name="🌍 Tu Timezone", value=f"{user_timezone}", inline=True)
+                    
+                    # Mostrar los horarios convertidos al timezone del usuario
+                    schedule_info = []
+                    days_names = {1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 7: "Dom"}
+                    from taxi_database import convert_time_to_user_timezone
+                    
+                    for schedule in schedules[:5]:  # Mostrar máximo 5
+                        # Convertir tiempo al timezone del usuario
+                        original_time = schedule['reset_time']
+                        schedule_timezone = schedule['timezone']
+                        converted_time = convert_time_to_user_timezone(original_time, schedule_timezone, user_timezone)
+                        
+                        days_list = [int(d.strip()) for d in schedule['days_of_week'].split(',')]
+                        days_str = ", ".join([days_names[d] for d in sorted(days_list)])
+                        schedule_info.append(f"🕐 {converted_time} (tu hora local) - {days_str}")
+                    
+                    if schedule_info:
+                        embed.add_field(
+                            name="📋 Horarios de Reinicio (en tu zona horaria)",
+                            value="\n".join(schedule_info),
+                            inline=False
+                        )
+                    
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Error suscribiéndote a las alertas", ephemeral=True)
+                    
+            elif action.value == "unsubscribe":
+                # Desuscribir al usuario
+                success = await taxi_db.unsubscribe_from_reset_alerts(user_id, guild_id, server_name)
+                
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Desuscripción Exitosa",
+                        description=f"Te has desuscrito de las alertas de reinicio de **{server_name}**",
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(
+                        name="💡 Volver a suscribirte",
+                        value="Puedes volver a activar las alertas cuando quieras usando este mismo comando",
+                        inline=False
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Error desuscribiéndote de las alertas", ephemeral=True)
+                    
+        except Exception as e:
+            logger.error(f"Error gestionando alertas de reinicio: {e}")
+            await interaction.followup.send("❌ Error procesando el comando", ephemeral=True)
 
     async def notify_available_drivers(self, request_id: int, destination_zone: dict, cost: int):
         """Notificar a conductores disponibles sobre nueva solicitud"""

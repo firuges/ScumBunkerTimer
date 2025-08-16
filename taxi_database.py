@@ -14,6 +14,138 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+def detect_user_timezone(interaction=None) -> str:
+    """
+    Detectar el timezone del usuario basado en la información disponible.
+    
+    Para bot SCUM Uruguay, asumimos que la mayoría de usuarios están en Uruguay.
+    En el futuro se puede expandir con detección más sofisticada.
+    """
+    try:
+        # Para este bot específico de SCUM Uruguay, la mayoría de usuarios
+        # probablemente están en Uruguay o zona horaria similar
+        # Por simplicidad y exactitud, usamos America/Montevideo como default
+        # ya que los servidores están configurados en este timezone
+        
+        import datetime
+        
+        # Detectar offset de timezone local del sistema
+        local_time = datetime.datetime.now()
+        utc_time = datetime.datetime.utcnow()
+        offset_seconds = (local_time - utc_time).total_seconds()
+        offset_hours = int(offset_seconds // 3600)
+        
+        logger.info(f"Sistema detectado con offset: {offset_hours}h")
+        
+        # Para usuarios de SCUM Uruguay, lo más probable es que estén en:
+        # 1. Uruguay (America/Montevideo) - UTC-3
+        # 2. Argentina (America/Argentina/Buenos_Aires) - UTC-3  
+        # 3. Brasil (America/Sao_Paulo) - UTC-3
+        
+        # Mapeo mejorado con preferencia por zona Uruguay
+        timezone_map = {
+            -3: "America/Montevideo",  # Uruguay (principal)
+            -5: "America/New_York",    # US Eastern
+            -6: "America/Chicago",     # US Central  
+            -8: "America/Los_Angeles", # US Pacific
+            0: "UTC",                  # UTC
+            1: "Europe/Madrid",        # España, Alemania
+        }
+        
+        # Si encontramos un timezone conocido, usarlo
+        if offset_hours in timezone_map:
+            detected_tz = timezone_map[offset_hours]
+            logger.info(f"Timezone detectado para usuario: {detected_tz} (offset: {offset_hours}h)")
+            return detected_tz
+        
+        # Si no coincide con ningún offset conocido, pero estamos en bot Uruguay,
+        # asumir que es Uruguay (la mayoría de usuarios)
+        logger.info(f"Offset desconocido ({offset_hours}h), asumiendo Uruguay para bot SCUM")
+        return "America/Montevideo"
+        
+    except Exception as e:
+        logger.warning(f"Error detectando timezone: {e}, usando Uruguay por defecto")
+        return "America/Montevideo"
+
+def convert_time_to_user_timezone(time_str: str, from_timezone: str, to_timezone: str) -> str:
+    """
+    Convertir un tiempo de un timezone a otro timezone del usuario.
+    
+    Args:
+        time_str: Tiempo en formato HH:MM
+        from_timezone: Timezone origen (ej: "UTC", "America/Montevideo")
+        to_timezone: Timezone destino del usuario
+    
+    Returns:
+        Tiempo convertido en formato HH:MM con info del timezone
+    """
+    try:
+        # Si ambos timezones son iguales, no hay necesidad de conversión
+        if from_timezone == to_timezone:
+            return time_str
+        from zoneinfo import ZoneInfo
+        from datetime import datetime, time
+        
+        # Parsear el tiempo
+        hour, minute = map(int, time_str.split(':'))
+        
+        # Crear datetime de hoy con el tiempo especificado en el timezone origen
+        today = datetime.now().date()
+        dt_origin = datetime.combine(today, time(hour, minute))
+        dt_origin = dt_origin.replace(tzinfo=ZoneInfo(from_timezone))
+        
+        # Convertir al timezone del usuario
+        dt_user = dt_origin.astimezone(ZoneInfo(to_timezone))
+        
+        # Formatear resultado
+        user_time = dt_user.strftime("%H:%M")
+        
+        # Agregar info adicional si es diferente día
+        if dt_user.date() != dt_origin.date():
+            if dt_user.date() > dt_origin.date():
+                day_info = " (+1 día)"
+            else:
+                day_info = " (-1 día)"
+            return f"{user_time}{day_info}"
+        else:
+            return user_time
+            
+    except ImportError:
+        # Fallback si zoneinfo no está disponible (Python < 3.9)
+        try:
+            import pytz
+            from datetime import datetime, time
+            
+            hour, minute = map(int, time_str.split(':'))
+            today = datetime.now().date()
+            
+            # Crear datetime en timezone origen
+            origin_tz = pytz.timezone(from_timezone)
+            dt_origin = origin_tz.localize(datetime.combine(today, time(hour, minute)))
+            
+            # Convertir al timezone del usuario
+            user_tz = pytz.timezone(to_timezone)
+            dt_user = dt_origin.astimezone(user_tz)
+            
+            user_time = dt_user.strftime("%H:%M")
+            
+            if dt_user.date() != dt_origin.date():
+                if dt_user.date() > dt_origin.date():
+                    day_info = " (+1 día)"
+                else:
+                    day_info = " (-1 día)"
+                return f"{user_time}{day_info}"
+            else:
+                return user_time
+                
+        except ImportError:
+            # Si no hay pytz tampoco, retornar el tiempo original
+            logger.warning("No se pudo convertir timezone: zoneinfo y pytz no disponibles")
+            return f"{time_str} ({from_timezone})"
+    except Exception as e:
+        logger.error(f"Error convirtiendo timezone: {e}")
+        return f"{time_str} ({from_timezone})"
+
 class TaxiDatabase:
     def __init__(self, db_path: str = "taxi_system.db"):
         self.db_path = db_path
@@ -152,6 +284,61 @@ class TaxiDatabase:
                 )
             """)
             
+            # === DAILY REWARDS ===
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS daily_rewards (
+                    reward_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    amount DECIMAL(10,2) DEFAULT 250.00,
+                    claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            # === SHOP SYSTEM ===
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS shop_purchases (
+                    purchase_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    pack_id TEXT NOT NULL,
+                    tier TEXT NOT NULL,
+                    amount_paid DECIMAL(10,2),
+                    payment_method TEXT DEFAULT 'money', -- 'money' or 'items'
+                    payment_details TEXT, -- JSON string for alternative payments
+                    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'pending', -- 'pending', 'delivered', 'cancelled'
+                    delivered_at TIMESTAMP NULL,
+                    delivered_by TEXT NULL, -- Discord ID del admin que entregó
+                    guild_id TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS shop_stock (
+                    stock_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pack_id TEXT NOT NULL,
+                    tier TEXT NOT NULL,
+                    current_stock INTEGER DEFAULT 0,
+                    max_stock INTEGER DEFAULT 5,
+                    last_restock TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    next_restock TIMESTAMP,
+                    UNIQUE(pack_id, tier)
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS shop_cooldowns (
+                    cooldown_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    tier TEXT NOT NULL,
+                    last_purchase TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    next_available TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE,
+                    UNIQUE(user_id, tier)
+                )
+            """)
+            
             # === CONFIGURACIÓN ===
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS taxi_config (
@@ -213,12 +400,94 @@ class TaxiDatabase:
             except Exception as e:
                 logger.warning(f"No se pudo agregar columna updated_at: {e}")
             
+            # Migración para shop_purchases - agregar columnas de entrega
+            try:
+                cursor = await db.execute("PRAGMA table_info(shop_purchases)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'delivered_at' not in column_names:
+                    await db.execute("ALTER TABLE shop_purchases ADD COLUMN delivered_at TIMESTAMP NULL")
+                    logger.info("✅ Columna delivered_at agregada a shop_purchases")
+                
+                if 'delivered_by' not in column_names:
+                    await db.execute("ALTER TABLE shop_purchases ADD COLUMN delivered_by TEXT NULL")
+                    logger.info("✅ Columna delivered_by agregada a shop_purchases")
+                    
+                if 'guild_id' not in column_names:
+                    await db.execute("ALTER TABLE shop_purchases ADD COLUMN guild_id TEXT NOT NULL DEFAULT ''")
+                    logger.info("✅ Columna guild_id agregada a shop_purchases")
+                
+                # Actualizar status por defecto para compras existentes
+                await db.execute("UPDATE shop_purchases SET status = 'pending' WHERE status = 'completed'")
+                logger.info("✅ Status de compras existentes actualizado a 'pending'")
+                
+            except Exception as e:
+                logger.warning(f"Error en migración de shop_purchases: {e}")
+            
+            # Migración para taxi_users - agregar columna timezone
+            try:
+                cursor = await db.execute("PRAGMA table_info(taxi_users)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'timezone' not in column_names:
+                    await db.execute("ALTER TABLE taxi_users ADD COLUMN timezone TEXT DEFAULT 'UTC'")
+                    logger.info("✅ Columna timezone agregada a taxi_users")
+                
+            except Exception as e:
+                logger.warning(f"Error en migración de timezone en taxi_users: {e}")
+            
+            # === TABLAS DEL SISTEMA DE ALERTAS DE REINICIO ===
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS reset_schedules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    server_name TEXT NOT NULL,
+                    reset_time TEXT NOT NULL,  -- Formato HH:MM
+                    timezone TEXT DEFAULT 'UTC',
+                    days_of_week TEXT DEFAULT '1,2,3,4,5,6,7',  -- 1=Lunes, 7=Domingo
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_by TEXT NOT NULL,
+                    active BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (server_name) REFERENCES servers(server_name)
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_reset_alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    server_name TEXT NOT NULL,
+                    alert_enabled BOOLEAN DEFAULT 1,
+                    minutes_before INTEGER DEFAULT 15,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, guild_id, server_name),
+                    FOREIGN KEY (server_name) REFERENCES servers(server_name)
+                )
+            """)
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS reset_alert_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    server_name TEXT NOT NULL,
+                    schedule_id INTEGER NOT NULL,
+                    alert_date TEXT NOT NULL,  -- Format YYYY-MM-DD
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, guild_id, server_name, schedule_id, alert_date)
+                )
+            """)
+            
+            logger.info("✅ Tablas del sistema de alertas de reinicio creadas")
+            
             await db.commit()
             logger.info("✅ Base de datos del sistema de taxi inicializada")
 
     # === GESTIÓN DE USUARIOS ===
     
-    async def register_user(self, discord_id: str, guild_id: str, username: str, display_name: str = None) -> Tuple[bool, Dict]:
+    async def register_user(self, discord_id: str, guild_id: str, username: str, display_name: str = None, timezone: str = None) -> Tuple[bool, Dict]:
         """Registrar nuevo usuario con welcome pack"""
         async with aiosqlite.connect(self.db_path) as db:
             try:
@@ -232,11 +501,15 @@ class TaxiDatabase:
                 if existing:
                     return False, {"error": "Usuario ya registrado"}
                 
+                # Detectar timezone si no se proporciona
+                if timezone is None:
+                    timezone = detect_user_timezone()
+                
                 # Registrar usuario
                 cursor = await db.execute("""
-                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed)
-                    VALUES (?, ?, ?, ?, TRUE)
-                """, (discord_id, guild_id, username, display_name))
+                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed, timezone)
+                    VALUES (?, ?, ?, ?, TRUE, ?)
+                """, (discord_id, guild_id, username, display_name, timezone))
                 
                 user_id = cursor.lastrowid
                 
@@ -318,9 +591,114 @@ class TaxiDatabase:
                 "status": row[7],
                 "welcome_pack_claimed": bool(row[8]),
                 "created_at": row[9],
-                "account_number": row[10],
-                "balance": float(row[11]) if row[11] else 0.0
+                "timezone": row[10] if len(row) > 10 and row[10] else "UTC",
+                "account_number": row[11] if len(row) > 11 else None,
+                "balance": float(row[12]) if len(row) > 12 and row[12] else 0.0
             }
+
+    async def update_user_timezone(self, discord_id: str, guild_id: str, timezone: str) -> bool:
+        """Actualizar el timezone de un usuario"""
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cursor = await db.execute("""
+                    UPDATE taxi_users 
+                    SET timezone = ? 
+                    WHERE discord_id = ? AND discord_guild_id = ?
+                """, (timezone, discord_id, guild_id))
+                
+                await db.commit()
+                return cursor.rowcount > 0
+                
+            except Exception as e:
+                logger.error(f"Error actualizando timezone de usuario: {e}")
+                return False
+
+    async def save_channel_config(self, guild_id: str, channel_type: str, channel_id: str, updated_by: str = None) -> bool:
+        """Guardar configuración de canal en base de datos"""
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cursor = await db.execute("""
+                    INSERT OR REPLACE INTO channel_config (guild_id, channel_type, channel_id, updated_by)
+                    VALUES (?, ?, ?, ?)
+                """, (guild_id, channel_type, channel_id, updated_by))
+                
+                await db.commit()
+                logger.info(f"Configuración de canal guardada: {channel_type} en guild {guild_id}")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error guardando configuración de canal: {e}")
+                return False
+
+    async def get_channel_config(self, guild_id: str, channel_type: str = None) -> dict:
+        """Obtener configuración de canales de la base de datos"""
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                if channel_type:
+                    # Obtener configuración específica
+                    cursor = await db.execute("""
+                        SELECT channel_type, channel_id, updated_at, updated_by 
+                        FROM channel_config 
+                        WHERE guild_id = ? AND channel_type = ?
+                    """, (guild_id, channel_type))
+                    row = await cursor.fetchone()
+                    
+                    if row:
+                        return {
+                            "channel_type": row[0],
+                            "channel_id": row[1],
+                            "updated_at": row[2],
+                            "updated_by": row[3]
+                        }
+                    return {}
+                else:
+                    # Obtener todas las configuraciones del guild
+                    cursor = await db.execute("""
+                        SELECT channel_type, channel_id, updated_at, updated_by 
+                        FROM channel_config 
+                        WHERE guild_id = ?
+                    """, (guild_id,))
+                    rows = await cursor.fetchall()
+                    
+                    configs = {}
+                    for row in rows:
+                        configs[row[0]] = {
+                            "channel_id": row[1],
+                            "updated_at": row[2],
+                            "updated_by": row[3]
+                        }
+                    return configs
+                
+            except Exception as e:
+                logger.error(f"Error obteniendo configuración de canales: {e}")
+                return {}
+
+    async def load_all_channel_configs(self) -> dict:
+        """Cargar todas las configuraciones de canales al iniciar el bot"""
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cursor = await db.execute("""
+                    SELECT guild_id, channel_type, channel_id 
+                    FROM channel_config
+                """)
+                rows = await cursor.fetchall()
+                
+                configs = {}
+                for row in rows:
+                    guild_id = row[0]
+                    channel_type = row[1]
+                    channel_id = int(row[2])
+                    
+                    if guild_id not in configs:
+                        configs[guild_id] = {}
+                    configs[guild_id][channel_type] = channel_id
+                
+                logger.info(f"Cargadas configuraciones de canales para {len(configs)} guilds")
+                return configs
+                
+            except Exception as e:
+                logger.error(f"Error cargando configuraciones de canales: {e}")
+                return {}
 
     # === SISTEMA BANCARIO ===
     
@@ -1030,6 +1408,574 @@ class TaxiDatabase:
             except Exception as e:
                 logger.error(f"❌ Error actualizando estado del conductor: {e}")
                 return False, f"Error actualizando estado: {str(e)}"
+
+    async def get_last_daily_claim(self, user_id: int) -> str:
+        """Obtener la fecha del último canje diario del usuario"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT claimed_at FROM daily_rewards 
+                    WHERE user_id = ? 
+                    ORDER BY claimed_at DESC 
+                    LIMIT 1
+                """, (user_id,))
+                
+                result = await cursor.fetchone()
+                return result[0] if result else None
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo último canje diario: {e}")
+            return None
+
+    async def add_daily_reward(self, user_id: int, amount: float = 250.0) -> bool:
+        """Agregar recompensa diaria al usuario"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Registrar la recompensa
+                await db.execute("""
+                    INSERT INTO daily_rewards (user_id, amount)
+                    VALUES (?, ?)
+                """, (user_id, amount))
+                
+                # Actualizar el balance del usuario
+                await db.execute("""
+                    UPDATE bank_accounts 
+                    SET balance = balance + ?, last_transaction = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                """, (amount, user_id))
+                
+                # También actualizar last_active en taxi_users
+                await db.execute("""
+                    UPDATE taxi_users 
+                    SET last_active = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                """, (user_id,))
+                
+                await db.commit()
+                logger.info(f"✅ Recompensa diaria de ${amount} agregada al usuario {user_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error agregando recompensa diaria: {e}")
+            return False
+
+    async def get_pack_stock(self, pack_id: str, tier: str, guild_id: str) -> int:
+        """Obtener stock disponible de un pack en el servidor"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT current_stock FROM shop_stock 
+                    WHERE pack_id = ? AND tier = ?
+                """, (pack_id, tier))
+                
+                result = await cursor.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    # Si no existe entrada, inicializar con stock por defecto
+                    from shop_config import SHOP_PACKS
+                    default_stock = SHOP_PACKS.get(tier, {}).get(pack_id, {}).get('stock', 5)
+                    
+                    await db.execute("""
+                        INSERT INTO shop_stock (pack_id, tier, current_stock, max_stock)
+                        VALUES (?, ?, ?, ?)
+                    """, (pack_id, tier, default_stock, default_stock))
+                    await db.commit()
+                    return default_stock
+                    
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo stock del pack: {e}")
+            return 0
+
+    async def check_tier_cooldown(self, user_id: int, tier: str) -> tuple[bool, str]:
+        """Verificar si el usuario puede comprar en este tier"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT next_available FROM shop_cooldowns 
+                    WHERE user_id = ? AND tier = ?
+                """, (user_id, tier))
+                
+                result = await cursor.fetchone()
+                if not result:
+                    # Primera compra, sin cooldown
+                    return True, ""
+                
+                from datetime import datetime
+                next_available = datetime.fromisoformat(result[0])
+                now = datetime.now()
+                
+                if now >= next_available:
+                    return True, ""
+                else:
+                    # En cooldown
+                    timestamp = int(next_available.timestamp())
+                    return False, f"<t:{timestamp}:R>"
+                    
+        except Exception as e:
+            logger.error(f"❌ Error verificando cooldown: {e}")
+            return False, "Error del sistema"
+
+    async def process_pack_purchase(self, user_id: int, pack_id: str, tier: str, price: float, guild_id: str) -> bool:
+        """Procesar la compra completa de un pack"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Verificar stock una vez más (race condition protection)
+                cursor = await db.execute("""
+                    SELECT current_stock FROM shop_stock 
+                    WHERE pack_id = ? AND tier = ?
+                """, (pack_id, tier))
+                
+                result = await cursor.fetchone()
+                if not result or result[0] <= 0:
+                    return False
+                
+                # Verificar saldo del usuario una vez más
+                cursor = await db.execute("""
+                    SELECT ba.balance 
+                    FROM taxi_users tu
+                    LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
+                    WHERE tu.user_id = ?
+                """, (user_id,))
+                
+                user_result = await cursor.fetchone()
+                if not user_result or not user_result[0] or user_result[0] < price:
+                    return False
+                
+                # === TRANSACCIÓN ATÓMICA ===
+                
+                # 1. Debitar dinero del usuario
+                await db.execute("""
+                    UPDATE bank_accounts 
+                    SET balance = balance - ?, last_transaction = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                """, (price, user_id))
+                
+                # También actualizar last_active en taxi_users
+                await db.execute("""
+                    UPDATE taxi_users 
+                    SET last_active = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                """, (user_id,))
+                
+                # 2. Reducir stock
+                # Primero verificar que la entrada existe
+                cursor = await db.execute("""
+                    SELECT current_stock FROM shop_stock 
+                    WHERE pack_id = ? AND tier = ?
+                """, (pack_id, tier))
+                
+                existing_stock = await cursor.fetchone()
+                if not existing_stock:
+                    # La entrada no existe, inicializarla primero
+                    from shop_config import SHOP_PACKS
+                    default_stock = SHOP_PACKS.get(tier, {}).get(pack_id, {}).get('stock', 5)
+                    
+                    await db.execute("""
+                        INSERT INTO shop_stock (pack_id, tier, current_stock, max_stock)
+                        VALUES (?, ?, ?, ?)
+                    """, (pack_id, tier, default_stock, default_stock))
+                    logger.info(f"✅ Stock inicializado para {pack_id} ({tier}): {default_stock}")
+                
+                # Ahora reducir stock
+                rows_affected = await db.execute("""
+                    UPDATE shop_stock 
+                    SET current_stock = current_stock - 1
+                    WHERE pack_id = ? AND tier = ?
+                """, (pack_id, tier))
+                
+                # Verificar que se actualizó
+                cursor = await db.execute("""
+                    SELECT current_stock FROM shop_stock 
+                    WHERE pack_id = ? AND tier = ?
+                """, (pack_id, tier))
+                
+                new_stock = await cursor.fetchone()
+                logger.info(f"✅ Stock actualizado para {pack_id} ({tier}): {new_stock[0] if new_stock else 'ERROR'}")
+                
+                # 3. Registrar la compra
+                cursor = await db.execute("""
+                    INSERT INTO shop_purchases 
+                    (user_id, pack_id, tier, amount_paid, payment_method, purchased_at, status, guild_id)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
+                """, (user_id, pack_id, tier, price, 'money', 'pending', guild_id))
+                
+                purchase_id = cursor.lastrowid
+                
+                # 4. Actualizar/crear cooldown
+                from datetime import datetime, timedelta
+                from shop_config import TIER_CONFIG
+                
+                cooldown_days = TIER_CONFIG[tier]['cooldown_days']
+                next_available = datetime.now() + timedelta(days=cooldown_days)
+                
+                await db.execute("""
+                    INSERT OR REPLACE INTO shop_cooldowns 
+                    (user_id, tier, last_purchase, next_available)
+                    VALUES (?, ?, CURRENT_TIMESTAMP, ?)
+                """, (user_id, tier, next_available.isoformat()))
+                
+                await db.commit()
+                logger.info(f"✅ Compra procesada exitosamente: Usuario {user_id}, Pack {pack_id}, Precio ${price}")
+                return purchase_id
+                
+        except Exception as e:
+            logger.error(f"❌ Error procesando compra del pack: {e}")
+            return False
+
+    async def initialize_shop_stock(self, guild_id: str):
+        """Inicializar stock de la tienda para un servidor"""
+        try:
+            from shop_config import SHOP_PACKS
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                for tier, packs in SHOP_PACKS.items():
+                    for pack_id, pack_data in packs.items():
+                        # Verificar si ya existe
+                        cursor = await db.execute("""
+                            SELECT stock_id FROM shop_stock 
+                            WHERE pack_id = ? AND tier = ?
+                        """, (pack_id, tier))
+                        
+                        if not await cursor.fetchone():
+                            # No existe, crear entrada
+                            stock = pack_data.get('stock', 5)
+                            await db.execute("""
+                                INSERT INTO shop_stock 
+                                (pack_id, tier, current_stock, max_stock)
+                                VALUES (?, ?, ?, ?)
+                            """, (pack_id, tier, stock, stock))
+                
+                await db.commit()
+                logger.info(f"✅ Stock de tienda inicializado para servidor {guild_id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Error inicializando stock de tienda: {e}")
+
+    async def get_all_shop_stock(self) -> list:
+        """Obtener todo el stock actual para debugging"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT pack_id, tier, current_stock, max_stock 
+                    FROM shop_stock 
+                    ORDER BY tier, pack_id
+                """)
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'pack_id': row[0],
+                        'tier': row[1], 
+                        'current_stock': row[2],
+                        'max_stock': row[3]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo stock completo: {e}")
+            return []
+
+    async def mark_package_delivered(self, purchase_id: int, admin_discord_id: str) -> bool:
+        """Marcar un paquete como entregado"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    UPDATE shop_purchases 
+                    SET status = 'delivered', 
+                        delivered_at = CURRENT_TIMESTAMP,
+                        delivered_by = ?
+                    WHERE purchase_id = ?
+                """, (admin_discord_id, purchase_id))
+                
+                await db.commit()
+                logger.info(f"✅ Paquete {purchase_id} marcado como entregado por {admin_discord_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error marcando paquete como entregado: {e}")
+            return False
+
+    async def get_pending_packages(self, guild_id: str) -> list:
+        """Obtener lista de paquetes pendientes de entrega"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT sp.purchase_id, sp.pack_id, sp.tier, sp.amount_paid, 
+                           sp.purchased_at, tu.discord_id, tu.display_name
+                    FROM shop_purchases sp
+                    JOIN taxi_users tu ON sp.user_id = tu.user_id
+                    WHERE sp.status = 'pending' AND sp.guild_id = ?
+                    ORDER BY sp.purchased_at ASC
+                """, (guild_id,))
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'purchase_id': row[0],
+                        'pack_id': row[1],
+                        'tier': row[2],
+                        'amount_paid': row[3],
+                        'purchased_at': row[4],
+                        'user_discord_id': row[5],
+                        'user_display_name': row[6]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo paquetes pendientes: {e}")
+            return []
+
+    async def get_purchase_details(self, purchase_id: int) -> dict:
+        """Obtener detalles de una compra específica"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT sp.*, tu.discord_id, tu.display_name
+                    FROM shop_purchases sp
+                    JOIN taxi_users tu ON sp.user_id = tu.user_id
+                    WHERE sp.purchase_id = ?
+                """, (purchase_id,))
+                
+                row = await cursor.fetchone()
+                if not row:
+                    return None
+                
+                return {
+                    'purchase_id': row[0],
+                    'user_id': row[1], 
+                    'pack_id': row[2],
+                    'tier': row[3],
+                    'amount_paid': row[4],
+                    'payment_method': row[5],
+                    'payment_details': row[6],
+                    'purchased_at': row[7],
+                    'status': row[8],
+                    'delivered_at': row[9],
+                    'delivered_by': row[10],
+                    'guild_id': row[11],
+                    'user_discord_id': row[12],
+                    'user_display_name': row[13]
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo detalles de compra: {e}")
+            return None
+
+    # === SISTEMA DE ALERTAS DE REINICIO ===
+    
+    async def add_reset_schedule(self, server_name: str, reset_time: str, admin_id: str, 
+                               timezone: str = 'UTC', days_of_week: str = '1,2,3,4,5,6,7') -> bool:
+        """Agregar un horario de reinicio para un servidor"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT INTO reset_schedules (server_name, reset_time, timezone, days_of_week, created_by)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (server_name, reset_time, timezone, days_of_week, admin_id))
+                
+                await db.commit()
+                logger.info(f"✅ Horario de reinicio agregado para {server_name}: {reset_time}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error agregando horario de reinicio: {e}")
+            return False
+
+    async def remove_reset_schedule(self, schedule_id: int) -> bool:
+        """Eliminar un horario de reinicio"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM reset_schedules WHERE id = ?", (schedule_id,))
+                await db.commit()
+                logger.info(f"✅ Horario de reinicio {schedule_id} eliminado")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error eliminando horario de reinicio: {e}")
+            return False
+
+    async def get_reset_schedules(self, server_name: str = None) -> list:
+        """Obtener horarios de reinicio"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                if server_name:
+                    cursor = await db.execute("""
+                        SELECT id, server_name, reset_time, timezone, days_of_week, created_at, created_by, active
+                        FROM reset_schedules 
+                        WHERE server_name = ? AND active = 1
+                        ORDER BY reset_time
+                    """, (server_name,))
+                else:
+                    cursor = await db.execute("""
+                        SELECT id, server_name, reset_time, timezone, days_of_week, created_at, created_by, active
+                        FROM reset_schedules 
+                        WHERE active = 1
+                        ORDER BY server_name, reset_time
+                    """)
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'id': row[0],
+                        'server_name': row[1],
+                        'reset_time': row[2],
+                        'timezone': row[3],
+                        'days_of_week': row[4],
+                        'created_at': row[5],
+                        'created_by': row[6],
+                        'active': row[7]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo horarios de reinicio: {e}")
+            return []
+
+    async def subscribe_to_reset_alerts(self, user_id: str, guild_id: str, server_name: str, 
+                                      minutes_before: int = 15) -> bool:
+        """Suscribir usuario a alertas de reinicio"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT OR REPLACE INTO user_reset_alerts 
+                    (user_id, guild_id, server_name, alert_enabled, minutes_before)
+                    VALUES (?, ?, ?, 1, ?)
+                """, (user_id, guild_id, server_name, minutes_before))
+                
+                await db.commit()
+                logger.info(f"✅ Usuario {user_id} suscrito a alertas de {server_name}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error suscribiendo a alertas: {e}")
+            return False
+
+    async def unsubscribe_from_reset_alerts(self, user_id: str, guild_id: str, server_name: str) -> bool:
+        """Desuscribir usuario de alertas de reinicio"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    UPDATE user_reset_alerts 
+                    SET alert_enabled = 0
+                    WHERE user_id = ? AND guild_id = ? AND server_name = ?
+                """, (user_id, guild_id, server_name))
+                
+                await db.commit()
+                logger.info(f"✅ Usuario {user_id} desuscrito de alertas de {server_name}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error desuscribiendo de alertas: {e}")
+            return False
+
+    async def get_users_for_reset_alert(self, server_name: str) -> list:
+        """Obtener usuarios suscritos a alertas de un servidor específico"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT user_id, guild_id, minutes_before
+                    FROM user_reset_alerts 
+                    WHERE server_name = ? AND alert_enabled = 1
+                """, (server_name,))
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'user_id': row[0],
+                        'guild_id': row[1],
+                        'minutes_before': row[2]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo usuarios para alertas: {e}")
+            return []
+
+    async def get_user_reset_subscriptions(self, user_id: str, guild_id: str) -> list:
+        """Obtener suscripciones de alertas de un usuario"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT server_name, alert_enabled, minutes_before, created_at
+                    FROM user_reset_alerts 
+                    WHERE user_id = ? AND guild_id = ?
+                """, (user_id, guild_id))
+                
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        'server_name': row[0],
+                        'alert_enabled': row[1],
+                        'minutes_before': row[2],
+                        'created_at': row[3]
+                    }
+                    for row in rows
+                ]
+                
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo suscripciones del usuario: {e}")
+            return []
+
+    async def check_alert_already_sent(self, user_id: str, guild_id: str, server_name: str, 
+                                     schedule_id: int, alert_date: str) -> bool:
+        """Verificar si ya se envió una alerta para este día"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM reset_alert_cache 
+                    WHERE user_id = ? AND guild_id = ? AND server_name = ? 
+                    AND schedule_id = ? AND alert_date = ?
+                """, (user_id, guild_id, server_name, schedule_id, alert_date))
+                
+                count = await cursor.fetchone()
+                return count[0] > 0
+                
+        except Exception as e:
+            logger.error(f"❌ Error verificando caché de alerta: {e}")
+            return False
+
+    async def mark_alert_sent(self, user_id: str, guild_id: str, server_name: str, 
+                            schedule_id: int, alert_date: str) -> bool:
+        """Marcar alerta como enviada en el caché"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT OR IGNORE INTO reset_alert_cache 
+                    (user_id, guild_id, server_name, schedule_id, alert_date)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (user_id, guild_id, server_name, schedule_id, alert_date))
+                
+                await db.commit()
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error marcando alerta como enviada: {e}")
+            return False
+
+    async def cleanup_old_alert_cache(self, days_old: int = 7) -> bool:
+        """Limpiar caché de alertas antiguas"""
+        try:
+            from datetime import datetime, timedelta
+            cutoff_date = (datetime.now() - timedelta(days=days_old)).strftime('%Y-%m-%d')
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    DELETE FROM reset_alert_cache 
+                    WHERE alert_date < ?
+                """, (cutoff_date,))
+                
+                await db.commit()
+                logger.info(f"✅ Caché de alertas limpiado (eliminadas alertas anteriores a {cutoff_date})")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error limpiando caché de alertas: {e}")
+            return False
 
 # Instancia global
 taxi_db = TaxiDatabase()

@@ -92,6 +92,16 @@ class BunkerBotV2(commands.Bot):
             await self.load_extension('taxi_admin')  # ✅ Rehabilitado con migración completa
             logger.info("✅ Sistema de taxi - Extensiones principales cargadas")
             
+            # Registrar vistas persistentes para el sistema de shop
+            try:
+                from taxi_admin import DeliveryConfirmationView, PersistentDeliveryView
+                
+                # Registrar una vista general para todos los botones de entrega
+                self.add_view(PersistentDeliveryView())
+                logger.info("✅ Vista persistente de confirmación de entrega registrada")
+            except Exception as view_error:
+                logger.error(f"❌ Error registrando vistas persistentes: {view_error}")
+            
         except Exception as e:
                 logger.error(f"❌ Error inicializando sistema de taxi: {e}")
         
@@ -103,7 +113,13 @@ class BunkerBotV2(commands.Bot):
         await self.load_extension('server_commands')
         logger.info("Comandos de monitoreo de servidores cargados")
         
+        # Cargar cog de comandos de alertas de reinicio
+        await self.load_extension('reset_alerts_admin')
+        logger.info("Comandos administrativos de alertas de reinicio cargados")
+        
         self.notification_task.start()
+        self.reset_alerts_task.start()
+        self.cleanup_task.start()
         
         # NO sincronizar aquí - se hace en on_ready después de que todos los comandos estén registrados
 
@@ -166,6 +182,219 @@ class BunkerBotV2(commands.Bot):
             logger.info("Sistema de estado del bot inicializado")
         except Exception as e:
             logger.error(f"Error inicializando sistema de estado: {e}")
+            
+        # Cargar configuraciones de canales para todos los sistemas
+        try:
+            logger.info("Cargando configuraciones de canales desde base de datos...")
+            
+            # Cargar configuraciones de taxi
+            taxi_cog = self.get_cog('TaxiSystem')
+            if taxi_cog:
+                await taxi_cog.load_channel_configs()
+            
+            # Cargar configuraciones de banking
+            banking_cog = self.get_cog('BankingSystem')
+            if banking_cog:
+                await banking_cog.load_channel_configs()
+            
+            # Cargar configuraciones de welcome
+            welcome_cog = self.get_cog('WelcomePackSystem')
+            if welcome_cog:
+                await welcome_cog.load_channel_configs()
+            
+            # Cargar configuraciones de shop (no tiene cog dedicado)
+            await self._load_shop_configs()
+            
+            logger.info("✅ Todas las configuraciones de canales cargadas exitosamente")
+            
+            # Enviar notificación de startup a canales de estado
+            if hasattr(self, 'status_system') and self.status_system:
+                try:
+                    await self.status_system.send_startup_notification()
+                    logger.info("✅ Notificaciones de startup enviadas a canales de estado")
+                except Exception as e:
+                    logger.error(f"Error enviando notificación de startup: {e}")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones de canales: {e}")
+    
+    async def on_disconnect(self):
+        """Evento cuando el bot se desconecta"""
+        logger.warning("Bot desconectado de Discord")
+        
+        # Enviar notificaciones de apagado a canales de estado
+        if hasattr(self, 'status_system') and self.status_system:
+            try:
+                await self.status_system.send_shutdown_notification()
+            except Exception as e:
+                logger.error(f"Error enviando notificación de apagado: {e}")
+    
+    async def close(self):
+        """Evento cuando el bot se cierra completamente"""
+        logger.info("Cerrando bot...")
+        
+        # Enviar notificaciones de apagado antes de cerrar
+        if hasattr(self, 'status_system') and self.status_system:
+            try:
+                await self.status_system.send_shutdown_notification()
+            except Exception as e:
+                logger.error(f"Error enviando notificación de cierre: {e}")
+        
+        # Llamar al close original
+        await super().close()
+    
+    async def _load_shop_configs(self):
+        """Cargar configuraciones de shop y recrear paneles"""
+        try:
+            from taxi_database import taxi_db
+            configs = await taxi_db.load_all_channel_configs()
+            
+            shop_panels_recreated = 0
+            
+            for guild_id, channels in configs.items():
+                guild_id_int = int(guild_id)
+                
+                # Recrear panel de shop
+                if "shop" in channels:
+                    channel_id = channels["shop"]
+                    await self._recreate_shop_panel(guild_id_int, channel_id)
+                    shop_panels_recreated += 1
+                
+                # Recrear panel de shop_claimer
+                if "shop_claimer" in channels:
+                    channel_id = channels["shop_claimer"]
+                    await self._recreate_shop_claimer_panel(guild_id_int, channel_id)
+                
+                # Cargar configuraciones de status channels
+                if "status" in channels:
+                    channel_id = int(channels["status"])
+                    if hasattr(self, 'status_system'):
+                        self.status_system.status_channel_id = channel_id
+                        await self.status_system.setup_status_channel(channel_id)
+                        logger.info(f"Status channel {channel_id} cargado para guild {guild_id}")
+                
+                if "public_status" in channels:
+                    channel_id = int(channels["public_status"])
+                    if hasattr(self, 'status_system'):
+                        self.status_system.public_status_channel_id = channel_id
+                        await self.status_system.setup_public_status_channel(channel_id)
+                        logger.info(f"Public status channel {channel_id} cargado para guild {guild_id}")
+            
+            logger.info(f"Sistema de shop: {shop_panels_recreated} paneles recreados")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones de shop: {e}")
+    
+    async def _recreate_shop_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel de shop en un canal específico"""
+        try:
+            channel = self.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal de shop {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot (solo los más recientes)
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.user and message.embeds:
+                        # Solo eliminar si es un embed del sistema de shop
+                        for embed in message.embeds:
+                            if embed.title and ("Tienda" in embed.title or "Shop" in embed.title):
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles de shop anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes de shop anteriores: {cleanup_e}")
+            
+            # Crear embed de shop
+            try:
+                from taxi_admin import ShopSystemView
+                
+                shop_embed = discord.Embed(
+                    title="🛒 Tienda de Supervivencia SCUM",
+                    description="¡Intercambia tus recursos por equipamiento de supervivencia de alta gama!\n\nSelecciona tu tier para ver los packs disponibles.",
+                    color=discord.Color.gold()
+                )
+                
+                shop_embed.add_field(
+                    name="🎯 Tiers Disponibles:",
+                    value="🥉 **Tier 1** - Packs básicos de supervivencia\n🥈 **Tier 2** - Equipment intermedio\n🥇 **Tier 3** - Gear profesional y armas",
+                    inline=False
+                )
+                
+                shop_embed.add_field(
+                    name="💡 Cómo Funciona:",
+                    value="1️⃣ Selecciona tu tier\n2️⃣ Elige el pack que necesitas\n3️⃣ Confirma tu compra\n4️⃣ ¡Espera la entrega en el juego!",
+                    inline=False
+                )
+                
+                shop_view = ShopSystemView()
+                await channel.send(embed=shop_embed, view=shop_view)
+                logger.info(f"Panel de shop recreado exitosamente en canal {channel_id}")
+                
+            except ImportError:
+                # Si no se puede importar ShopSystemView, crear panel básico
+                shop_embed = discord.Embed(
+                    title="🛒 Tienda de Supervivencia SCUM",
+                    description="Sistema de tienda temporalmente en mantenimiento.",
+                    color=discord.Color.gold()
+                )
+                await channel.send(embed=shop_embed)
+                logger.warning(f"Panel de shop recreado sin botones en canal {channel_id}")
+                
+        except Exception as e:
+            logger.error(f"Error recreando panel de shop para canal {channel_id}: {e}")
+    
+    async def _recreate_shop_claimer_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel de shop_claimer en un canal específico"""
+        try:
+            channel = self.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal de shop_claimer {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.user and message.embeds:
+                        for embed in message.embeds:
+                            if embed.title and ("Claimer" in embed.title or "Notificaciones" in embed.title):
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles de shop_claimer anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes de shop_claimer anteriores: {cleanup_e}")
+            
+            # Crear embed de shop_claimer
+            claimer_embed = discord.Embed(
+                title="🔔 Canal de Notificaciones de Compras",
+                description="Este canal recibe automáticamente las notificaciones de todas las compras realizadas en la tienda.",
+                color=discord.Color.orange()
+            )
+            
+            claimer_embed.add_field(
+                name="📋 Información Incluida:",
+                value="• **Usuario** que realizó la compra\n• **Pack adquirido** y tier\n• **Recursos entregados**\n• **Timestamp** de la transacción",
+                inline=False
+            )
+            
+            claimer_embed.add_field(
+                name="⚙️ Para Administradores:",
+                value="• Monitorear actividad de la tienda\n• Validar entregas de items\n• Detectar posibles problemas\n• Solo administradores pueden ver este canal",
+                inline=False
+            )
+            
+            await channel.send(embed=claimer_embed)
+            logger.info(f"Panel de shop_claimer recreado exitosamente en canal {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error recreando panel de shop_claimer para canal {channel_id}: {e}")
 
     @tasks.loop(minutes=5)
     async def notification_task(self):
@@ -182,6 +411,174 @@ class BunkerBotV2(commands.Bot):
                 
         except Exception as e:
             logger.error(f"Error en notification_task: {e}")
+
+    @tasks.loop(minutes=1)
+    async def reset_alerts_task(self):
+        """Tarea para enviar alertas de reinicio de servidores"""
+        try:
+            from taxi_database import taxi_db
+            from datetime import datetime, timedelta
+            import pytz
+            
+            # Obtener todos los horarios de reinicio activos
+            schedules = await taxi_db.get_reset_schedules()
+            current_utc = datetime.now(pytz.UTC)
+            
+            for schedule in schedules:
+                try:
+                    # Convertir zona horaria del horario
+                    tz = pytz.timezone(schedule['timezone'])
+                    current_local = current_utc.astimezone(tz)
+                    
+                    # Verificar si es un día activo
+                    current_weekday = current_local.isoweekday()  # 1=Lunes, 7=Domingo
+                    active_days = [int(d.strip()) for d in schedule['days_of_week'].split(',')]
+                    
+                    if current_weekday not in active_days:
+                        continue
+                    
+                    # Parsear hora del reinicio
+                    reset_hour, reset_minute = map(int, schedule['reset_time'].split(':'))
+                    
+                    # Calcular tiempo hasta el próximo reinicio
+                    reset_today = current_local.replace(hour=reset_hour, minute=reset_minute, second=0, microsecond=0)
+                    
+                    # Si ya pasó hoy, será mañana
+                    if reset_today <= current_local:
+                        reset_today += timedelta(days=1)
+                    
+                    # Calcular minutos hasta el reinicio
+                    time_until_reset = reset_today - current_local
+                    minutes_until = int(time_until_reset.total_seconds() / 60)
+                    
+                    # Obtener usuarios suscritos a este servidor
+                    subscribed_users = await taxi_db.get_users_for_reset_alert(schedule['server_name'])
+                    
+                    for user_alert in subscribed_users:
+                        try:
+                            # Verificar si es tiempo de alertar (dentro de un rango de 1 minuto)
+                            if abs(minutes_until - user_alert['minutes_before']) <= 1:
+                                # Verificar si ya se envió esta alerta hoy
+                                alert_date = current_local.strftime('%Y-%m-%d')
+                                already_sent = await taxi_db.check_alert_already_sent(
+                                    user_alert['user_id'],
+                                    user_alert['guild_id'],
+                                    schedule['server_name'],
+                                    schedule['id'],
+                                    alert_date
+                                )
+                                
+                                if not already_sent:
+                                    success = await self.send_reset_alert(
+                                        user_alert['user_id'],
+                                        user_alert['guild_id'],
+                                        schedule['server_name'],
+                                        schedule['reset_time'],
+                                        schedule['timezone'],
+                                        minutes_until
+                                    )
+                                    
+                                    if success:
+                                        # Marcar como enviada en el caché
+                                        await taxi_db.mark_alert_sent(
+                                            user_alert['user_id'],
+                                            user_alert['guild_id'],
+                                            schedule['server_name'],
+                                            schedule['id'],
+                                            alert_date
+                                        )
+                        except Exception as e:
+                            logger.error(f"Error enviando alerta a usuario {user_alert['user_id']}: {e}")
+                            
+                except Exception as e:
+                    logger.error(f"Error procesando horario {schedule['id']}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error en reset_alerts_task: {e}")
+
+    @tasks.loop(hours=24)
+    async def cleanup_task(self):
+        """Tarea diaria de limpieza"""
+        try:
+            from taxi_database import taxi_db
+            
+            # Limpiar caché de alertas de reinicio (mantener solo últimos 7 días)
+            await taxi_db.cleanup_old_alert_cache(days_old=7)
+            
+            logger.info("✅ Limpieza diaria completada")
+            
+        except Exception as e:
+            logger.error(f"Error en cleanup_task: {e}")
+
+    async def send_reset_alert(self, user_id: str, guild_id: str, server_name: str, 
+                             reset_time: str, timezone: str, minutes_until: int) -> bool:
+        """Enviar alerta de reinicio a un usuario específico"""
+        try:
+            # Obtener guild y usuario
+            guild = self.get_guild(int(guild_id))
+            if not guild:
+                logger.warning(f"Guild {guild_id} no encontrado para alerta de reset")
+                return False
+            
+            user = guild.get_member(int(user_id))
+            if not user:
+                logger.warning(f"Usuario {user_id} no encontrado en guild {guild_id}")
+                return False
+            
+            # Crear embed de alerta
+            embed = discord.Embed(
+                title="🔔 Alerta de Reinicio de Servidor",
+                description=f"El servidor **{server_name}** se reiniciará pronto",
+                color=discord.Color.orange()
+            )
+            
+            embed.add_field(
+                name="⏰ Tiempo Restante",
+                value=f"**{minutes_until} minutos**",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🕐 Hora de Reinicio",
+                value=f"{reset_time} ({timezone})",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🎮 Servidor",
+                value=server_name,
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💡 Recomendación",
+                value="Prepárate para el reinicio:\n• Guarda tu progreso\n• Ve a una zona segura\n• Desconéctate antes del reinicio",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Alerta configurada para {minutes_until} min antes • {guild.name}")
+            embed.timestamp = datetime.now()
+            
+            # Enviar DM al usuario
+            try:
+                await user.send(embed=embed)
+                logger.info(f"Alerta de reinicio enviada a {user.display_name} para {server_name}")
+                return True
+            except discord.Forbidden:
+                # Si no se puede enviar DM, intentar enviar en el canal general del servidor
+                try:
+                    general_channel = discord.utils.get(guild.text_channels, name='general') or guild.text_channels[0]
+                    if general_channel:
+                        await general_channel.send(f"{user.mention}", embed=embed)
+                        logger.info(f"Alerta de reinicio enviada en canal {general_channel.name} para {user.display_name}")
+                        return True
+                except:
+                    logger.warning(f"No se pudo enviar alerta de reinicio a {user.display_name}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Error enviando alerta de reinicio: {e}")
+            return False
 
     async def send_notification(self, notification):
         """Enviar notificación a los canales configurados"""
@@ -819,7 +1216,13 @@ async def help_command(interaction: discord.Interaction):
         )
         
         embed.add_field(
-            name="� Guía Completa",
+            name="🔔 Notificaciones",
+            value="`/ba_reset_alerts`\nRecibir alertas de reinicio del servidor",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📖 Guía Completa",
             value="[Ver guía detallada](https://scum-bunker-timer.onrender.com/guide.html) 📚",
             inline=True
         )
@@ -1159,8 +1562,29 @@ async def bot_status_command(interaction: discord.Interaction):
             except:
                 pass
 
+def is_bot_admin():
+    """Decorator para verificar si el usuario es admin del bot"""
+    def predicate(interaction: discord.Interaction) -> bool:
+        # Primero intentar desde variables de entorno (.env)
+        admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
+        admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
+        
+        # Si no hay IDs en .env, usar config.py como respaldo
+        if not admin_ids_from_env:
+            from config import BOT_ADMIN_IDS
+            admin_ids_from_config = [str(id) for id in BOT_ADMIN_IDS]
+            admin_ids = admin_ids_from_config
+        else:
+            admin_ids = admin_ids_from_env
+        
+        user_id = str(interaction.user.id)
+        is_admin = user_id in admin_ids
+        return is_admin
+    return app_commands.check(predicate)
+
 # === COMANDO TEMPORAL PARA VERIFICAR ID ===
-@bot.tree.command(name="mi_id", description="🔍 [TEMPORAL] Mostrar tu ID de Discord")
+@bot.tree.command(name="mi_id", description="🔍 [OWNER] Mostrar tu ID de Discord")
+@is_bot_admin()
 async def mi_id_command(interaction: discord.Interaction):
     """Comando temporal para verificar ID de usuario"""
     embed = discord.Embed(
@@ -1266,25 +1690,7 @@ async def get_server_bunker_stats(guild_id: str):
 
 # === COMANDOS ADMIN SIMPLES ===
 
-def is_bot_admin():
-    """Decorator para verificar si el usuario es admin del bot"""
-    def predicate(interaction: discord.Interaction) -> bool:
-        # Primero intentar desde variables de entorno (.env)
-        admin_ids_env = os.getenv('BOT_ADMIN_IDS', '').split(',')
-        admin_ids_from_env = [id.strip() for id in admin_ids_env if id.strip()]
-        
-        # Si no hay IDs en .env, usar config.py como respaldo
-        if not admin_ids_from_env:
-            from config import BOT_ADMIN_IDS
-            admin_ids_from_config = [str(id) for id in BOT_ADMIN_IDS]
-            admin_ids = admin_ids_from_config
-        else:
-            admin_ids = admin_ids_from_env
-        
-        user_id = str(interaction.user.id)
-        is_admin = user_id in admin_ids
-        return is_admin
-    return app_commands.check(predicate)
+
 
 @bot.tree.command(name="ba_admin_status", description="[ADMIN] Ver estado de suscripción del servidor")
 @is_bot_admin()
@@ -1431,6 +1837,11 @@ async def admin_setup_status(interaction: discord.Interaction, channel: discord.
         
         # Configurar el canal de estado
         if hasattr(bot, 'status_system'):
+            # Guardar en base de datos para persistencia
+            from taxi_database import taxi_db
+            await taxi_db.save_channel_config(str(interaction.guild.id), "status", str(channel.id), str(interaction.user.id))
+            
+            # Configurar el canal
             await bot.status_system.setup_status_channel(channel.id)
             
             embed = discord.Embed(
@@ -1463,38 +1874,9 @@ async def admin_setup_public_status(interaction: discord.Interaction, channel: d
         # Configurar el canal de estado público
         if hasattr(bot, 'status_system'):
             await bot.status_system.setup_public_status_channel(channel.id)
-            
-            embed = discord.Embed(
-                title="✅ Canal de Estado Público Configurado",
-                description=f"Canal {channel.mention} configurado como canal de estado público del bot.\n\n"
-                           f"📊 **Información que mostrará:**\n"
-                           f"• Estado del bot (online, uptime, ping)\n"
-                           f"• Estadísticas de bunkers globales\n"
-                           f"• Información básica y simplificada\n\n"
-                           f"🔄 Se actualizará automáticamente cada 5 minutos\n"
-                           f"👥 Perfecto para que todos los usuarios vean el estado",
-                color=0x00ff00
-            )
-            
-            await interaction.edit_original_response(content=None, embed=embed)
-        else:
-            await interaction.edit_original_response(content="❌ Sistema de estado no disponible")
-        
-    except Exception as e:
-        logger.error(f"Error en admin_setup_public_status: {e}")
-        try:
-            await interaction.edit_original_response(content=f"❌ Error: {str(e)}")
-        except:
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
-async def admin_setup_public_status(interaction: discord.Interaction, channel: discord.TextChannel):
-    """Configurar el canal de estado público simplificado"""
-    
-    try:
-        await interaction.response.send_message("⚙️ Configurando canal de estado público...", ephemeral=True)
-        
-        # Configurar el canal de estado público
-        if hasattr(bot, 'status_system'):
-            await bot.status_system.setup_public_status_channel(channel.id)
+            # Guardar en base de datos para persistencia
+            from taxi_database import taxi_db
+            await taxi_db.save_channel_config(str(interaction.guild.id), "public_status", str(channel.id))
             
             embed = discord.Embed(
                 title="✅ Canal de Estado Público Configurado",
@@ -1589,6 +1971,145 @@ async def admin_guide(interaction: discord.Interaction):
         except:
             await interaction.response.send_message("❌ Error interno del bot.", ephemeral=True)
 
+@bot.tree.command(name="ba_admin_resync", description="[ADMIN] Forzar resincronización de comandos")
+@is_bot_admin()
+async def admin_resync(interaction: discord.Interaction):
+    """Forzar resincronización de todos los comandos"""
+    try:
+        await interaction.response.defer(ephemeral=True)
+        
+        # Contar comandos antes de sync
+        total_commands = len([cmd for cmd in bot.tree.walk_commands()])
+        logger.info(f"Comandos encontrados antes del resync: {total_commands}")
+        
+        # Mostrar detalles de comandos
+        command_list = []
+        for cmd in bot.tree.walk_commands():
+            # Verificar si el comando tiene guild_id (algunos comandos pueden no tenerlo)
+            guild_info = 'global'
+            if hasattr(cmd, 'guild_id') and cmd.guild_id is not None:
+                guild_info = f'guild:{cmd.guild_id}'
+            command_list.append(f"• {cmd.name} ({guild_info})")
+        
+        embed = discord.Embed(
+            title="🔄 Resincronizando Comandos",
+            description=f"Encontrados **{total_commands}** comandos para sincronizar",
+            color=0xffa500
+        )
+        
+        if len('\n'.join(command_list)) < 1000:
+            embed.add_field(
+                name="📋 Comandos Detectados", 
+                value='\n'.join(command_list[:20]) + ('\n...' if len(command_list) > 20 else ''),
+                inline=False
+            )
+        
+        await interaction.followup.send(embed=embed)
+        
+        # Realizar sincronización
+        try:
+            synced = await bot.tree.sync()
+            
+            # Respuesta de éxito
+            embed = discord.Embed(
+                title="✅ Sincronización Completada",
+                description=f"Se sincronizaron **{len(synced)}** comandos exitosamente",
+                color=0x00ff00
+            )
+            
+            embed.add_field(
+                name="📊 Estadísticas",
+                value=f"• Comandos detectados: {total_commands}\n• Comandos sincronizados: {len(synced)}",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed)
+            logger.info(f"RESYNC MANUAL: {len(synced)} comandos sincronizados exitosamente")
+            
+        except Exception as sync_error:
+            embed = discord.Embed(
+                title="❌ Error en Sincronización",
+                description=f"Error: {str(sync_error)}",
+                color=0xff0000
+            )
+            await interaction.followup.send(embed=embed)
+            logger.error(f"Error en resync manual: {sync_error}")
+            
+    except Exception as e:
+        logger.error(f"Error en admin_resync: {e}")
+        try:
+            await interaction.followup.send("❌ Error ejecutando resincronización.", ephemeral=True)
+        except:
+            await interaction.response.send_message("❌ Error interno del bot.", ephemeral=True)
+
+@bot.tree.command(name="ba_admin_debug_servers", description="[ADMIN] Debug: Ver servidores en la base de datos")
+@is_bot_admin()
+async def admin_debug_servers(interaction: discord.Interaction):
+    """Debug: Ver qué servidores hay en la base de datos"""
+    try:
+        await interaction.response.defer(ephemeral=True)
+        
+        from server_database import server_db
+        guild_id = str(interaction.guild.id)
+        
+        # Obtener servidores monitoreados
+        servers = await server_db.get_monitored_servers(guild_id)
+        
+        embed = discord.Embed(
+            title="🔍 Debug: Servidores en Base de Datos",
+            description=f"Guild ID: `{guild_id}`",
+            color=0x3498db
+        )
+        
+        if not servers:
+            embed.add_field(
+                name="❌ No hay servidores",
+                value="No se encontraron servidores monitoreados para esta guild",
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name=f"✅ Encontrados {len(servers)} servidores",
+                value=f"Total: {len(servers)} servidores monitoreados",
+                inline=False
+            )
+            
+            for i, server in enumerate(servers[:5], 1):  # Mostrar máximo 5
+                server_info = f"• **Nombre:** {server['server_name']}\n"
+                server_info += f"• **IP:** {server['server_ip']}:{server['server_port']}\n"
+                server_info += f"• **ID:** {server['server_id']}\n"
+                server_info += f"• **Alertas:** {'✅' if server['alerts_enabled'] else '❌'}"
+                
+                embed.add_field(
+                    name=f"🎮 Servidor #{i}",
+                    value=server_info,
+                    inline=True
+                )
+        
+        # Verificar límites
+        try:
+            limits = await server_db.check_server_limit(guild_id)
+            embed.add_field(
+                name="📊 Límites",
+                value=f"• **Máximo:** {limits['max_servers']}\n• **Restantes:** {limits['remaining']}",
+                inline=False
+            )
+        except Exception as e:
+            embed.add_field(
+                name="⚠️ Error en límites",
+                value=f"Error: {str(e)}",
+                inline=False
+            )
+        
+        await interaction.followup.send(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error en admin_debug_servers: {e}")
+        try:
+            await interaction.followup.send(f"❌ Error en debug: {str(e)}", ephemeral=True)
+        except:
+            await interaction.response.send_message(f"❌ Error interno: {str(e)}", ephemeral=True)
+
 # Manejador de errores para comandos admin
 @admin_status.error
 @admin_upgrade.error  
@@ -1596,6 +2117,9 @@ async def admin_guide(interaction: discord.Interaction):
 @admin_list.error
 @admin_setup_status.error
 @admin_guide.error
+@admin_resync.error
+@admin_debug_servers.error
+@mi_id_command.error
 async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Manejador de errores para comandos de administración"""
     if isinstance(error, app_commands.CheckFailure):
@@ -1677,28 +2201,186 @@ async def create_web_server():
     logger.warning("No se pudo encontrar un puerto disponible para el servidor web")
     return None, None
 
+# === COMANDO DE SHUTDOWN SEGURO ===
+
+@bot.tree.command(name="ba_admin_shutdown", description="[ADMIN] ⚠️ Apagar el bot de forma segura")
+@is_bot_admin()
+async def admin_shutdown(interaction: discord.Interaction):
+    """Comando para apagar el bot de forma segura enviando notificaciones"""
+    try:
+        await interaction.response.defer(ephemeral=True)
+        
+        # Confirmar la acción
+        embed = discord.Embed(
+            title="⚠️ Confirmación de Apagado",
+            description="¿Estás seguro de que quieres apagar el bot?",
+            color=0xff9900
+        )
+        
+        embed.add_field(
+            name="🔴 Acciones que se realizarán:",
+            value="• Se enviarán notificaciones a canales de estado\n• Se cerrará el bot de forma segura\n• Se detendrán todas las tareas automáticas\n• Se limpiará el servidor web",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="⏰ Tiempo estimado:",
+            value="El proceso tomará aproximadamente 5-10 segundos",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🔄 Reinicio:",
+            value="Tendrás que reiniciar manualmente el bot",
+            inline=True
+        )
+        
+        embed.set_footer(text="⚠️ Esta acción no se puede deshacer")
+        
+        # Crear vista con botones de confirmación
+        view = ShutdownConfirmView()
+        
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error en comando shutdown: {e}")
+        embed = discord.Embed(
+            title="❌ Error",
+            description=f"Error ejecutando comando de apagado: {str(e)}",
+            color=discord.Color.red()
+        )
+        try:
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class ShutdownConfirmView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=30)  # 30 segundos para confirmar
+
+    @discord.ui.button(label="✅ Confirmar Apagado", style=discord.ButtonStyle.danger, emoji="🔴")
+    async def confirm_shutdown(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirmar y ejecutar el apagado"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Crear embed de confirmación
+            embed = discord.Embed(
+                title="🔴 Iniciando Apagado Seguro",
+                description="El bot se está apagando...",
+                color=0xff0000
+            )
+            
+            embed.add_field(
+                name="📤 Enviando notificaciones",
+                value="Se están enviando notificaciones a los canales de estado...",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Ejecutar apagado seguro
+            logger.info(f"🔴 Apagado iniciado por comando de admin: {interaction.user.name}")
+            await shutdown_handler()
+            
+        except Exception as e:
+            logger.error(f"Error en shutdown confirm: {e}")
+    
+    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.secondary, emoji="🚫")
+    async def cancel_shutdown(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancelar el apagado"""
+        await interaction.response.defer(ephemeral=True)
+        
+        embed = discord.Embed(
+            title="✅ Apagado Cancelado",
+            description="El bot continúa funcionando normalmente",
+            color=0x00ff00
+        )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    async def on_timeout(self):
+        """Cuando expira el tiempo de confirmación"""
+        # Deshabilitar todos los botones
+        for item in self.children:
+            item.disabled = True
+
 # === INICIAR BOT ===
 
+async def shutdown_handler():
+    """Manejador de apagado seguro"""
+    logger.info("🔴 Iniciando apagado seguro del bot...")
+    
+    # Enviar notificaciones de apagado
+    if hasattr(bot, 'status_system') and bot.status_system:
+        try:
+            await bot.status_system.send_shutdown_notification()
+            logger.info("✅ Notificaciones de apagado enviadas")
+        except Exception as e:
+            logger.error(f"Error enviando notificaciones de apagado: {e}")
+    
+    # Cerrar el bot
+    try:
+        await bot.close()
+        logger.info("✅ Bot cerrado correctamente")
+    except Exception as e:
+        logger.error(f"Error cerrando bot: {e}")
+
 async def main():
-    """Función principal"""
+    """Función principal con manejo de señales"""
+    import signal
+    
     # Intentar obtener token desde config.py primero, luego desde variables de entorno
     token = DISCORD_TOKEN or os.getenv('DISCORD_TOKEN')
     if not token:
         logger.error("No se encontró DISCORD_TOKEN en config.py ni en las variables de entorno")
         return
     
+    # Variables para el servidor web
+    web_runner = None
+    web_port = None
+    
+    # Configurar manejadores de señales para cierre seguro
+    def signal_handler():
+        logger.warning("🛑 Señal de interrupción recibida (Ctrl+C)")
+        # Crear una tarea para el apagado seguro
+        asyncio.create_task(shutdown_handler())
+    
+    # Registrar señales en sistemas que lo soportan
+    try:
+        if hasattr(signal, 'SIGTERM'):
+            signal.signal(signal.SIGTERM, lambda s, f: signal_handler())
+        if hasattr(signal, 'SIGINT'):
+            signal.signal(signal.SIGINT, lambda s, f: signal_handler())
+        logger.info("✅ Manejadores de señales configurados")
+    except Exception as e:
+        logger.warning(f"No se pudieron configurar manejadores de señales: {e}")
+    
     try:
         # Iniciar servidor web para la guía
         web_runner, web_port = await create_web_server()
+        logger.info(f"✅ Servidor web iniciado en puerto {web_port}")
         
         # Iniciar bot de Discord
+        logger.info("🚀 Iniciando bot de Discord...")
         await bot.start(token)
+        
+    except KeyboardInterrupt:
+        logger.warning("🛑 Interrupción de teclado detectada")
+        await shutdown_handler()
     except Exception as e:
-        logger.error(f"Error al iniciar el bot: {e}")
+        logger.error(f"❌ Error al iniciar el bot: {e}")
+        await shutdown_handler()
     finally:
         # Limpiar servidor web si existe
-        if 'web_runner' in locals() and web_runner:
-            await web_runner.cleanup()
+        if web_runner:
+            try:
+                await web_runner.cleanup()
+                logger.info("✅ Servidor web cerrado")
+            except Exception as e:
+                logger.error(f"Error cerrando servidor web: {e}")
+        
+        logger.info("🏁 Aplicación terminada")
 
 if __name__ == "__main__":
     asyncio.run(main())

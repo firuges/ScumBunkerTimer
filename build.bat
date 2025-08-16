@@ -58,6 +58,26 @@ if not exist "bot_status_system.py" (
     exit /b 1
 )
 
+if not exist "taxi_system.py" (
+    color 0C
+    echo ❌ ERROR: No se encuentra taxi_system.py
+    echo.
+    echo    Este archivo es requerido para el sistema de taxi integrado.
+    echo.
+    pause
+    exit /b 1
+)
+
+if not exist "taxi_database.py" (
+    color 0C
+    echo ❌ ERROR: No se encuentra taxi_database.py
+    echo.
+    echo    Este archivo es requerido para la base de datos del sistema.
+    echo.
+    pause
+    exit /b 1
+)
+
 echo ✅ Archivos fuente verificados
 
 :: Definir directorio de build
@@ -100,6 +120,14 @@ copy "taxi_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "banking_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "welcome_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "migrate_taxi_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: === SISTEMA DE ALERTAS DE REINICIO ===
+copy "reset_alerts_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: === CONFIGURACIONES DE TIENDA ===
+copy "shop_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: === ARCHIVOS ESENCIALES ===
 copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 echo ✅ Archivos principales copiados
@@ -328,8 +356,31 @@ echo    ``` >> "%BUILD_FULL_DIR%\README.md"
 echo. >> "%BUILD_FULL_DIR%\README.md"
 echo ## 📁 Estructura de Archivos >> "%BUILD_FULL_DIR%\README.md"
 echo. >> "%BUILD_FULL_DIR%\README.md"
-echo - `BunkerAdvice_V2.py` - Bot principal >> "%BUILD_FULL_DIR%\README.md"
-echo - `config.py` - Configuración ^(EDITAR AQUÍ^) >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🎮 Sistema Principal >> "%BUILD_FULL_DIR%\README.md"
+echo - `BunkerAdvice_V2.py` - Bot principal con comandos de bunkers >> "%BUILD_FULL_DIR%\README.md"
+echo - `bot_status_system.py` - Sistema de estado en tiempo real >> "%BUILD_FULL_DIR%\README.md"
+echo - `server_monitor.py` - Monitoreo de servidores SCUM >> "%BUILD_FULL_DIR%\README.md"
+echo - `server_database.py` - Base de datos de servidores >> "%BUILD_FULL_DIR%\README.md"
+echo - `server_commands.py` - Comandos de gestión de servidores >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🚖 Sistema de Taxi >> "%BUILD_FULL_DIR%\README.md"
+echo - `taxi_system.py` - Sistema completo de taxis >> "%BUILD_FULL_DIR%\README.md"
+echo - `taxi_database.py` - Base de datos con timezone automático >> "%BUILD_FULL_DIR%\README.md"
+echo - `taxi_admin.py` - Comandos administrativos >> "%BUILD_FULL_DIR%\README.md"
+echo - `taxi_config.py` - Configuración del sistema >> "%BUILD_FULL_DIR%\README.md"
+echo - `banking_system.py` - Sistema bancario integrado >> "%BUILD_FULL_DIR%\README.md"
+echo - `welcome_system.py` - Sistema de bienvenida >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🔔 Sistema de Alertas >> "%BUILD_FULL_DIR%\README.md"
+echo - `reset_alerts_admin.py` - Gestión de alertas de reinicio >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🛍️ Sistema Premium >> "%BUILD_FULL_DIR%\README.md"
+echo - `premium_*.py` - Comandos premium >> "%BUILD_FULL_DIR%\README.md"
+echo - `subscription_manager.py` - Gestión de suscripciones >> "%BUILD_FULL_DIR%\README.md"
+echo - `shop_config.py` - Configuración de tienda >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### ⚙️ Configuración y Utilidades >> "%BUILD_FULL_DIR%\README.md"
+echo - `config.py` - Configuración principal ^(**EDITAR AQUÍ**^) >> "%BUILD_FULL_DIR%\README.md"
 echo - `requirements.txt` - Dependencias Python >> "%BUILD_FULL_DIR%\README.md"
 echo - `INSTALL.bat` - Instalador automático >> "%BUILD_FULL_DIR%\README.md"
 echo - `start_bot.bat` - Ejecutar bot >> "%BUILD_FULL_DIR%\README.md"
@@ -358,12 +409,30 @@ echo - `install_windows_debug.bat` - Diagnóstico >> "%BUILD_FULL_DIR%\README.md
 echo. >> "%BUILD_FULL_DIR%\README.md"
 echo ## 📊 Características >> "%BUILD_FULL_DIR%\README.md"
 echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🎮 Sistema SCUM Bunker Timer >> "%BUILD_FULL_DIR%\README.md"
 echo ✅ Compatible con Python 3.13 >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ 13 comandos de Discord funcionales >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema de bunkers SCUM >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Base de datos SQLite >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema premium integrado >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Logs automáticos >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ 46+ comandos de Discord funcionales >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Sistema de bunkers SCUM completo >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Monitoreo de servidores en tiempo real >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Alertas de reinicio con timezone automático >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🚖 Sistema de Taxi Integrado >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Sistema completo de taxis con conductores >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Sistema bancario con transacciones >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Tienda virtual con entregas >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Sistema de welcome pack para nuevos usuarios >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### 🔔 Sistema de Alertas Avanzado >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Alertas de reinicio personalizables >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Detección automática de timezone ^(Uruguay, Argentina, Brasil^) >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Horarios convertidos a zona horaria local >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Comandos administrativos para gestión >> "%BUILD_FULL_DIR%\README.md"
+echo. >> "%BUILD_FULL_DIR%\README.md"
+echo ### ⚙️ Infraestructura >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Base de datos SQLite optimizada >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Sistema premium/gratuito integrado >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Logs automáticos y debugging >> "%BUILD_FULL_DIR%\README.md"
+echo ✅ Auto-migración de base de datos >> "%BUILD_FULL_DIR%\README.md"
 
 echo ✅ README.md creado
 
@@ -411,6 +480,13 @@ echo ===============================================
 echo.
 echo 📁 Ubicación: %BUILD_FULL_DIR%
 echo 📊 Timestamp: %BUILD_TIMESTAMP%
+echo.
+echo 🚀 NUEVO! Características agregadas:
+echo    ✅ Sistema de alertas de reinicio con timezone automático
+echo    ✅ 46+ comandos funcionales ^(vs 13 anterior^)
+echo    ✅ Sistema bancario y taxi completo
+echo    ✅ Detección automática Uruguay/Argentina/Brasil
+echo    ✅ Comandos administrativos avanzados
 echo.
 if defined DISCORD_TOKEN_VALUE (
     echo 🔑 Token: ✅ Configurado automáticamente
