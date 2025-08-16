@@ -1184,7 +1184,7 @@ class DriverRegistrationView(discord.ui.View):
             
             # Crear vista con botón para ir al panel de conductor
             view = RegisteredDriverView(user_data)
-            await interaction.followup.edit_message(embed=embed, view=view)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error en registro de conductor: {e}")
@@ -1766,7 +1766,17 @@ class RequestSelect(discord.ui.Select):
                     passenger_user_data = await taxi_db.get_user_by_id(request_data['passenger_id'])
                     if passenger_user_data:
                         passenger_discord_id = int(passenger_user_data['discord_id'])
-                        passenger_user = interaction.client.get_user(passenger_discord_id)
+                        try:
+                            # Intentar obtener del cache primero, luego fetch de la API
+                            passenger_user = interaction.client.get_user(passenger_discord_id)
+                            if not passenger_user:
+                                passenger_user = await interaction.client.fetch_user(passenger_discord_id)
+                        except discord.NotFound:
+                            passenger_user = None
+                            logger.warning(f"⚠️ Usuario Discord {passenger_discord_id} no encontrado en Discord")
+                        except Exception as fetch_error:
+                            passenger_user = None
+                            logger.error(f"❌ Error obteniendo usuario Discord {passenger_discord_id}: {fetch_error}")
                         
                         if passenger_user:
                             # Crear embed de notificación para el pasajero
@@ -2480,23 +2490,60 @@ class TaxiRequestView(discord.ui.View):
             logger.info(f"🔧 SETUP ORIGIN - Revisando {len(taxi_config.TAXI_STOPS)} paradas disponibles")
             options = []
             
+            # Crear lista de todas las zonas y ordenar por Grid+Pad
+            all_zones = []
+            
+            # Agregar TAXI_STOPS
             for stop_id, stop_data in taxi_config.TAXI_STOPS.items():
                 logger.debug(f"🔧 SETUP ORIGIN - Procesando parada: {stop_id} - {stop_data.get('name', 'Sin nombre')}")
+                all_zones.append({
+                    'id': stop_id,
+                    'data': stop_data,
+                    'source': 'taxi_stops'
+                })
+            
+            # Agregar PVP_ZONES accesibles
+            for zone_id, zone_data in taxi_config.PVP_ZONES.items():
+                restriction = zone_data.get('restriction', 'neutral')
+                if restriction in ['safe_zone', 'neutral']:
+                    all_zones.append({
+                        'id': zone_id,
+                        'data': zone_data,
+                        'source': 'pvp_zones'
+                    })
+            
+            # ORDENAR por Grid (A-Z) y luego por Pad (1-9)
+            def zone_sort_key(zone_item):
+                zone_data = zone_item['data']
+                grid = zone_data.get('grid', 'Z9')
+                pad = zone_data.get('pad', 9)
+                
+                grid_letter = grid[0] if grid else 'Z'
+                grid_number = grid[1:] if len(grid) > 1 else '9'
+                
+                return (grid_letter, int(grid_number) if grid_number.isdigit() else 9, pad)
+            
+            all_zones.sort(key=zone_sort_key)
+            
+            # Crear opciones del selector ordenadas
+            for zone_item in all_zones:
+                zone_data = zone_item['data']
+                zone_id = zone_item['id']
                 
                 emoji = {
-                    'main_stop': "🏢",
-                    'town_stop': "🏘️", 
-                    'airstrip': "✈️",
-                    'seaport': "🚢"
-                }.get(stop_data['type'], "🏭")
+                    'main_stop': "🏢", 'town_stop': "🏘️", 'airstrip': "✈️", 'seaport': "🚢",
+                    'airport_stop': "✈️", 'port_stop': "⚓", 'industrial_stop': "🏭",
+                    'mining_stop': "⛏️", 'airport': "🛬", 'city': "🏙️", 'town': "🏘️",
+                    'port': "⚓", 'island': "🏝️", 'industrial': "🏭", 'mining': "⛏️"
+                }.get(zone_data['type'], "📍")
                 
                 options.append(discord.SelectOption(
-                    label=stop_data['name'],
-                    value=stop_id,
-                    description=f"{stop_data['coordinates']} - {stop_data['description'][:50]}",
+                    label=f"{zone_data['coordinates']} {zone_data['name']}",
+                    value=zone_id,
+                    description=f"{zone_data.get('description', 'Zona disponible')[:50]}",
                     emoji=emoji
                 ))
-                logger.debug(f"✅ SETUP ORIGIN - Opción agregada: {stop_data['name']} ({stop_id})")
+                logger.debug(f"✅ SETUP ORIGIN - Opción agregada: {zone_data['name']} ({zone_data['coordinates']})")
             
             logger.info(f"🔧 SETUP ORIGIN - Total de opciones creadas: {len(options)}")
             

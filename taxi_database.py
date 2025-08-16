@@ -867,47 +867,61 @@ class TaxiDatabase:
                 island_keywords = ["Isla", "Remote", "Island"]
                 return any(keyword in zone_name for keyword in island_keywords)
             
-            # Validaciones específicas para aviones
-            if vehicle_type == "avion":
-                pickup_is_airport = is_airport_zone(pickup_name, pickup_id)
-                destination_is_airport = is_airport_zone(destination_name, destination_id)
-                
-                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Ruta: '{pickup_name}' -> '{destination_name}'")
-                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Pickup es aeropuerto: {pickup_is_airport}")
-                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Destino es aeropuerto: {destination_is_airport}")
-                
-                if not (pickup_is_airport and destination_is_airport):
-                    logger.error(f"🛩️ VALIDACIÓN AVIÓN - FALLO: Pickup='{pickup_name}' ({pickup_is_airport}), Destino='{destination_name}' ({destination_is_airport})")
-                    return False, "Los aviones solo pueden volar entre aeropuertos y pistas de aterrizaje"
+            # NUEVA VALIDACIÓN: Usar la configuración de zonas en lugar de lógica hardcodeada
+            pickup_valid = self.validate_vehicle_zone_access(pickup_name, pickup_id, vehicle_type)
+            destination_valid = self.validate_vehicle_zone_access(destination_name, destination_id, vehicle_type)
             
-            # Validaciones para barcos
-            elif vehicle_type == "barco":
-                pickup_is_water = is_water_zone(pickup_zone)
-                destination_is_water = is_water_zone(destination_zone)
-                pickup_is_island = is_island_zone(pickup_zone)
-                destination_is_island = is_island_zone(destination_zone)
-                
-                if not (pickup_is_water or destination_is_water or pickup_is_island or destination_is_island):
-                    return False, "Los barcos necesitan al menos un puerto, muelle o isla como origen o destino"
+            logger.info(f"🔍 VALIDACIÓN {vehicle_type.upper()} - Ruta: '{pickup_name}' -> '{destination_name}'")
+            logger.info(f"🔍 VALIDACIÓN {vehicle_type.upper()} - Pickup válido: {pickup_valid}")
+            logger.info(f"🔍 VALIDACIÓN {vehicle_type.upper()} - Destino válido: {destination_valid}")
             
-            # Validaciones para hidroaviones
-            elif vehicle_type == "hidroavion":
-                pickup_valid = is_airport_zone(pickup_zone) or is_water_zone(pickup_zone)
-                destination_valid = is_airport_zone(destination_zone) or is_water_zone(destination_zone)
-                
-                if not (pickup_valid and destination_valid):
-                    return False, "Los hidroaviones necesitan aeropuertos o zonas de agua"
+            if not pickup_valid:
+                return False, f"El {vehicle_info['name']} no puede acceder a '{pickup_name}'"
             
-            # Validaciones para islas (solo barco o hidroavión)
-            if is_island_zone(pickup_zone) or is_island_zone(destination_zone):
-                if vehicle_type not in ["barco", "hidroavion"]:
-                    return False, "Para llegar a las islas solo se puede usar barco o hidroavión"
+            if not destination_valid:
+                return False, f"El {vehicle_info['name']} no puede acceder a '{destination_name}'"
             
             return True, "Ruta válida"
             
         except Exception as e:
             logger.error(f"Error validando ruta: {e}")
             return False, f"Error validando ruta: {str(e)}"
+
+    def validate_vehicle_zone_access(self, zone_name: str, zone_id: str, vehicle_type: str) -> bool:
+        """Validar si un vehículo puede acceder a una zona específica usando la configuración"""
+        try:
+            from taxi_config import taxi_config
+            
+            # Buscar la zona en TAXI_STOPS
+            for stop_id, stop_data in taxi_config.TAXI_STOPS.items():
+                if stop_data['name'] == zone_name or stop_id == zone_id:
+                    vehicle_types = stop_data.get('vehicle_types', [])
+                    return vehicle_type in vehicle_types or vehicle_type.title() in vehicle_types
+            
+            # Buscar la zona en PVP_ZONES
+            for pvp_id, pvp_data in taxi_config.PVP_ZONES.items():
+                if pvp_data['name'] == zone_name or pvp_id == zone_id:
+                    vehicle_access = pvp_data.get('vehicle_access', [])
+                    access_types = pvp_data.get('access_types', [])
+                    
+                    # Verificar si el vehículo está explícitamente permitido
+                    if vehicle_type in vehicle_access or vehicle_type.title() in vehicle_access:
+                        return True
+                    
+                    # Verificar compatibilidad por tipo de acceso
+                    vehicle_info = taxi_config.VEHICLE_TYPES.get(vehicle_type, {})
+                    vehicle_access_types = vehicle_info.get('access_types', [])
+                    
+                    # Verificar si hay compatibilidad de acceso
+                    return any(access in vehicle_access_types for access in access_types)
+            
+            # Si no se encuentra la zona, permitir acceso (zona por defecto)
+            logger.warning(f"⚠️ Zona no encontrada en configuración: {zone_name} (ID: {zone_id}) - Permitiendo acceso")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error validando acceso de vehículo: {e}")
+            return True  # En caso de error, permitir acceso
 
     async def update_driver_vehicles(self, user_id: int, vehicles: List[str]) -> Tuple[bool, str]:
         """Actualizar vehículos del conductor (no sobrescribir, sino agregar/actualizar)"""

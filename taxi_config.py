@@ -300,10 +300,10 @@ class TaxiConfig:
                 "name": "Isla Sur Remote",
                 "type": "island",
                 "restriction": "neutral",
-                "description": "Isla alejada - Solo accesible por agua o aire",
-                "landmarks": ["Playa Desierta", "Cabaña Abandonada"],
-                "access_types": ["water", "air"],
-                "vehicle_access": ["barco", "hidroavion"]
+                "description": "Isla alejada - Accesible por puente, agua o aire",
+                "landmarks": ["Playa Desierta", "Cabaña Abandonada", "Puente"],
+                "access_types": ["water", "air", "land", "road"],
+                "vehicle_access": ["barco", "hidroavion", "auto", "moto"]
             },
             
             "island_a4_pad9": {
@@ -313,10 +313,10 @@ class TaxiConfig:
                 "name": "Isla Norte Remote",
                 "type": "island",
                 "restriction": "neutral",
-                "description": "Isla del norte - Acceso limitado",
-                "landmarks": ["Faro Antiguo", "Rocas"],
-                "access_types": ["water", "air"],
-                "vehicle_access": ["barco", "hidroavion"]
+                "description": "Isla del norte - Accesible por puente, agua o aire",
+                "landmarks": ["Faro Antiguo", "Rocas", "Puente"],
+                "access_types": ["water", "air", "land", "road"],
+                "vehicle_access": ["barco", "hidroavion", "auto", "moto"]
             },
             
             # === BASES MILITARES (Sin Taxi) ===
