@@ -270,7 +270,7 @@ class TaxiSystemView(discord.ui.View):
                 inline=False
             )
             
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -322,14 +322,14 @@ class TaxiSystemView(discord.ui.View):
                 
                 # Crear vista con botón para volver al panel principal
                 view = TaxiSystemView()
-                await interaction.response.edit_message(embed=embed, view=view)
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 return
             
             # Mostrar detalles completos de la solicitud
             embed = await self._create_status_embed(active_request)
             view = ActiveRequestView(active_request)
             
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -365,7 +365,19 @@ class TaxiSystemView(discord.ui.View):
         
         try:
             # Verificar si es conductor registrado
-            driver_info = await self._get_driver_info(interaction.user.id, interaction.guild.id)
+            # Obtener datos del usuario
+            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            logger.info(f"Datos del usuario obtenidos: {user_data}")
+            if not user_data:
+                embed = discord.Embed(
+                    title="🚗 Panel de Conductor",
+                    description="No estás registrado como conductor. ¿Te gustaría registrarte?",
+                    color=0xff6b6b
+                )
+                view = DriverRegistrationView()
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                return
+            driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
             
             if not driver_info:
                 embed = discord.Embed(
@@ -374,14 +386,14 @@ class TaxiSystemView(discord.ui.View):
                     color=0xff6b6b
                 )
                 view = DriverRegistrationView()
-                await interaction.response.edit_message(embed=embed, view=view)
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 return
             
             # Mostrar panel de conductor
             view = DriverPanelView(driver_info)
             embed = await self._create_driver_panel_embed(driver_info)
             
-            await interaction.response.edit_message(embed=embed, view=view)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
             
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -427,7 +439,7 @@ class TaxiSystemView(discord.ui.View):
                     description="El sistema de taxi está temporalmente deshabilitado",
                     color=discord.Color.red()
                 )
-                await interaction.response.edit_message(embed=embed, view=self)
+                await interaction.response.send_message(embed=embed, view=self, ephemeral=True)
                 return
 
             # Verificar registro del usuario
@@ -442,7 +454,7 @@ class TaxiSystemView(discord.ui.View):
                     description="Debes registrarte primero en el canal de bienvenida.",
                     color=discord.Color.red()
                 )
-                await interaction.response.edit_message(embed=embed, view=self)
+                await interaction.response.send_message(embed=embed, view=self, ephemeral=True)
                 return
 
             # Verificar si es conductor
@@ -454,7 +466,7 @@ class TaxiSystemView(discord.ui.View):
                     description="No estás registrado como conductor. Usa el botón **'🚗 Panel Conductor'** para registrarte.",
                     color=discord.Color.red()
                 )
-                await interaction.response.edit_message(embed=embed, view=self)
+                await interaction.response.send_message(embed=embed, view=self, ephemeral=True)
                 return
             
             # Mostrar estado del conductor
@@ -540,7 +552,7 @@ class TaxiSystemView(discord.ui.View):
             
             # Crear vista con botón para regresar
             back_view = TaxiSystemView()
-            await interaction.response.edit_message(embed=embed, view=back_view)
+            await interaction.response.send_message(embed=embed, view=back_view, ephemeral=True)
                 
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -970,6 +982,8 @@ class ConfirmCancelView(discord.ui.View):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
             return
         
+        await taxi_db.cancel_request(self.request_id)
+
         embed = discord.Embed(
             title="✅ Solicitud Cancelada",
             description="Tu solicitud de taxi ha sido cancelada exitosamente.",
@@ -984,7 +998,7 @@ class ConfirmCancelView(discord.ui.View):
         )
         
         view = TaxiSystemView()
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
     @discord.ui.button(
         label="❌ No, Mantener", 
@@ -1519,40 +1533,44 @@ class DriverStatusView(discord.ui.View):
     
     async def _change_status(self, interaction: discord.Interaction, new_status: str, status_display: str):
         """Cambiar el estado del conductor"""
-        # Verificar cooldown
-        if not check_cooldown(interaction.user.id):
-            logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
-            return
-            
         try:
+            # Verificar cooldown
+            if not check_cooldown(interaction.user.id):
+                logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
+                await interaction.response.send_message("⏳ Debes esperar antes de cambiar tu estado nuevamente.", ephemeral=True)
+                return
+
             # Obtener información del usuario
             user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 await interaction.response.send_message("❌ Error: Usuario no encontrado", ephemeral=True)
                 return
-            
+
             # Actualizar estado del conductor
             success, message = await taxi_db.update_driver_status(interaction.user.id, new_status)
-            
+
             if success:
                 # Actualizar información local
                 self.driver_info['status'] = new_status
-                
+
                 embed = discord.Embed(
                     title="✅ Estado Actualizado",
                     description=f"Tu estado ha sido cambiado a: **{status_display}**",
                     color=0x00ff00
                 )
-                
+
                 # Volver al panel de conductor con estado actualizado
                 view = DriverPanelView(self.driver_info)
                 await interaction.response.edit_message(embed=embed, view=view)
             else:
                 await interaction.response.send_message(f"❌ Error actualizando estado: {message}", ephemeral=True)
-                
+
         except Exception as e:
             logger.error(f"Error cambiando estado: {e}")
-            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+            try:
+                await interaction.response.send_message(f"❌ Error inesperado: {str(e)}", ephemeral=True)
+            except Exception:
+                pass
 
 
 class AcceptRequestView(discord.ui.View):
@@ -1706,35 +1724,28 @@ class RequestSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         """Aceptar solicitud seleccionada"""
         await interaction.response.defer(ephemeral=True)
-        
         try:
             request_id = int(self.values[0])
             request_data = self.requests_data[self.values[0]]
-            
             # Obtener información del conductor
             user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 await interaction.followup.send("❌ Error: Usuario no encontrado", ephemeral=True)
                 return
-            
             driver_user_id = int(user_data['user_id'])
-            
             # Verificar que el conductor no tenga una solicitud activa
             active_request = await taxi_db.get_active_request_for_user(driver_user_id)
             if active_request and active_request['status'] in ['accepted', 'in_progress']:
                 await interaction.followup.send("❌ Ya tienes un viaje activo. Complétalo antes de aceptar nuevas solicitudes.", ephemeral=True)
                 return
-            
             # Intentar aceptar la solicitud
             success, message = await taxi_db.accept_request(request_id, driver_user_id)
-            
             if success:
                 embed = discord.Embed(
                     title="✅ Solicitud Aceptada",
                     description=f"Has aceptado exitosamente la solicitud #{request_id}",
                     color=0x00ff00
                 )
-                
                 embed.add_field(
                     name="📍 Detalles del Viaje",
                     value=f"**Origen:** {request_data['pickup_zone']}\n"
@@ -1743,19 +1754,81 @@ class RequestSelect(discord.ui.Select):
                           f"**Vehículo:** {request_data.get('vehicle_type', 'auto')}",
                     inline=False
                 )
-                
                 embed.add_field(
                     name="🚗 ¿Qué sigue?",
                     value="El pasajero recibirá una notificación. Dirígete al punto de recogida y marca el viaje como 'En progreso' cuando comiences.",
                     inline=False
                 )
                 
+                # 🔔 NOTIFICAR AL PASAJERO
+                try:
+                    # Obtener información del pasajero
+                    passenger_user_data = await taxi_db.get_user_by_id(request_data['passenger_id'])
+                    if passenger_user_data:
+                        passenger_discord_id = int(passenger_user_data['discord_id'])
+                        passenger_user = interaction.client.get_user(passenger_discord_id)
+                        
+                        if passenger_user:
+                            # Crear embed de notificación para el pasajero
+                            notification_embed = discord.Embed(
+                                title="🚖 ¡Tu Taxi Ha Sido Aceptado!",
+                                description="Un conductor ha aceptado tu solicitud de taxi",
+                                color=0x00ff00
+                            )
+                            
+                            notification_embed.add_field(
+                                name="👨‍✈️ Conductor Asignado",
+                                value=f"**{interaction.user.display_name}**",
+                                inline=True
+                            )
+                            
+                            notification_embed.add_field(
+                                name="🚗 Vehículo",
+                                value=f"{request_data.get('vehicle_type', 'auto').title()}",
+                                inline=True
+                            )
+                            
+                            notification_embed.add_field(
+                                name="💰 Costo Estimado",
+                                value=f"${request_data.get('estimated_cost', 0)}",
+                                inline=True
+                            )
+                            
+                            notification_embed.add_field(
+                                name="📍 Detalles del Viaje",
+                                value=f"**Origen:** {request_data['pickup_zone']}\n**Destino:** {request_data['destination_zone']}",
+                                inline=False
+                            )
+                            
+                            notification_embed.add_field(
+                                name="⏰ Próximos Pasos",
+                                value="Tu conductor se dirigirá al punto de recogida. Te notificaremos cuando esté en camino.",
+                                inline=False
+                            )
+                            
+                            notification_embed.set_footer(text=f"Solicitud #{request_id} • Usa /taxi_status para ver el estado")
+                            
+                            # Enviar notificación privada
+                            await passenger_user.send(embed=notification_embed)
+                            logger.info(f"🔔 Notificación enviada al pasajero {passenger_user.display_name} (ID: {passenger_discord_id}) para solicitud #{request_id}")
+                            
+                        else:
+                            logger.warning(f"⚠️ No se pudo encontrar el usuario de Discord del pasajero {passenger_discord_id}")
+                    else:
+                        logger.warning(f"⚠️ No se encontraron datos del pasajero para solicitud #{request_id}")
+                        
+                except Exception as notification_error:
+                    logger.error(f"❌ Error enviando notificación al pasajero: {notification_error}")
+                    # No fallar la aceptación por error de notificación
+                
                 # Botón para volver al panel del conductor
                 back_view = DriverPanelView(self.driver_info)
-                await interaction.followup.edit_message(embed=embed, view=back_view)
+                if interaction.message:
+                    await interaction.followup.edit_message(message_id=interaction.message.id, embed=embed, view=back_view)
+                else:
+                    await interaction.followup.send(embed=embed, view=back_view, ephemeral=True)
             else:
                 await interaction.followup.send(f"❌ {message}", ephemeral=True)
-            
         except Exception as e:
             logger.error(f"Error aceptando solicitud: {e}")
             await interaction.followup.send(f"❌ Error aceptando solicitud: {str(e)}", ephemeral=True)
@@ -2345,11 +2418,13 @@ class DriverStatusView(discord.ui.View):
         try:
             # Actualizar el estado en la base de datos
             success, message = await taxi_db.update_driver_status(interaction.user.id, new_status)
-            
             if success:
-                # Obtener información actualizada del conductor
-                driver_info = await self._get_driver_info(interaction.user.id, interaction.guild.id)
-                
+                # Obtener datos del usuario
+                user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+                if not user_data:
+                    await interaction.response.send_message("❌ Error: Usuario no encontrado", ephemeral=True)
+                    return
+                driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
                 if driver_info:
                     # Crear embed con el nuevo estado
                     embed = await self._create_driver_panel_embed(driver_info)
@@ -2686,49 +2761,62 @@ class TaxiRequestView(discord.ui.View):
                 await interaction.response.send_message("❌ Debes seleccionar origen, vehículo y destino", ephemeral=True)
                 return
             
+
             logger.info("🔧 PROCESS REQUEST - Obteniendo datos de origen, vehículo y destino")
             origin_data = taxi_config.TAXI_STOPS[self.origin]
             vehicle_data = taxi_config.VEHICLE_TYPES[self.vehicle_type]
             destination_data = taxi_config.PVP_ZONES[self.destination]
-            
+
+            # Validación por zona y tipo de vehículo
+            valid_dest, msg_dest = taxi_config.validate_vehicle_zone(self.destination, self.vehicle_type)
+            valid_origin, msg_origin = taxi_config.validate_vehicle_zone(self.origin, self.vehicle_type) if self.origin in taxi_config.PVP_ZONES else (True, "Origen permitido")
+            if not valid_dest:
+                await interaction.response.send_message(f"❌ Destino no válido para este vehículo: {msg_dest}", ephemeral=True)
+                logger.warning(f"❌ Destino no válido: {msg_dest}")
+                return
+            if not valid_origin:
+                await interaction.response.send_message(f"❌ Origen no válido para este vehículo: {msg_origin}", ephemeral=True)
+                logger.warning(f"❌ Origen no válido: {msg_origin}")
+                return
+
+            logger.info("🔧 PROCESS REQUEST - Validación de zonas OK")
             logger.info("🔧 PROCESS REQUEST - Calculando tarifa")
-            # Calcular tarifa real
             base_fare = taxi_config.TAXI_BASE_RATE * vehicle_data['cost_multiplier']
             distance_fare = (taxi_config.TAXI_PER_KM_RATE * 5) * vehicle_data['cost_multiplier']  # Estimación
             total_fare = base_fare + distance_fare
-            
+
             logger.info(f"🔧 PROCESS REQUEST - Tarifa calculada: ${total_fare:.2f}")
-            
+
             embed = discord.Embed(
                 title="🚖 Solicitud de Taxi Confirmada",
                 description="Tu solicitud ha sido procesada exitosamente",
                 color=discord.Color.green()
             )
-            
+
             embed.add_field(
                 name="📍 Ruta",
                 value=f"**Desde:** {origin_data['name']} `{origin_data['coordinates']}`\n**Hasta:** {destination_data['name']} `{destination_data.get('coordinates', '??-?')}`",
                 inline=False
             )
-            
+
             embed.add_field(
                 name="🚗 Vehículo",
                 value=f"{vehicle_data['emoji']} **{vehicle_data['name']}**\n{vehicle_data['description']}\nCapacidad: {vehicle_data['capacity']} personas",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="💰 Tarifa Total",
                 value=f"**${total_fare:.2f}**\n• Base: ${base_fare:.2f}\n• Distancia: ${distance_fare:.2f}",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="⏱️ Estado",
                 value="🔍 Buscando conductor disponible...\n📱 Recibirás notificación cuando se asigne",
                 inline=False
             )
-            
+
             # Información especial según tipo de vehículo
             if self.vehicle_type == "avion":
                 embed.add_field(
@@ -2759,7 +2847,7 @@ class TaxiRequestView(discord.ui.View):
                 
                 # Obtener datos del usuario para guardar en BD
                 user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
-                
+                logger.info(f"🔧 PROCESS REQUEST - Datos de usuario obtenidos: {user_data}")
                 if user_data:
                     # Obtener coordenadas de las zonas
                     origin_data = taxi_config.TAXI_STOPS.get(self.origin, {})
@@ -2797,12 +2885,18 @@ class TaxiRequestView(discord.ui.View):
                     origin_grid = origin_data.get('grid', 'B2')
                     origin_pad = origin_data.get('pad', 5)
                     pickup_x, pickup_y, pickup_z = grid_to_coords(origin_grid, origin_pad)
-                    
+                    logger.info(f"🛫 COORDENADAS ORIGEN: grid={origin_grid}, pad={origin_pad}, x={pickup_x}, y={pickup_y}, z={pickup_z}")
+                    pickup_zone = taxi_config.get_zone_at_location(pickup_x, pickup_y)
+                    logger.info(f"🛫 ZONA DETECTADA ORIGEN: {pickup_zone}")
+
                     # Obtener coordenadas de destino
                     dest_grid = destination_data.get('grid', 'C0')
                     dest_pad = destination_data.get('pad', 4)
                     dest_x, dest_y, dest_z = grid_to_coords(dest_grid, dest_pad)
-                    
+                    logger.info(f"🛬 COORDENADAS DESTINO: grid={dest_grid}, pad={dest_pad}, x={dest_x}, y={dest_y}, z={dest_z}")
+                    destination_zone = taxi_config.get_zone_at_location(dest_x, dest_y)
+                    logger.info(f"🛬 ZONA DETECTADA DESTINO: {destination_zone}")
+
                     # Crear solicitud real en la base de datos
                     success, result = await taxi_db.create_taxi_request(
                         passenger_id=int(user_data['user_id']),

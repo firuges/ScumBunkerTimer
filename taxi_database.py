@@ -87,6 +87,7 @@ class TaxiDatabase:
                     earnings_today DECIMAL(10,2) DEFAULT 0.00,
                     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
                 )
             """)
@@ -196,6 +197,21 @@ class TaxiDatabase:
             await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_requests_status ON taxi_requests(status)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_requests_passenger ON taxi_requests(passenger_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_requests_driver ON taxi_requests(driver_id)")
+            
+            # === MIGRACIONES DE ESQUEMA ===
+            # Agregar updated_at a taxi_drivers si no existe
+            try:
+                cursor = await db.execute("PRAGMA table_info(taxi_drivers)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'updated_at' not in column_names:
+                    # SQLite no permite CURRENT_TIMESTAMP en ALTER TABLE, usar datetime actual
+                    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    await db.execute(f"ALTER TABLE taxi_drivers ADD COLUMN updated_at TIMESTAMP DEFAULT '{current_time}'")
+                    logger.info("✅ Columna updated_at agregada a taxi_drivers")
+            except Exception as e:
+                logger.warning(f"No se pudo agregar columna updated_at: {e}")
             
             await db.commit()
             logger.info("✅ Base de datos del sistema de taxi inicializada")
@@ -734,43 +750,156 @@ class TaxiDatabase:
                 logger.error(f"Error aceptando solicitud {request_id}: {e}")
                 return False, f"Error: {str(e)}"
 
-    async def validate_route(self, pickup_zone: str, destination_zone: str, vehicle_type: str) -> Tuple[bool, str]:
+    async def cancel_request(self, request_id: int) -> Tuple[bool, str]:
+        """Cancelar una solicitud de taxi (actualiza estado a 'cancelled' y registra fecha)"""
+        import datetime
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                cancelled_at = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                await db.execute("""
+                    UPDATE taxi_requests
+                    SET status = 'cancelled', cancelled_at = ?
+                    WHERE request_id = ?
+                """, (cancelled_at, request_id))
+                await db.commit()
+                logger.info(f"Solicitud {request_id} cancelada correctamente.")
+                return True, "Solicitud cancelada correctamente."
+            except Exception as e:
+                logger.error(f"Error al cancelar solicitud {request_id}: {e}")
+                return False, f"Error al cancelar solicitud: {str(e)}"
+
+    async def validate_route(self, pickup_zone, destination_zone, vehicle_type: str) -> Tuple[bool, str]:
         """Validar si una ruta es válida según el tipo de vehículo"""
         try:
             from taxi_config import taxi_config
+            import json
             
             # Obtener información del vehículo
             vehicle_info = taxi_config.VEHICLE_TYPES.get(vehicle_type)
             if not vehicle_info:
                 return False, f"Tipo de vehículo no válido: {vehicle_type}"
             
-            # Definir zonas que requieren tipos específicos de transporte
-            airport_zones = ["Aeropuerto Principal", "Pista de Aterrizaje Sur", "Aeropuerto Norte", "Z0-8", "A4-3", "B4-1", "A0-1"]
-            water_zones = ["Puerto Este", "Puerto Oeste", "Marina", "Isla", "Muelle"]
-            island_zones = ["Isla Sur Remote", "Isla Norte", "Isla Central"]
+            # Función para extraer información de zona (manejar tanto strings como dicts)
+            def extract_zone_info(zone_data):
+                if isinstance(zone_data, str):
+                    try:
+                        # Intentar parsear como JSON
+                        zone_dict = json.loads(zone_data.replace("'", '"'))
+                        return zone_dict.get('zone_name', zone_data), zone_dict.get('zone_id', '')
+                    except:
+                        # Si no es JSON, usar como string normal
+                        return zone_data, ''
+                elif isinstance(zone_data, dict):
+                    return zone_data.get('zone_name', str(zone_data)), zone_data.get('zone_id', '')
+                else:
+                    return str(zone_data), ''
+            
+            # Extraer nombres de zona
+            pickup_name, pickup_id = extract_zone_info(pickup_zone)
+            destination_name, destination_id = extract_zone_info(destination_zone)
+            
+            logger.info(f"🔍 DATOS EXTRAÍDOS - Origen: '{pickup_name}' (ID: {pickup_id})")
+            logger.info(f"🔍 DATOS EXTRAÍDOS - Destino: '{destination_name}' (ID: {destination_id})")
+            
+            # Función para verificar si una zona es de aeropuerto/pista
+            def is_airport_zone(zone_name: str, zone_id: str = '') -> bool:
+                logger.info(f"🔍 BUSCANDO ZONA AEROPORTUARIA: Nombre='{zone_name}', ID='{zone_id}'")
+                
+                # Verificar por zone_id primero (más confiable)
+                if zone_id:
+                    # IDs conocidos de aeropuertos
+                    airport_ids = ['airport_b4_pad1', 'stop_z0_airstrip', 'stop_a4_airstrip', 'stop_a0_airstrip']
+                    if any(airport_id in zone_id for airport_id in airport_ids):
+                        logger.info(f"🛬 ENCONTRADO POR ZONE_ID: '{zone_id}' es un aeropuerto")
+                        return True
+                
+                # Buscar en TAXI_STOPS por tipos aeroportuarios
+                for stop_id, stop_data in taxi_config.TAXI_STOPS.items():
+                    if stop_data['name'] == zone_name or stop_id == zone_id:
+                        is_airport = stop_data['type'] in ['airport_stop', 'airstrip']
+                        logger.info(f"🛬 ENCONTRADO EN TAXI_STOPS: {stop_id} - Nombre: '{stop_data['name']}' - Tipo: '{stop_data['type']}' - Es aeropuerto: {is_airport}")
+                        return is_airport
+                
+                # Buscar en PVP_ZONES por tipos aeroportuarios
+                for zone_key, zone_data in taxi_config.PVP_ZONES.items():
+                    if zone_data['name'] == zone_name or zone_key == zone_id:
+                        is_airport = zone_data['type'] in ['airport', 'airstrip']
+                        logger.info(f"🛬 ENCONTRADO EN PVP_ZONES: {zone_key} - Nombre: '{zone_data['name']}' - Tipo: '{zone_data['type']}' - Es aeropuerto: {is_airport}")
+                        return is_airport
+                
+                # Verificar por palabras clave en el nombre
+                airport_keywords = ["Aeropuerto", "Pista de Aterrizaje", "Airport", "Airstrip"]
+                keyword_match = any(keyword in zone_name for keyword in airport_keywords)
+                if keyword_match:
+                    logger.info(f"🛬 ENCONTRADO POR PALABRAS CLAVE: '{zone_name}' contiene palabras de aeropuerto")
+                    return True
+                
+                # Verificar por coordenadas conocidas de aeropuertos
+                airport_coords = ["Z0-8", "A4-3", "B4-1", "A0-1"]
+                coord_match = any(coord in zone_name for coord in airport_coords)
+                if coord_match:
+                    logger.info(f"🛬 ENCONTRADO POR COORDENADAS: '{zone_name}' contiene coordenadas de aeropuerto")
+                    return True
+                
+                logger.warning(f"❌ ZONA NO RECONOCIDA COMO AEROPUERTO: Nombre='{zone_name}', ID='{zone_id}'")
+                return False
+            
+            # Función para verificar si una zona es de agua/puerto
+            def is_water_zone(zone_name: str) -> bool:
+                # Buscar en TAXI_STOPS por tipos acuáticos
+                for stop_id, stop_data in taxi_config.TAXI_STOPS.items():
+                    if stop_data['name'] == zone_name:
+                        access_types = stop_data.get('access_types', [])
+                        return any(water_type in access_types for water_type in ['water', 'port', 'seaplane'])
+                
+                # Buscar en PVP_ZONES por tipos acuáticos
+                for zone_id, zone_data in taxi_config.PVP_ZONES.items():
+                    if zone_data['name'] == zone_name:
+                        access_types = zone_data.get('access_types', [])
+                        return any(water_type in access_types for water_type in ['water', 'port', 'seaplane'])
+                
+                # Verificar por palabras clave en el nombre
+                water_keywords = ["Puerto", "Marina", "Isla", "Muelle", "Barco"]
+                return any(keyword in zone_name for keyword in water_keywords)
+            
+            # Función para verificar si una zona es una isla
+            def is_island_zone(zone_name: str) -> bool:
+                island_keywords = ["Isla", "Remote", "Island"]
+                return any(keyword in zone_name for keyword in island_keywords)
             
             # Validaciones específicas para aviones
             if vehicle_type == "avion":
-                # Los aviones solo pueden ir entre aeropuertos/pistas
-                pickup_is_airport = any(airport in pickup_zone for airport in airport_zones)
-                destination_is_airport = any(airport in destination_zone for airport in airport_zones)
+                pickup_is_airport = is_airport_zone(pickup_name, pickup_id)
+                destination_is_airport = is_airport_zone(destination_name, destination_id)
+                
+                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Ruta: '{pickup_name}' -> '{destination_name}'")
+                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Pickup es aeropuerto: {pickup_is_airport}")
+                logger.info(f"🛩️ VALIDACIÓN AVIÓN - Destino es aeropuerto: {destination_is_airport}")
                 
                 if not (pickup_is_airport and destination_is_airport):
+                    logger.error(f"🛩️ VALIDACIÓN AVIÓN - FALLO: Pickup='{pickup_name}' ({pickup_is_airport}), Destino='{destination_name}' ({destination_is_airport})")
                     return False, "Los aviones solo pueden volar entre aeropuertos y pistas de aterrizaje"
             
             # Validaciones para barcos
             elif vehicle_type == "barco":
-                # Los barcos necesitan al menos un extremo en agua/puerto
-                pickup_is_water = any(water in pickup_zone for water in water_zones)
-                destination_is_water = any(water in destination_zone for water in water_zones)
-                pickup_is_island = any(island in pickup_zone for island in island_zones)
-                destination_is_island = any(island in destination_zone for island in island_zones)
+                pickup_is_water = is_water_zone(pickup_zone)
+                destination_is_water = is_water_zone(destination_zone)
+                pickup_is_island = is_island_zone(pickup_zone)
+                destination_is_island = is_island_zone(destination_zone)
                 
                 if not (pickup_is_water or destination_is_water or pickup_is_island or destination_is_island):
                     return False, "Los barcos necesitan al menos un puerto, muelle o isla como origen o destino"
             
+            # Validaciones para hidroaviones
+            elif vehicle_type == "hidroavion":
+                pickup_valid = is_airport_zone(pickup_zone) or is_water_zone(pickup_zone)
+                destination_valid = is_airport_zone(destination_zone) or is_water_zone(destination_zone)
+                
+                if not (pickup_valid and destination_valid):
+                    return False, "Los hidroaviones necesitan aeropuertos o zonas de agua"
+            
             # Validaciones para islas (solo barco o hidroavión)
-            if any(island in pickup_zone for island in island_zones) or any(island in destination_zone for island in island_zones):
+            if is_island_zone(pickup_zone) or is_island_zone(destination_zone):
                 if vehicle_type not in ["barco", "hidroavion"]:
                     return False, "Para llegar a las islas solo se puede usar barco o hidroavión"
             
@@ -818,8 +947,8 @@ class TaxiDatabase:
         async with aiosqlite.connect(self.db_path) as db:
             try:
                 cursor = await db.execute("""
-                    SELECT user_id, discord_user_id, discord_guild_id, username, 
-                           display_name, created_at, last_activity
+                    SELECT user_id, discord_id, discord_guild_id, username, 
+                           display_name, created_at, last_active
                     FROM taxi_users 
                     WHERE user_id = ?
                 """, (user_id,))
@@ -828,12 +957,12 @@ class TaxiDatabase:
                 if row:
                     return {
                         'user_id': row[0],
-                        'discord_user_id': row[1],
+                        'discord_id': row[1],
                         'discord_guild_id': row[2],
                         'username': row[3],
                         'display_name': row[4],
                         'created_at': row[5],
-                        'last_activity': row[6]
+                        'last_active': row[6]
                     }
                 return None
                 

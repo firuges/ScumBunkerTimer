@@ -120,7 +120,7 @@ class TaxiSystem(commands.Cog):
             return
         
         # Verificar si el usuario está registrado
-        user_exists = await taxi_db.get_user(interaction.user.id)
+        user_exists = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
         if not user_exists:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado",
@@ -131,7 +131,7 @@ class TaxiSystem(commands.Cog):
             return
         
         # Verificar si ya tiene una solicitud activa
-        active_request = await taxi_db.get_active_taxi_request(interaction.user.id)
+        active_request = await taxi_db.get_active_request_for_user(user_exists['user_id'])
         if active_request:
             embed = discord.Embed(
                 title="⏳ Solicitud Activa",
@@ -177,7 +177,7 @@ class TaxiSystem(commands.Cog):
         total_cost = int((base_cost + (distance * taxi_config.TAXI_PER_KM_RATE)) * vehicle_multiplier)
         
         # Verificar balance del usuario
-        balance = await taxi_db.get_user_balance(interaction.user.id)
+        balance = user_exists['balance']
         if balance < total_cost:
             embed = discord.Embed(
                 title="💰 Saldo Insuficiente",
@@ -190,14 +190,20 @@ class TaxiSystem(commands.Cog):
             return
         
         # Crear solicitud de taxi
-        request_id = await taxi_db.create_taxi_request(
-            passenger_id=interaction.user.id,
-            destination=destination_zone['name'],
+        success, result = await taxi_db.create_taxi_request(
+            passenger_id=user_exists['user_id'],
+            pickup_x=0.0,  # Coordenadas por defecto
+            pickup_y=0.0,
+            pickup_z=0.0,
+            destination_x=0.0,
+            destination_y=0.0, 
+            destination_z=0.0,
             vehicle_type=vehiculo,
-            estimated_cost=total_cost
+            special_instructions=f"Destino: {destination_zone['name']}"
         )
         
-        if request_id:
+        if success:
+            request_id = result['request_id']
             embed = discord.Embed(
                 title="🚖 Taxi Solicitado",
                 description="Tu solicitud ha sido enviada a los conductores disponibles",
@@ -211,16 +217,14 @@ class TaxiSystem(commands.Cog):
             embed.add_field(name="⏱️ Tiempo Estimado", value="5-15 minutos", inline=True)
             embed.add_field(name="🆔 Solicitud ID", value=f"#{request_id}", inline=True)
             
-            # Crear vista con botones
-            view = TaxiRequestView(request_id)
-            await interaction.followup.send(embed=embed, view=view)
+            await interaction.followup.send(embed=embed)
             
             # Notificar a conductores disponibles (si los hay)
             await self.notify_available_drivers(request_id, destination_zone, total_cost)
         else:
             embed = discord.Embed(
                 title="❌ Error",
-                description="No se pudo crear la solicitud de taxi. Intenta nuevamente",
+                description=f"No se pudo crear la solicitud de taxi: {result.get('error', 'Error desconocido')}",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -230,8 +234,18 @@ class TaxiSystem(commands.Cog):
         """Ver estado de solicitud activa"""
         await interaction.response.defer(ephemeral=True)
         
-        # Buscar solicitud activa
-        active_request = await taxi_db.get_active_taxi_request(interaction.user.id)
+        # Buscar solicitud activa  
+        user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        if not user_data:
+            embed = discord.Embed(
+                title="❌ Usuario No Registrado",
+                description="Necesitas registrarte primero. Usa `/welcome_registro`",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+            
+        active_request = await taxi_db.get_active_request_for_user(user_data['user_id'])
         if not active_request:
             embed = discord.Embed(
                 title="ℹ️ Sin Solicitudes",
@@ -267,16 +281,16 @@ class TaxiSystem(commands.Cog):
         embed.color = status_colors.get(active_request['status'], discord.Color.blue())
         
         embed.add_field(name="📊 Estado", value=status_text.get(active_request['status'], 'Desconocido'), inline=True)
-        embed.add_field(name="🎯 Destino", value=active_request['destination'], inline=True)
+        embed.add_field(name="🎯 Destino", value=active_request.get('destination_zone', 'No especificado'), inline=True)
         embed.add_field(name="💰 Costo", value=f"${active_request['estimated_cost']:,}", inline=True)
         
         embed.add_field(name="🚗 Vehículo", value=active_request['vehicle_type'].title(), inline=True)
         embed.add_field(name="📅 Solicitado", value=f"<t:{int(active_request['created_at'].timestamp())}:R>", inline=True)
-        embed.add_field(name="🆔 ID", value=f"#{active_request['id']}", inline=True)
+        embed.add_field(name="🆔 ID", value=f"#{active_request['request_id']}", inline=True)
         
         # Información del conductor si está asignado
         if active_request.get('driver_id'):
-            driver = await taxi_db.get_user(active_request['driver_id'])
+            driver = await taxi_db.get_user_by_id(active_request['driver_id'])
             embed.add_field(name="👨‍✈️ Conductor", value=driver['username'] if driver else 'Desconocido', inline=True)
         
         embed.set_footer(text="Usa /taxi_cancelar para cancelar la solicitud")
@@ -288,7 +302,17 @@ class TaxiSystem(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         # Buscar solicitud activa
-        active_request = await taxi_db.get_active_taxi_request(interaction.user.id)
+        user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        if not user_data:
+            embed = discord.Embed(
+                title="❌ Usuario No Registrado", 
+                description="Necesitas registrarte primero. Usa `/welcome_registro`",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+            
+        active_request = await taxi_db.get_active_request_for_user(user_data['user_id'])
         if not active_request:
             embed = discord.Embed(
                 title="ℹ️ Sin Solicitudes",
@@ -299,7 +323,7 @@ class TaxiSystem(commands.Cog):
             return
         
         # Cancelar la solicitud
-        success = await taxi_db.cancel_taxi_request(active_request['id'])
+        success, message = await taxi_db.cancel_request(active_request['request_id'])
         
         if success:
             embed = discord.Embed(
@@ -307,7 +331,7 @@ class TaxiSystem(commands.Cog):
                 description="Tu solicitud de taxi ha sido cancelada",
                 color=discord.Color.red()
             )
-            embed.add_field(name="🎯 Destino", value=active_request['destination'], inline=True)
+            embed.add_field(name="🎯 Destino", value=active_request.get('destination_zone', 'No especificado'), inline=True)
             embed.add_field(name="💰 Monto", value=f"${active_request['estimated_cost']:,} (No cobrado)", inline=True)
         else:
             embed = discord.Embed(
@@ -514,6 +538,26 @@ class TaxiSystem(commands.Cog):
     #    await ctx.respond(embed=embed, view=view, ephemeral=True)
 
 class TaxiMainView(discord.ui.View):
+    @discord.ui.button(
+        label="✅ Aceptar Solicitud", 
+        style=discord.ButtonStyle.success,
+        emoji="🚖",
+        custom_id="accept_taxi_request"
+    )
+    async def accept_taxi_request(self, button: discord.ui.Button, interaction: discord.Interaction):
+        """Botón para que el conductor acepte una solicitud."""
+        await interaction.response.defer(ephemeral=True)
+        # Obtener datos necesarios (ejemplo: request_id y driver_id)
+        # Aquí deberías obtener el request_id de la vista o contexto real
+        # request_id = self.request_id
+        # driver_id = interaction.user.id
+        # success, msg = await taxi_db.accept_request(request_id, driver_id)
+        # if success:
+        #     await interaction.followup.send(f"Solicitud aceptada", ephemeral=True)
+        #     await self.bot.get_cog("TaxiSystem").notify_passenger_on_accept(request_id)
+        # else:
+        #     await interaction.followup.send(f"Error: {msg}", ephemeral=True)
+        # ...existing code...
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -525,15 +569,13 @@ class TaxiMainView(discord.ui.View):
     )
     async def request_taxi(self, button: discord.ui.Button, interaction: discord.Interaction):
         """Botón para solicitar taxi"""
-        await interaction.response.defer(ephemeral=True)
-        
         if not taxi_config.TAXI_ENABLED:
             embed = discord.Embed(
                 title="❌ Servicio No Disponible",
                 description="El servicio de taxi está temporalmente deshabilitado",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         # Verificar que está registrado
@@ -548,13 +590,12 @@ class TaxiMainView(discord.ui.View):
                 description="Debes registrarte primero en el canal de bienvenida",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
         # Mostrar modal para solicitar taxi
         modal = TaxiRequestModal(user_data)
-        await interaction.followup.send("🚖 Abriendo formulario de solicitud...", ephemeral=True)
-        await interaction.edit_original_response(content="", view=TaxiRequestView(modal, user_data))
+        await interaction.response.send_modal(modal)
 
     @discord.ui.button(
         label="👨‍✈️ Ser Conductor", 
@@ -766,15 +807,7 @@ class TaxiMainView(discord.ui.View):
         
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-class TaxiRequestView(discord.ui.View):
-    def __init__(self, modal, user_data):
-        super().__init__(timeout=300)
-        self.modal = modal
-        self.user_data = user_data
-
-    @discord.ui.button(label="📱 Abrir Formulario", style=discord.ButtonStyle.primary)
-    async def open_modal(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.send_modal(self.modal)
+# TaxiRequestView eliminada - se usa modal directamente
 
 class TaxiRequestModal(discord.ui.Modal):
     def __init__(self, user_data):

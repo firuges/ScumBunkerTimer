@@ -22,8 +22,7 @@ class TaxiConfig:
         self.TAXI_WAIT_RATE = 2.0    # Por minuto de espera
         self.DRIVER_COMMISSION = 0.75  # 75% para el conductor
         self.PLATFORM_FEE = 0.25      # 25% para la plataforma
-        
-        # === SISTEMA DE VEHÍCULOS ===
+        # === TIPOS DE VEHÍCULOS ===
         self.VEHICLE_TYPES = {
             "auto": {
                 "name": "Automóvil",
@@ -51,9 +50,9 @@ class TaxiConfig:
                 "name": "Avión",
                 "emoji": "✈️", 
                 "description": "Transporte aéreo rápido",
-                "capacity": 6,
+                "capacity": 2,
                 "speed_multiplier": 3.0,
-                "cost_multiplier": 2.5,
+                "cost_multiplier": 3.5,
                 "access_types": ["air", "airstrip"],
                 "restricted_zones": ["water_only"],
                 "landing_zones": ["Z0-8", "A4-3", "B4-1", "A0-1"]
@@ -63,7 +62,7 @@ class TaxiConfig:
                 "name": "Hidroavión",
                 "emoji": "🛩️",
                 "description": "Avión que aterriza en agua",
-                "capacity": 4,
+                "capacity": 2,
                 "speed_multiplier": 2.5,
                 "cost_multiplier": 3.0,
                 "access_types": ["air", "water", "seaplane"],
@@ -75,14 +74,13 @@ class TaxiConfig:
                 "name": "Barco",
                 "emoji": "🚢",
                 "description": "Transporte marítimo",
-                "capacity": 8,
+                "capacity": 4,
                 "speed_multiplier": 0.8,
-                "cost_multiplier": 1.5,
+                "cost_multiplier": 4.5,
                 "access_types": ["water", "port"],
                 "restricted_zones": ["land_only", "air_only"]
             }
         }
-        
         # === SISTEMA DE ZONAS BASADO EN PADS DE SCUM ===
         # Sistema de coordenadas: A0-D4 dividido en PADs 1-9
         # PAD Layout: 7-8-9
@@ -95,8 +93,8 @@ class TaxiConfig:
             "stop_b2_city": {
                 "id": "b2_city",
                 "grid": "B2",
-                "pad": 5,
-                "coordinates": "B2-5",
+                "pad": 7,
+                "coordinates": "B2-7",
                 "name": "Parada Ciudad Central",
                 "type": "main_stop",
                 "description": "Parada principal frente al Ayuntamiento",
@@ -125,13 +123,13 @@ class TaxiConfig:
                 "grid": "B4", 
                 "pad": 1,
                 "coordinates": "B4-1",
-                "name": "Aeropuerto Principal",
+                "name": "Trader B4",
                 "type": "airport_stop",
-                "description": "Terminal aérea principal del servidor",
+                "description": "Terminal Trader B4",
                 "always_available": True,
                 "max_taxis": 6,
-                "access_types": ["land", "air", "airstrip"],
-                "vehicle_types": ["auto", "moto", "avion"]
+                "access_types": ["land", "road", "air", "airstrip","water", "port"],
+                "vehicle_types": ["auto", "moto", "avion", "Hidroavion", "barco"]
             },
             
             # Pistas de aterrizaje específicas
@@ -145,8 +143,8 @@ class TaxiConfig:
                 "description": "Pista para aviones en zona sur",
                 "always_available": False,
                 "max_taxis": 3,
-                "access_types": ["air", "airstrip"],
-                "vehicle_types": ["avion"]
+                "access_types": ["air", "airstrip", "land", "road"],
+                "vehicle_types": ["avion", "auto", "moto"]
             },
             
             "stop_a4_airstrip": {
@@ -159,22 +157,8 @@ class TaxiConfig:
                 "description": "Pista militar abandonada",
                 "always_available": False,
                 "max_taxis": 2,
-                "access_types": ["air", "airstrip"],
-                "vehicle_types": ["avion"]
-            },
-            
-            "stop_b3_airstrip": {
-                "id": "b3_airstrip",
-                "grid": "B3",
-                "pad": 8,
-                "coordinates": "B3-8",
-                "name": "Campo de Aviación Norte",
-                "type": "airstrip", 
-                "description": "Pequeño campo de aviación alternativo",
-                "always_available": False,
-                "max_taxis": 2,
-                "access_types": ["air", "airstrip"],
-                "vehicle_types": ["avion"]
+                "access_types": ["air", "airstrip","land", "road"],
+                "vehicle_types": ["auto", "moto","avion"]
             },
             
             "stop_a0_airstrip": {
@@ -182,38 +166,38 @@ class TaxiConfig:
                 "grid": "A0",
                 "pad": 1,
                 "coordinates": "A0-1",
-                "name": "Pista Costera Este",
+                "name": "Pista Costera Este TRADER A0",
                 "type": "airstrip",
-                "description": "Pista cerca de la costa",
+                "description": "Pista cerca de la costa  TRADER A0",
                 "always_available": False,
                 "max_taxis": 2,
-                "access_types": ["air", "airstrip"],
-                "vehicle_types": ["avion"]
+                "access_types": ["land", "road","air", "airstrip","water", "port"],
+                "vehicle_types": ["auto", "moto","avion", "Hidroavion", "barco"]
             },
             
             # Puertos marítimos
             "stop_seaport_north": {
                 "id": "seaport_north",
                 "grid": "C0",
-                "pad": 8,
-                "coordinates": "C0-8",
-                "name": "Puerto Marítimo Norte",
+                "pad": 1,
+                "coordinates": "C0-1",
+                "name": "Zona Radiación Limite",
                 "type": "seaport",
-                "description": "Puerto para embarcaciones grandes",
+                "description": "Limite con Zona Radioactiva",
                 "always_available": True,
                 "max_taxis": 4,
-                "access_types": ["water", "port"],
-                "vehicle_types": ["barco", "hidroavion"]
+                "access_types": ["land", "road","water", "port"],
+                "vehicle_types": ["auto", "moto", "barco", "hidroavion"]
             },
             
             "stop_seaport_south": {
                 "id": "seaport_south", 
-                "grid": "Z1",
+                "grid": "Z3",
                 "pad": 5,
-                "coordinates": "Z1-5",
-                "name": "Puerto Marítimo Sur",
+                "coordinates": "Z3-9",
+                "name": "Puerto Marítimo Sur Trader",
                 "type": "seaport",
-                "description": "Puerto pesquero del sur",
+                "description": "Puerto pesquero del sur  Trader Z3",
                 "always_available": True,
                 "max_taxis": 3,
                 "access_types": ["water", "port"],
@@ -231,18 +215,18 @@ class TaxiConfig:
                 "description": "Parada en plaza del pueblo",
                 "always_available": False,
                 "max_taxis": 3,
-                "access_types": ["land", "road"],
-                "vehicle_types": ["auto", "moto"]
+                "access_types": ["land", "road","water", "port"],
+                "vehicle_types": ["auto", "moto", "Hidroavion", "barco"]
             },
             
             "stop_c3_villa": {
                 "id": "c3_villa",
                 "grid": "C3",
-                "pad": 4,
-                "coordinates": "C3-4",
-                "name": "Parada Villa del Sur", 
+                "pad": 7,
+                "coordinates": "C3-7",
+                "name": "Somobor", 
                 "type": "town_stop",
-                "description": "Parada cerca de la iglesia",
+                "description": "Parada cerca de Somobor",
                 "always_available": False,
                 "max_taxis": 2,
                 "access_types": ["land", "road"],
@@ -253,8 +237,8 @@ class TaxiConfig:
             "stop_b3_industrial": {
                 "id": "b3_industrial",
                 "grid": "B3",
-                "pad": 1,
-                "coordinates": "B3-1",
+                "pad": 6,
+                "coordinates": "B3-6",
                 "name": "Parada Zona Industrial",
                 "type": "industrial_stop", 
                 "description": "Parada para trabajadores",
@@ -266,9 +250,9 @@ class TaxiConfig:
             
             "stop_a2_mining": {
                 "id": "a2_mining",
-                "grid": "A2",
+                "grid": "D0",
                 "pad": 7,
-                "coordinates": "A2-7",
+                "coordinates": "D0-7",
                 "name": "Parada Zona Minera",
                 "type": "mining_stop",
                 "description": "Parada para mineros",
@@ -514,65 +498,7 @@ class TaxiConfig:
             "logs_channel_name": "📊┃taxi-logs"
         }
         
-        # === TIPOS DE VEHÍCULOS ===
-        self.VEHICLE_TYPES = {
-            "auto": {
-                "name": "Automóvil",
-                "emoji": "🚗",
-                "description": "Vehículo terrestre estándar",
-                "capacity": 4,
-                "speed_multiplier": 1.0,
-                "cost_multiplier": 1.0,
-                "access_types": ["land", "road"],
-                "restricted_zones": ["water", "air_only"]
-            },
-            
-            "moto": {
-                "name": "Motocicleta", 
-                "emoji": "🏍️",
-                "description": "Vehículo rápido y ágil",
-                "capacity": 2,
-                "speed_multiplier": 1.3,
-                "cost_multiplier": 0.8,
-                "access_types": ["land", "road", "offroad"],
-                "restricted_zones": ["water", "air_only"]
-            },
-            
-            "avion": {
-                "name": "Avión",
-                "emoji": "✈️", 
-                "description": "Transporte aéreo rápido",
-                "capacity": 2,
-                "speed_multiplier": 3.0,
-                "cost_multiplier": 3.5,
-                "access_types": ["air", "airstrip"],
-                "restricted_zones": ["water_only"],
-                "landing_zones": ["Z0-8", "A4-3", "B4-1", "A0-1"]
-            },
-            
-            "hidroavion": {
-                "name": "Hidroavión",
-                "emoji": "🛩️",
-                "description": "Avión que aterriza en agua",
-                "capacity": 2,
-                "speed_multiplier": 2.5,
-                "cost_multiplier": 3.0,
-                "access_types": ["air", "water", "seaplane"],
-                "restricted_zones": [],
-                "landing_zones": ["water_zones"]  # Se define dinámicamente
-            },
-            
-            "barco": {
-                "name": "Barco",
-                "emoji": "🚢",
-                "description": "Transporte marítimo",
-                "capacity": 4,
-                "speed_multiplier": 0.8,
-                "cost_multiplier": 4.5,
-                "access_types": ["water", "port"],
-                "restricted_zones": ["land_only", "air_only"]
-            }
-        }
+        
         
         # === NIVELES DE CONDUCTOR ===
         self.DRIVER_LEVELS = {
@@ -589,11 +515,80 @@ class TaxiConfig:
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
     def get_zone_at_location(self, x: float, y: float) -> Dict:
-        """Obtener zona en ubicación específica - Versión simplificada"""
-        # Para simplificar, buscaremos la zona más cercana por grid/pad
+        """Obtener zona en ubicación específica - Busca primero en TAXI_STOPS, luego en PVP_ZONES"""
+        
+        # MAPEO ESPECÍFICO para coordenadas problemáticas conocidas
+        # Esto corrige el problema donde Z0-8 se mapea incorrectamente
+        specific_coords = {
+            (25000, 250): 'stop_z0_airstrip',  # Z0-8 -> Pista de Aterrizaje Sur
+            (750, 3750): 'airport_b4_pad1',   # B4-1 -> Aeropuerto Principal
+        }
+        
+        # Buscar mapeo específico con tolerancia
+        for (known_x, known_y), zone_id in specific_coords.items():
+            if abs(x - known_x) <= 100 and abs(y - known_y) <= 100:
+                # Buscar en TAXI_STOPS
+                if zone_id in self.TAXI_STOPS:
+                    stop_data = self.TAXI_STOPS[zone_id]
+                    return {
+                        "zone_id": zone_id,
+                        "zone_name": stop_data["name"],
+                        "restriction": stop_data.get("restriction", "neutral"),
+                        "rules": self.ZONE_RULES.get(stop_data.get("restriction", "neutral"), self.ZONE_RULES["neutral"])
+                    }
+                # Buscar en PVP_ZONES
+                elif zone_id in self.PVP_ZONES:
+                    zone_data = self.PVP_ZONES[zone_id]
+                    return {
+                        "zone_id": zone_id,
+                        "zone_name": zone_data["name"],
+                        "restriction": zone_data.get("restriction", "neutral"),
+                        "rules": self.ZONE_RULES.get(zone_data.get("restriction", "neutral"), self.ZONE_RULES["neutral"])
+                    }
+        
         min_distance = float('inf')
         closest_zone = None
         
+        # PRIMERO: Buscar en TAXI_STOPS (más específicos como aeropuertos)
+        for stop_id, stop_data in self.TAXI_STOPS.items():
+            # Convertir grid/pad a coordenadas básicas
+            grid = stop_data.get('grid', 'B2')
+            pad = stop_data.get('pad', 5)
+            
+            # Grid: A=0, B=1000, C=2000, etc.
+            grid_letter = grid[0] if grid else 'B'
+            grid_number = grid[1:] if len(grid) > 1 else '2'
+            
+            zone_x = (ord(grid_letter.upper()) - ord('A')) * 1000
+            zone_y = int(grid_number) * 1000 if grid_number.isdigit() else 2000
+            
+            # PAD offset
+            pad_offsets = {
+                1: (-250, -250), 2: (0, -250), 3: (250, -250),
+                4: (-250, 0),    5: (0, 0),    6: (250, 0),
+                7: (-250, 250),  8: (0, 250),  9: (250, 250)
+            }
+            pad_offset = pad_offsets.get(pad, (0, 0))
+            zone_x += pad_offset[0]
+            zone_y += pad_offset[1]
+            
+            distance = self.calculate_distance(x, y, zone_x, zone_y)
+            
+            # Priorizar TAXI_STOPS (aeropuertos, pistas)
+            if distance < min_distance or (distance <= 500 and closest_zone is None):
+                min_distance = distance
+                closest_zone = {
+                    "zone_id": stop_id,
+                    "zone_name": stop_data["name"],
+                    "restriction": stop_data.get("restriction", "neutral"),
+                    "rules": self.ZONE_RULES.get(stop_data.get("restriction", "neutral"), self.ZONE_RULES["neutral"])
+                }
+        
+        # Si encontramos TAXI_STOP cercano (dentro de 500m), usarlo
+        if closest_zone and min_distance <= 500:
+            return closest_zone
+        
+        # SEGUNDO: Buscar en PVP_ZONES solo si no hay TAXI_STOP cercano
         for zone_id, zone_data in self.PVP_ZONES.items():
             # Convertir grid/pad a coordenadas básicas
             grid = zone_data.get('grid', 'B2')
@@ -758,6 +753,114 @@ class TaxiConfig:
         except Exception as e:
             print(f"Error cargando configuración: {e}")
             # Usar valores por defecto si falla
+
+    def find_zone_by_name(self, zone_name: str) -> dict:
+        """Buscar zona por nombre (búsqueda flexible)"""
+        zone_name_lower = zone_name.lower().strip()
+        
+        # Buscar coincidencia exacta primero
+        for zone_id, zone_data in self.PVP_ZONES.items():
+            if zone_data['name'].lower() == zone_name_lower:
+                return zone_data
+        
+        # Buscar coincidencia parcial
+        for zone_id, zone_data in self.PVP_ZONES.items():
+            if zone_name_lower in zone_data['name'].lower() or zone_data['name'].lower() in zone_name_lower:
+                return zone_data
+        
+        # Buscar por coordenadas (ej: "B2-5")
+        for zone_id, zone_data in self.PVP_ZONES.items():
+            zone_coords = f"{zone_data.get('grid', '')}-{zone_data.get('pad', '')}"
+            if zone_coords.lower() == zone_name_lower:
+                return zone_data
+        
+        # Buscar en taxi stops también
+        for stop_id, stop_data in self.TAXI_STOPS.items():
+            if stop_data['name'].lower() == zone_name_lower:
+                # Convertir formato de stop a formato de zone
+                return {
+                    'name': stop_data['name'],
+                    'type': stop_data['type'],
+                    'restriction': 'safe_zone',  # Las paradas son seguras por defecto
+                    'grid': stop_data.get('grid', 'B2'),
+                    'pad': stop_data.get('pad', 5)
+                }
+            elif zone_name_lower in stop_data['name'].lower():
+                return {
+                    'name': stop_data['name'],
+                    'type': stop_data['type'],
+                    'restriction': 'safe_zone',
+                    'grid': stop_data.get('grid', 'B2'),
+                    'pad': stop_data.get('pad', 5)
+                }
+        
+        return None
+
+    def validate_vehicle_zone(self, zone_id: str, vehicle_type: str) -> Tuple[bool, str]:
+        """Validar si un vehículo puede acceder a una zona específica"""
+        try:
+            # Buscar la zona
+            zone_data = None
+            if zone_id in self.PVP_ZONES:
+                zone_data = self.PVP_ZONES[zone_id]
+            elif zone_id in self.TAXI_STOPS:
+                zone_data = self.TAXI_STOPS[zone_id]
+            
+            if not zone_data:
+                return False, f"Zona '{zone_id}' no encontrada"
+            
+            # Obtener información del vehículo
+            if vehicle_type not in self.VEHICLE_TYPES:
+                return False, f"Tipo de vehículo '{vehicle_type}' no válido"
+            
+            vehicle_info = self.VEHICLE_TYPES[vehicle_type]
+            vehicle_access_types = vehicle_info.get("access_types", [])
+            vehicle_restricted_zones = vehicle_info.get("restricted_zones", [])
+            
+            # Obtener tipos de acceso de la zona
+            zone_access_types = zone_data.get("access_types", ["land", "road"])
+            zone_vehicle_access = zone_data.get("vehicle_access", [])
+            
+            # Verificar si el vehículo está explícitamente permitido en la zona
+            if zone_vehicle_access and vehicle_type in zone_vehicle_access:
+                return True, "Vehículo permitido en esta zona"
+            
+            # Verificar si hay al menos un tipo de acceso compatible
+            compatible_access = any(access_type in vehicle_access_types for access_type in zone_access_types)
+            
+            if not compatible_access:
+                return False, f"El {vehicle_info['name']} no puede acceder a este tipo de zona"
+            
+            # Verificar restricciones específicas del vehículo
+            zone_type = zone_data.get("type", "normal")
+            if zone_type in vehicle_restricted_zones:
+                return False, f"El {vehicle_info['name']} no puede acceder a zonas de tipo '{zone_type}'"
+            
+            # Verificar restricciones de zona específicas
+            restriction = zone_data.get("restriction", "neutral")
+            if restriction == "no_taxi":
+                return False, "Esta zona no permite servicio de taxi"
+            
+            # Validaciones específicas por tipo de vehículo
+            if vehicle_type == "avion":
+                # Los aviones necesitan pistas de aterrizaje
+                if zone_type not in ["airport", "airstrip"] and "air" not in zone_access_types:
+                    return False, "Los aviones necesitan aeropuertos o pistas de aterrizaje"
+            
+            elif vehicle_type == "barco":
+                # Los barcos necesitan acceso al agua
+                if "water" not in zone_access_types and "port" not in zone_access_types:
+                    return False, "Los barcos necesitan puertos o acceso al agua"
+            
+            elif vehicle_type == "hidroavion":
+                # Los hidroaviones pueden usar agua o pistas especiales
+                if not any(access in zone_access_types for access in ["water", "air", "seaplane"]):
+                    return False, "Los hidroaviones necesitan agua o pistas especiales"
+            
+            return True, "Acceso permitido"
+            
+        except Exception as e:
+            return False, f"Error validando zona: {str(e)}"
 
     def coords_to_grid_pad(self, x: float, y: float) -> str:
         """Convertir coordenadas x,y a formato Grid-Pad (ej: D4-5)"""
