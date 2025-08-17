@@ -565,36 +565,32 @@ class BotStatusSystem:
                 except Exception as e:
                     print(f"Error enviando notificación startup a canal admin: {e}")
             
-            # Crear embed simplificado para canal público
-            public_embed = discord.Embed(
-                title="🟢 Bot Online",
-                description="El bot está nuevamente disponible",
-                color=0x00ff00,
-                timestamp=startup_time
-            )
-            
-            public_embed.add_field(
-                name="⏰ Conexión",
-                value=f"<t:{int(startup_time.timestamp())}:R>",
-                inline=True
-            )
-            
-            public_embed.add_field(
-                name="🔄 Estado",
-                value="✅ Operativo",
-                inline=True
-            )
-            
-            public_embed.set_footer(text="Todos los servicios están disponibles")
-            
-            # Enviar a canal público
-            if self.public_status_channel_id:
+            # Para canal público, ACTUALIZAR el mensaje existente en lugar de crear nuevo
+            if self.public_status_message and self.public_status_channel_id:
+                try:
+                    # Actualizar el mensaje existente con el estado "Online"
+                    embed = await self.create_public_status_embed()
+                    await self.public_status_message.edit(embed=embed)
+                    print("✅ Mensaje de estado público actualizado a 'Online'")
+                except discord.NotFound:
+                    # Si el mensaje fue eliminado, crear uno nuevo
+                    channel = self.bot.get_channel(self.public_status_channel_id)
+                    if channel:
+                        embed = await self.create_public_status_embed()
+                        self.public_status_message = await channel.send(embed=embed)
+                        print("✅ Nuevo mensaje de estado público creado")
+                except Exception as e:
+                    print(f"Error actualizando estado público en startup: {e}")
+            else:
+                # Si no hay mensaje previo, crear uno nuevo
                 try:
                     channel = self.bot.get_channel(self.public_status_channel_id)
                     if channel:
-                        await channel.send(embed=public_embed)
+                        embed = await self.create_public_status_embed()
+                        self.public_status_message = await channel.send(embed=embed)
+                        print("✅ Mensaje de estado público inicial creado")
                 except Exception as e:
-                    print(f"Error enviando notificación startup a canal público: {e}")
+                    print(f"Error creando estado público inicial: {e}")
                     
         except Exception as e:
             print(f"Error en send_startup_notification: {e}")

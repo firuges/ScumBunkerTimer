@@ -217,9 +217,44 @@ class WelcomePackSystem(commands.Cog):
             
             embed.add_field(
                 name="🚖 Próximos Pasos",
-                value="• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles",
+                value="• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles\n• Usa `/bot_presentacion` para conocer todas las funciones",
                 inline=False
             )
+            
+            # Auto-desplegar presentación para nuevos usuarios
+            try:
+                # Importar aquí para evitar circular import
+                bot = interaction.client
+                if hasattr(bot, 'get_channel'):
+                    # Buscar canal de presentación configurado
+                    presentation_channel = None
+                    for channel in interaction.guild.channels:
+                        if channel.name.lower() in ['bot-presentation', 'presentacion', 'presentation']:
+                            presentation_channel = channel
+                            break
+                    
+                    if presentation_channel:
+                        # Importar la clase de presentación desde el bot principal
+                        from BunkerAdvice_V2 import BotPresentationView
+                        view = BotPresentationView()
+                        embed_presentation = view.create_overview_embed()
+                        
+                        intro_text = f"""
+🎉 **¡Bienvenido {interaction.user.display_name}!**
+
+Como eres nuevo en nuestro sistema, aquí tienes la presentación completa del bot. Navega por las **7 páginas** usando los botones para conocer todas las funcionalidades.
+
+⬇️ **Usa los botones para explorar**
+                        """
+                        
+                        await presentation_channel.send(
+                            content=intro_text, 
+                            embed=embed_presentation, 
+                            view=view
+                        )
+            except Exception as e:
+                # No interrumpir el flujo si falla la presentación
+                logger.error(f"Error auto-desplegando presentación: {e}")
             
         else:
             if "already registered" in result.lower():

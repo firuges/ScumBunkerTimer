@@ -16,12 +16,12 @@ class TaxiConfig:
         self.WELCOME_PACK_ENABLED = True  # Switch para welcome pack
         
         # === CONFIGURACIÓN ECONÓMICA ===
-        self.WELCOME_BONUS = 5000.0  # Dinero inicial
+        self.WELCOME_BONUS = 7500.0  # Dinero inicial (optimizado +50%)
         self.TAXI_BASE_RATE = 15.0   # Tarifa base
         self.TAXI_PER_KM_RATE = 3.5  # Por kilómetro
         self.TAXI_WAIT_RATE = 2.0    # Por minuto de espera
-        self.DRIVER_COMMISSION = 0.75  # 75% para el conductor
-        self.PLATFORM_FEE = 0.25      # 25% para la plataforma
+        self.DRIVER_COMMISSION = 0.85  # 85% para el conductor (optimizado +10%)
+        self.PLATFORM_FEE = 0.15      # 15% para la plataforma
         # === TIPOS DE VEHÍCULOS ===
         self.VEHICLE_TYPES = {
             "auto": {

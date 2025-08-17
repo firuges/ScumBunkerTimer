@@ -82,7 +82,7 @@ class BankingSystem(commands.Cog):
                 💸 **Transferir Dinero** - Enviar dinero a otros jugadores
                 📊 **Historial** - Ver tus últimas transacciones
                 📈 **Estadísticas** - Análisis de tu actividad financiera
-                🎁 **Canje Diario** - Recibe $250 gratis cada día
+                🎁 **Canje Diario** - Recibe $500 gratis cada día
                 """,
                 inline=False
             )
@@ -155,7 +155,7 @@ class BankingSystem(commands.Cog):
             💸 **Transferir Dinero** - Enviar dinero a otros jugadores
             📊 **Historial** - Ver tus últimas transacciones
             📈 **Estadísticas** - Análisis de tu actividad financiera
-            🎁 **Canje Diario** - Recibe $250 gratis cada día
+            🎁 **Canje Diario** - Recibe $500 gratis cada día
             """,
             inline=False
         )
@@ -673,13 +673,13 @@ class BankingView(discord.ui.View):
         custom_id="daily_reward"
     )
     async def daily_reward(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Botón para canje diario de $250"""
+        """Botón para canje diario de $500"""
         await interaction.response.defer(ephemeral=True)
         
         if not taxi_config.BANK_ENABLED:
             embed = discord.Embed(
                 title="❌ Sistema Bancario Deshabilitado",
-                description="El canje diario está temporalmente deshabilitado",
+                description="El canje diario de $500 está temporalmente deshabilitado",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -713,7 +713,7 @@ class BankingView(discord.ui.View):
                 
                 embed = discord.Embed(
                     title="⏰ Ya Reclamaste Hoy",
-                    description="Ya has reclamado tu canje diario de hoy",
+                    description="Ya has reclamado tu canje diario de $500 de hoy",
                     color=discord.Color.orange()
                 )
                 embed.add_field(
@@ -723,14 +723,14 @@ class BankingView(discord.ui.View):
                 )
                 embed.add_field(
                     name="💰 Cantidad",
-                    value="$250",
+                    value="$500",
                     inline=True
                 )
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
         
         # Dar recompensa diaria
-        daily_amount = 250
+        daily_amount = 500
         success = await taxi_db.add_daily_reward(user_data['user_id'], daily_amount)
         
         if success:
@@ -738,7 +738,7 @@ class BankingView(discord.ui.View):
             new_balance = user_data['balance'] + daily_amount
             
             embed = discord.Embed(
-                title="🎁 ¡Canje Diario Reclamado!",
+                title="🎁 ¡Canje Diario de $500 Reclamado!",
                 description="Has recibido tu recompensa diaria",
                 color=discord.Color.green()
             )
@@ -762,7 +762,7 @@ class BankingView(discord.ui.View):
         else:
             embed = discord.Embed(
                 title="❌ Error",
-                description="Hubo un error al procesar tu canje diario. Intenta nuevamente.",
+                description="Hubo un error al procesar tu canje diario de $500. Intenta nuevamente.",
                 color=discord.Color.red()
             )
         

@@ -1427,7 +1427,7 @@ class TaxiDatabase:
             logger.error(f"❌ Error obteniendo último canje diario: {e}")
             return None
 
-    async def add_daily_reward(self, user_id: int, amount: float = 250.0) -> bool:
+    async def add_daily_reward(self, user_id: int, amount: float = 500.0) -> bool:
         """Agregar recompensa diaria al usuario"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
