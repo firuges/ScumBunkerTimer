@@ -883,6 +883,110 @@ class TaxiSystemView(discord.ui.View):
         )
         
         return embed
+    
+    @discord.ui.button(label="⭐ Calificar Viaje", style=discord.ButtonStyle.secondary, custom_id="rate_trip")
+    async def rate_trip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Permite a los pasajeros calificar conductores después de un viaje completado"""
+        logger.info(f"⭐ RATE TRIP - Usuario {interaction.user.display_name} quiere calificar un viaje")
+        
+        # Verificar cooldown
+        if not check_cooldown(interaction.user.id):
+            logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
+            return
+        
+        # Verificar si la interacción ya fue respondida
+        if interaction.response.is_done():
+            logger.warning("Interacción ya fue procesada - ignorando")
+            return
+        
+        try:
+            # Obtener usuario en la base de datos
+            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            if not user_data:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="No estás registrado en el sistema de taxi.",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            user_id = int(user_data['user_id'])
+            
+            # Buscar viajes completados que aún no han sido calificados por este usuario
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT tr.request_id, tr.driver_id, tr.pickup_zone, tr.destination_zone,
+                           tr.final_cost, tr.completed_at, td.license_number, tu_driver.display_name as driver_name
+                    FROM taxi_requests tr
+                    JOIN taxi_drivers td ON tr.driver_id = td.driver_id
+                    JOIN taxi_users tu_driver ON td.user_id = tu_driver.user_id
+                    LEFT JOIN taxi_ratings rating ON rating.request_id = tr.request_id AND rating.rater_id = ?
+                    WHERE tr.passenger_id = ? 
+                    AND tr.status = 'completed' 
+                    AND rating.rating_id IS NULL
+                    ORDER BY tr.completed_at DESC
+                    LIMIT 5
+                """, (user_id, user_id))
+                
+                unrated_trips = await cursor.fetchall()
+                
+                if not unrated_trips:
+                    embed = discord.Embed(
+                        title="⭐ Calificar Viajes",
+                        description="No tienes viajes completados pendientes de calificar.",
+                        color=discord.Color.blue()
+                    )
+                    
+                    embed.add_field(
+                        name="💡 ¿Cómo funciona?",
+                        value="Después de completar un viaje, aparecerán aquí para que puedas calificar a tu conductor.",
+                        inline=False
+                    )
+                    
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                
+                # Crear embed con viajes pendientes de calificar
+                embed = discord.Embed(
+                    title="⭐ Calificar Viajes",
+                    description="Selecciona un viaje para calificar al conductor:",
+                    color=0xffd700
+                )
+                
+                # Mostrar hasta 3 viajes en el embed
+                for i, trip in enumerate(unrated_trips[:3]):
+                    request_id, driver_id, pickup_zone, destination_zone, final_cost, completed_at, license_number, driver_name = trip
+                    
+                    embed.add_field(
+                        name=f"🚖 Viaje #{request_id}",
+                        value=f"**Conductor:** {driver_name} (#{license_number})\n"
+                              f"**Ruta:** {pickup_zone} → {destination_zone}\n"
+                              f"**Costo:** ${final_cost:.2f}\n"
+                              f"**Fecha:** {completed_at[:16]}",
+                        inline=True
+                    )
+                
+                embed.add_field(
+                    name="📝 Instrucciones",
+                    value="Usa el selector de abajo para elegir qué viaje calificar.\n"
+                          "Tu calificación ayuda a otros usuarios a elegir buenos conductores.",
+                    inline=False
+                )
+                
+                # Crear vista con selector de viajes
+                view = TripRatingView(unrated_trips)
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error mostrando viajes para calificar: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Error interno al buscar viajes para calificar.",
+                color=discord.Color.red()
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # === CLASES DE VISTAS ADICIONALES ===
@@ -1006,23 +1110,89 @@ class ConfirmCancelView(discord.ui.View):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
             return
         
-        await taxi_db.cancel_request(self.request_id)
-
-        embed = discord.Embed(
-            title="✅ Solicitud Cancelada",
-            description="Tu solicitud de taxi ha sido cancelada exitosamente.",
-            color=0x00ff00
-        )
-        
-        # Añadir botón para volver al panel principal
-        embed.add_field(
-            name="🚖 ¿Qué sigue?",
-            value="Puedes crear una nueva solicitud desde el panel principal.",
-            inline=False
-        )
-        
-        view = TaxiSystemView()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        # Verificar el estado actual de la solicitud antes de cancelar
+        try:
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT status, driver_id FROM taxi_requests 
+                    WHERE request_id = ?
+                """, (self.request_id,))
+                
+                request_status = await cursor.fetchone()
+                
+                if not request_status:
+                    embed = discord.Embed(
+                        title="❌ Error",
+                        description="No se pudo encontrar la solicitud.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+                
+                status, driver_id = request_status
+                
+                # Si ya fue aceptada por un conductor, no permitir cancelación
+                if status == 'accepted' and driver_id is not None:
+                    embed = discord.Embed(
+                        title="⚠️ No se puede cancelar",
+                        description="Tu solicitud ya ha sido **aceptada por un conductor**.\n\nYa no puedes cancelarla. El conductor está en camino hacia ti.",
+                        color=discord.Color.orange()
+                    )
+                    
+                    embed.add_field(
+                        name="📞 ¿Necesitas ayuda?",
+                        value="Contacta al conductor directamente o espera a que complete el viaje.",
+                        inline=False
+                    )
+                    
+                    view = TaxiSystemView()
+                    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                    return
+                
+                # Si aún está pendiente, permitir cancelación
+                elif status == 'pending':
+                    success, message = await taxi_db.cancel_request(self.request_id)
+                    
+                    if success:
+                        embed = discord.Embed(
+                            title="✅ Solicitud Cancelada",
+                            description="Tu solicitud de taxi ha sido cancelada exitosamente.",
+                            color=0x00ff00
+                        )
+                        
+                        embed.add_field(
+                            name="🚖 ¿Qué sigue?",
+                            value="Puedes crear una nueva solicitud desde el panel principal.",
+                            inline=False
+                        )
+                    else:
+                        embed = discord.Embed(
+                            title="❌ Error al cancelar",
+                            description=f"No se pudo cancelar la solicitud: {message}",
+                            color=discord.Color.red()
+                        )
+                    
+                    view = TaxiSystemView()
+                    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                    
+                else:
+                    embed = discord.Embed(
+                        title="❌ Solicitud no válida",
+                        description=f"La solicitud ya tiene estado: **{status}**",
+                        color=discord.Color.red()
+                    )
+                    
+                    view = TaxiSystemView()
+                    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                    
+        except Exception as e:
+            logger.error(f"Error verificando estado para cancelación: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Error interno al procesar la cancelación.",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @discord.ui.button(
         label="❌ No, Mantener", 
@@ -6316,9 +6486,12 @@ class AdminPanelView(discord.ui.View):
                 end_idx = min(start_idx + page_size, len(users))
                 page_users = users[start_idx:end_idx]
                 
+                # Limitar nombre del servidor para evitar problemas
+                guild_name = interaction.guild.name[:50] + "..." if len(interaction.guild.name) > 50 else interaction.guild.name
+                
                 embed = discord.Embed(
                     title="👥 Lista de Usuarios Registrados",
-                    description=f"Usuarios del servidor **{interaction.guild.name}**\n\n**Página {page + 1}/{total_pages}** • **{len(users)} usuarios totales**",
+                    description=f"Usuarios de **{guild_name}**\n**Página {page + 1}/{total_pages}** • **{len(users)} usuarios totales**",
                     color=0x3498db
                 )
                 
@@ -6330,15 +6503,22 @@ class AdminPanelView(discord.ui.View):
                     member = interaction.guild.get_member(int(discord_id))
                     status_emoji = "✅" if member else "❌"
                     
-                    # Formatear información
-                    ingame_display = ingame_name if ingame_name else "❌ Sin configurar"
+                    # Formatear información (compacta para evitar límites)
+                    ingame_display = ingame_name[:20] + "..." if ingame_name and len(ingame_name) > 20 else (ingame_name if ingame_name else "Sin config")
+                    display_name_short = display_name[:25] + "..." if len(display_name) > 25 else display_name
                     balance_display = f"${balance:,.0f}" if balance else "$0"
                     welcome_status = "✅" if welcome_claimed else "❌"
                     
-                    users_text += f"**{i}.** {status_emoji} **{display_name}**\n"
-                    users_text += f"   • **InGame:** {ingame_display}\n"
-                    users_text += f"   • **Balance:** {balance_display} | **Welcome:** {welcome_status}\n"
-                    users_text += f"   • **ID:** `{discord_id}`\n\n"
+                    # Construir línea más compacta
+                    user_line = f"**{i}.** {status_emoji} **{display_name_short}**\n"
+                    user_line += f"   📝 {ingame_display} | 💰 {balance_display} | 🎁 {welcome_status}\n\n"
+                    
+                    # Verificar límite antes de agregar
+                    if len(users_text) + len(user_line) > 950:  # Límite conservador
+                        users_text += f"... y {len(page_users) - i + start_idx} usuarios más"
+                        break
+                    
+                    users_text += user_line
                 
                 embed.add_field(
                     name="📋 Usuarios en esta Página",
@@ -6555,6 +6735,19 @@ class AdminPanelView(discord.ui.View):
                 """, (str(interaction.guild.id),))
                 
                 results = await cursor.fetchall()
+                
+                # También obtener vehículos sin escuadrón en la misma conexión
+                cursor = await db.execute("""
+                    SELECT COUNT(*) FROM registered_vehicles rv
+                    WHERE rv.guild_id = ? AND rv.status = 'active'
+                    AND rv.owner_discord_id NOT IN (
+                        SELECT sm.discord_id FROM squadron_members sm 
+                        JOIN squadrons s ON sm.squadron_id = s.id 
+                        WHERE s.guild_id = ? AND s.status = 'active'
+                    )
+                """, (str(interaction.guild.id), str(interaction.guild.id)))
+                
+                vehicles_without_squadron = (await cursor.fetchone())[0]
             
             if not results:
                 embed = discord.Embed(
@@ -6562,6 +6755,15 @@ class AdminPanelView(discord.ui.View):
                     description="No hay vehículos registrados en escuadrones activos.",
                     color=discord.Color.blue()
                 )
+                
+                # Mostrar vehículos sin escuadrón aunque no haya escuadrones
+                if vehicles_without_squadron > 0:
+                    embed.add_field(
+                        name="📊 Información",
+                        value=f"Hay **{vehicles_without_squadron}** vehículos registrados que no pertenecen a ningún escuadrón.",
+                        inline=False
+                    )
+                
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
@@ -6619,19 +6821,6 @@ class AdminPanelView(discord.ui.View):
                     value=field_value[:1024],  # Límite Discord
                     inline=False
                 )
-            
-            # Obtener también vehículos sin escuadrón
-            cursor = await db.execute("""
-                SELECT COUNT(*) FROM registered_vehicles rv
-                WHERE rv.guild_id = ? AND rv.status = 'active'
-                AND rv.owner_discord_id NOT IN (
-                    SELECT sm.discord_id FROM squadron_members sm 
-                    JOIN squadrons s ON sm.squadron_id = s.id 
-                    WHERE s.guild_id = ? AND s.status = 'active'
-                )
-            """, (str(interaction.guild.id), str(interaction.guild.id)))
-            
-            vehicles_without_squadron = (await cursor.fetchone())[0]
             
             embed.add_field(
                 name="📊 Resumen",
@@ -6764,6 +6953,265 @@ class AdminPanelView(discord.ui.View):
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class TripRatingView(discord.ui.View):
+    """Vista para seleccionar y calificar viajes completados"""
+    
+    def __init__(self, unrated_trips: list):
+        super().__init__(timeout=300)
+        self.unrated_trips = unrated_trips
+        
+        # Crear selector con los viajes
+        if unrated_trips:
+            options = []
+            for trip in unrated_trips[:25]:  # Discord limit
+                request_id, driver_id, pickup_zone, destination_zone, final_cost, completed_at, license_number, driver_name = trip
+                
+                # Formatear fecha
+                try:
+                    date_str = completed_at[:10] if completed_at else "Fecha desconocida"
+                except:
+                    date_str = "Fecha desconocida"
+                
+                options.append(discord.SelectOption(
+                    label=f"Viaje #{request_id} - {driver_name}",
+                    description=f"{pickup_zone} → {destination_zone} | ${final_cost:.2f} | {date_str}",
+                    value=str(request_id)
+                ))
+            
+            self.add_item(TripRatingSelect(options, self.unrated_trips))
+    
+    @discord.ui.button(
+        label="🔙 Volver al Panel",
+        style=discord.ButtonStyle.secondary,
+        custom_id="back_to_main_from_rating",
+        emoji="🔙"
+    )
+    async def back_to_main(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Volver al panel principal del sistema de taxi"""
+        try:
+            embed = discord.Embed(
+                title="🚖 Sistema de Taxi",
+                description="Usa los comandos `/taxi_conductor` para ser taxista, y más comandos disponibles.",
+                color=0x00ff00
+            )
+            
+            view = TaxiSystemView()
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error volviendo al panel principal desde rating: {e}")
+
+
+class TripRatingSelect(discord.ui.Select):
+    """Selector para elegir qué viaje calificar"""
+    
+    def __init__(self, options: list, unrated_trips: list):
+        super().__init__(
+            placeholder="Selecciona un viaje para calificar...",
+            options=options
+        )
+        self.unrated_trips = unrated_trips
+    
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            selected_request_id = int(self.values[0])
+            
+            # Encontrar el viaje seleccionado
+            selected_trip = None
+            for trip in self.unrated_trips:
+                if trip[0] == selected_request_id:  # request_id es el primer elemento
+                    selected_trip = trip
+                    break
+            
+            if not selected_trip:
+                await interaction.response.send_message("❌ Viaje no encontrado", ephemeral=True)
+                return
+            
+            request_id, driver_id, pickup_zone, destination_zone, final_cost, completed_at, license_number, driver_name = selected_trip
+            
+            # Crear modal de calificación
+            modal = TripRatingModal(selected_trip)
+            await interaction.response.send_modal(modal)
+            
+        except Exception as e:
+            logger.error(f"Error seleccionando viaje para calificar: {e}")
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+
+class TripRatingModal(discord.ui.Modal):
+    """Modal para calificar un viaje completado"""
+    
+    def __init__(self, trip_data: tuple):
+        self.trip_data = trip_data
+        request_id, driver_id, pickup_zone, destination_zone, final_cost, completed_at, license_number, driver_name = trip_data
+        
+        super().__init__(title=f"⭐ Calificar Viaje #{request_id}")
+        
+        # Campo de calificación (1-5 estrellas)
+        self.rating_input = discord.ui.TextInput(
+            label="Calificación (1-5 estrellas)",
+            placeholder="Ingresa un número del 1 al 5",
+            min_length=1,
+            max_length=1,
+            required=True
+        )
+        self.add_item(self.rating_input)
+        
+        # Campo de comentario opcional
+        self.comment_input = discord.ui.TextInput(
+            label="Comentario (Opcional)",
+            placeholder="¿Cómo estuvo el servicio? ¿Algún comentario para el conductor?",
+            style=discord.TextStyle.paragraph,
+            min_length=0,
+            max_length=500,
+            required=False
+        )
+        self.add_item(self.comment_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Validar calificación
+            try:
+                rating = int(self.rating_input.value)
+                if not 1 <= rating <= 5:
+                    raise ValueError("Rating fuera de rango")
+            except ValueError:
+                embed = discord.Embed(
+                    title="❌ Calificación Inválida",
+                    description="La calificación debe ser un número del 1 al 5.",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            request_id, driver_id, pickup_zone, destination_zone, final_cost, completed_at, license_number, driver_name = self.trip_data
+            comment = self.comment_input.value.strip() if self.comment_input.value else None
+            
+            # Obtener usuario que califica
+            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            if not user_data:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="Usuario no encontrado en el sistema.",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            user_id = int(user_data['user_id'])
+            
+            # Guardar calificación en base de datos
+            success, message = await taxi_db.add_trip_rating(request_id, user_id, driver_id, rating, comment)
+            
+            if success:
+                # Crear embed de confirmación
+                embed = discord.Embed(
+                    title="⭐ Calificación Enviada",
+                    description=f"¡Gracias por calificar tu viaje con **{driver_name}**!",
+                    color=discord.Color.green()
+                )
+                
+                # Mostrar resumen de la calificación
+                stars = "⭐" * rating + "☆" * (5 - rating)
+                embed.add_field(
+                    name="📊 Tu Calificación",
+                    value=f"{stars} ({rating}/5)",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🚖 Viaje",
+                    value=f"#{request_id}: {pickup_zone} → {destination_zone}",
+                    inline=True
+                )
+                
+                if comment:
+                    embed.add_field(
+                        name="💬 Tu Comentario",
+                        value=f'"{comment}"',
+                        inline=False
+                    )
+                
+                embed.add_field(
+                    name="💡 Gracias",
+                    value="Tu calificación ayuda a mejorar el servicio y ayuda a otros usuarios a elegir buenos conductores.",
+                    inline=False
+                )
+                
+                # Notificar al conductor si es posible
+                try:
+                    # Obtener datos del conductor
+                    async with aiosqlite.connect(taxi_db.db_path) as db:
+                        cursor = await db.execute("""
+                            SELECT tu.discord_id FROM taxi_drivers td
+                            JOIN taxi_users tu ON td.user_id = tu.user_id
+                            WHERE td.driver_id = ?
+                        """, (driver_id,))
+                        
+                        driver_data = await cursor.fetchone()
+                        
+                        if driver_data:
+                            guild = interaction.guild
+                            driver_member = guild.get_member(int(driver_data[0]))
+                            
+                            if driver_member:
+                                driver_embed = discord.Embed(
+                                    title="⭐ Nueva Calificación Recibida",
+                                    description=f"Has recibido una calificación de **{interaction.user.display_name}**",
+                                    color=discord.Color.gold()
+                                )
+                                
+                                driver_embed.add_field(
+                                    name="📊 Calificación",
+                                    value=f"{stars} ({rating}/5 estrellas)",
+                                    inline=True
+                                )
+                                
+                                driver_embed.add_field(
+                                    name="🚖 Viaje",
+                                    value=f"#{request_id}: {pickup_zone} → {destination_zone}",
+                                    inline=True
+                                )
+                                
+                                if comment:
+                                    driver_embed.add_field(
+                                        name="💬 Comentario del Pasajero",
+                                        value=f'"{comment}"',
+                                        inline=False
+                                    )
+                                
+                                try:
+                                    await driver_member.send(embed=driver_embed)
+                                    logger.info(f"Notificación de calificación enviada al conductor {driver_name}")
+                                except (discord.Forbidden, discord.HTTPException):
+                                    logger.warning(f"No se pudo notificar al conductor {driver_name}")
+                
+                except Exception as notify_error:
+                    logger.error(f"Error notificando al conductor: {notify_error}")
+                
+                # Volver al panel principal
+                view = TaxiSystemView()
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                
+            else:
+                embed = discord.Embed(
+                    title="❌ Error al Calificar",
+                    description=f"No se pudo guardar la calificación: {message}",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error procesando calificación: {e}")
+            embed = discord.Embed(
+                title="❌ Error Inesperado",
+                description="Hubo un error al procesar tu calificación.",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 class UserListNavigationView(discord.ui.View):
     """Vista para navegar por páginas de usuarios"""

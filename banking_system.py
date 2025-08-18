@@ -625,10 +625,28 @@ class BankingView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Mostrar modal para transferencia
+        # Mostrar vista de transferencia directamente
         modal = TransferModal(user_data)
-        await interaction.followup.send("💸 Abriendo formulario de transferencia...", ephemeral=True)
-        await interaction.edit_original_response(content="", view=TransferModalView(modal, user_data))
+        view = TransferModalView(modal, user_data)
+        embed = discord.Embed(
+            title="💸 Transferir Dinero",
+            description="Usa el botón de abajo para abrir el formulario de transferencia",
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(
+            name="💰 Tu Balance",
+            value=f"${user_data['balance']:,.0f}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="⚠️ Importante",
+            value="• Verifica bien el destinatario\n• Las transferencias no se pueden revertir\n• Se aplicará una comisión del 2%",
+            inline=False
+        )
+        
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(
         label="📊 Historial", 

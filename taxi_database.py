@@ -2000,12 +2000,12 @@ class TaxiDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
                     SELECT tr.request_id, tr.passenger_id, tr.pickup_zone, tr.destination_zone,
-                           tr.estimated_cost, tr.final_cost, tr.created_at, tr.driver_accepted_at,
+                           tr.estimated_cost, tr.final_cost, tr.created_at, tr.accepted_at,
                            tu.discord_id as passenger_discord_id, tu.display_name as passenger_name
                     FROM taxi_requests tr
                     JOIN taxi_users tu ON tr.passenger_id = tu.user_id
                     WHERE tr.driver_id = ? AND tr.status = 'accepted'
-                    ORDER BY tr.driver_accepted_at DESC
+                    ORDER BY tr.accepted_at DESC
                 """, (driver_id,))
                 
                 rows = await cursor.fetchall()
@@ -2063,8 +2063,7 @@ class TaxiDatabase:
                     UPDATE taxi_requests 
                     SET status = 'completed', 
                         final_cost = ?,
-                        completed_at = CURRENT_TIMESTAMP,
-                        updated_at = CURRENT_TIMESTAMP
+                        completed_at = CURRENT_TIMESTAMP
                     WHERE request_id = ?
                 """, (cost_to_charge, request_id))
                 

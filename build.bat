@@ -152,6 +152,9 @@ copy "test_database_fix.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "debug_user.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "check_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
+:: Script de migración crítico
+copy "migrate_system_tables.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
 :: Archivos esenciales
 copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
 
@@ -373,12 +376,14 @@ echo echo 📋 PRÓXIMOS PASOS: >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 if defined DISCORD_TOKEN_VALUE (
     echo echo ✅ 1. Token ya configurado automáticamente >> "%BUILD_FULL_DIR%\INSTALL.bat"
-    echo echo 🚀 2. Ejecutar: start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🗄️ 2. Migrar base de datos: python migrate_system_tables.py >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🚀 3. Ejecutar: start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
 ) else (
     echo echo 📝 1. Editar config.py con tu token >> "%BUILD_FULL_DIR%\INSTALL.bat"
-    echo echo 🚀 2. Ejecutar start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🗄️ 2. Migrar base de datos: python migrate_system_tables.py >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🚀 3. Ejecutar start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
 )
-echo echo 📚 3. Ver docs\ para guías completas >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo 📚 4. Ver docs\ para guías completas >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ========================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo pause >> "%BUILD_FULL_DIR%\INSTALL.bat"

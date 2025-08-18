@@ -10,6 +10,7 @@ from discord import app_commands
 import asyncio
 import logging
 import aiosqlite
+import typing
 from datetime import datetime, timedelta
 from taxi_database import taxi_db
 from taxi_config import taxi_config
@@ -1762,6 +1763,10 @@ class MechanicSystemView(discord.ui.View):
             
             # Obtener vehículos registrados del usuario
             user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+            logger.info(f"Usuario {interaction.user.display_name} ({interaction.user.id}) - Vehículos encontrados: {len(user_vehicles) if user_vehicles else 0}")
+            
+            if user_vehicles:
+                logger.info(f"Primeros vehículos: {user_vehicles[:2]}")  # Log de debug
             
             embed = discord.Embed(
                 title="🚗 Gestión de Vehículos",
@@ -1845,9 +1850,20 @@ class VehicleManagementView(discord.ui.View):
     
     @discord.ui.button(label="➕ Registrar Vehículo", style=discord.ButtonStyle.success)
     async def register_vehicle_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Mostrar modal para registrar vehículo"""
-        modal = VehicleRegistrationModal()
-        await interaction.response.send_modal(modal)
+        """Mostrar selector para tipo de vehículo antes del modal"""
+        embed = discord.Embed(
+            title="🚗 Registrar Nuevo Vehículo",
+            description="Selecciona el tipo de vehículo que deseas registrar:",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="📝 Proceso",
+            value="1. **Selecciona el tipo** de vehículo\n2. **Completa el formulario** con los datos\n3. **Confirma el registro**",
+            inline=False
+        )
+        
+        view = VehicleRegistrationView()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
     @discord.ui.button(label="📋 Ver Mis Vehículos", style=discord.ButtonStyle.primary)
     async def view_vehicles_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1919,22 +1935,81 @@ class VehicleManagementView(discord.ui.View):
         
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Vehículo"):
+# Vista previa para seleccionar tipo de vehículo antes del modal
+class VehicleRegistrationView(discord.ui.View):
     def __init__(self):
+        super().__init__(timeout=300)
+        self.selected_vehicle_type = None
+    
+    @discord.ui.select(
+        placeholder="🚗 Selecciona el tipo de vehículo...",
+        options=[
+            discord.SelectOption(
+                label="🏍️ Moto",
+                value="moto",
+                description="Motocicleta - Ágil y económica",
+                emoji="🏍️"
+            ),
+            discord.SelectOption(
+                label="🚙 Ranger",
+                value="ranger", 
+                description="Vehículo todoterreno resistente",
+                emoji="🚙"
+            ),
+            discord.SelectOption(
+                label="🚗 Laika",
+                value="laika",
+                description="Automóvil estándar confiable", 
+                emoji="🚗"
+            ),
+            discord.SelectOption(
+                label="🚛 WW (Camión)",
+                value="ww",
+                description="Vehículo pesado de carga",
+                emoji="🚛"
+            ),
+            discord.SelectOption(
+                label="✈️ Avión",
+                value="avion",
+                description="Transporte aéreo rápido",
+                emoji="✈️"
+            ),
+            discord.SelectOption(
+                label="🚤 Barca",
+                value="barca",
+                description="Embarcación acuática",
+                emoji="🚤"
+            )
+        ]
+    )
+    async def select_vehicle_type(self, interaction: discord.Interaction, select: discord.ui.Select):
+        self.selected_vehicle_type = select.values[0]
+        
+        # Mostrar modal con el tipo seleccionado
+        modal = VehicleRegistrationModal(self.selected_vehicle_type)
+        await interaction.response.send_modal(modal)
+
+class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Vehículo"):
+    def __init__(self, vehicle_type: str):
         super().__init__()
+        self.vehicle_type = vehicle_type
+        
+        # Actualizar título con el tipo de vehículo
+        vehicle_names = {
+            "moto": "🏍️ Moto",
+            "ranger": "🚙 Ranger", 
+            "laika": "🚗 Laika",
+            "ww": "🚛 WW",
+            "avion": "✈️ Avión",
+            "barca": "🚤 Barca"
+        }
+        self.title = f"Registrar {vehicle_names.get(vehicle_type, vehicle_type.title())}"
     
     vehicle_id = discord.ui.TextInput(
         label="ID del Vehículo",
         placeholder="Ingresa el ID único de tu vehículo (ej: VEH123456)",
         required=True,
         max_length=50
-    )
-    
-    vehicle_type = discord.ui.TextInput(
-        label="Tipo de Vehículo",
-        placeholder="moto, ranger, laika, ww, avion, etc.",
-        required=True,
-        max_length=20
     )
     
     notes = discord.ui.TextInput(
@@ -1951,7 +2026,7 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
         try:
             # Validar datos
             vehicle_id = self.vehicle_id.value.strip()
-            vehicle_type = self.vehicle_type.value.strip().lower()
+            vehicle_type = self.vehicle_type  # Ya viene del selector, no del campo de texto
             notes = self.notes.value.strip() if self.notes.value else None
             
             if len(vehicle_id) < 3:
@@ -2040,15 +2115,26 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
             )
             
             if success:
+                # Obtener emoji del tipo de vehículo
+                vehicle_emojis = {
+                    "moto": "🏍️",
+                    "ranger": "🚙", 
+                    "laika": "🚗",
+                    "ww": "🚛",
+                    "avion": "✈️",
+                    "barca": "🚤"
+                }
+                vehicle_emoji = vehicle_emojis.get(vehicle_type, "🚗")
+                
                 embed = discord.Embed(
                     title="✅ Vehículo Registrado",
-                    description=f"Tu **{vehicle_type.title()}** ha sido registrado exitosamente",
+                    description=f"Tu **{vehicle_emoji} {vehicle_type.title()}** ha sido registrado exitosamente",
                     color=discord.Color.green()
                 )
                 
                 embed.add_field(
                     name="🚗 Información del Vehículo",
-                    value=f"**ID:** `{vehicle_id}`\n**Tipo:** {vehicle_type.title()}\n**Propietario:** {user_data['ingame_name']}",
+                    value=f"**ID:** `{vehicle_id}`\n**Tipo:** {vehicle_emoji} {vehicle_type.title()}\n**Propietario:** {user_data['ingame_name']}",
                     inline=True
                 )
                 
@@ -2056,13 +2142,13 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
                 if user_squadron:
                     embed.add_field(
                         name="📊 Límites del Escuadrón",
-                        value=f"**{vehicle_type.title()}:** {current_count + 1}/{limit}\n**Escuadrón:** {user_squadron['squadron_name']}",
+                        value=f"**{vehicle_emoji} {vehicle_type.title()}:** {current_count + 1}/{limit}\n**Escuadrón:** {user_squadron['squadron_name']}",
                         inline=True
                     )
                 else:
                     embed.add_field(
                         name="📊 Límites Individuales",
-                        value=f"**{vehicle_type.title()}:** {current_count + 1}/{limit}\n*Sin escuadrón*",
+                        value=f"**{vehicle_emoji} {vehicle_type.title()}:** {current_count + 1}/{limit}\n*Sin escuadrón*",
                         inline=True
                     )
                 
@@ -2208,15 +2294,24 @@ class SquadronSystemView(discord.ui.View):
             
             if existing_squadron:
                 embed = discord.Embed(
-                    title="⚠️ Ya Perteneces a un Escuadrón",
-                    description=f"Ya eres parte del escuadrón **{existing_squadron['squadron_name']}**",
+                    title="⚠️ Ya Tienes un Escuadrón",
+                    description=f"Ya eres **{existing_squadron['role'].title()}** del escuadrón **{existing_squadron['squadron_name']}** ({existing_squadron['squadron_type']})",
                     color=discord.Color.orange()
                 )
                 embed.add_field(
-                    name="🎯 Opciones Disponibles",
-                    value="• Usa el botón **'📋 Mi Escuadrón'** para ver detalles\n• Para cambiar de escuadrón, contacta a un administrador",
+                    name="🎯 ¿Qué puedes hacer?",
+                    value="• **📋 Mi Escuadrón** - Ver detalles y gestionar tu equipo\n• **🚪 Salir del Escuadrón** - Abandonar tu equipo actual\n• **Contactar Admin** - Para cambiar de escuadrón directamente",
                     inline=False
                 )
+                
+                # Información específica según el rol
+                if existing_squadron['role'] == 'leader':
+                    embed.add_field(
+                        name="👑 Como Líder",
+                        value="Puedes transferir el liderazgo a otro miembro desde **'📋 Mi Escuadrón'**",
+                        inline=False
+                    )
+                
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
             
@@ -2314,7 +2409,17 @@ class SquadronSystemView(discord.ui.View):
                 inline=False
             )
             
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # Si es líder, mostrar opciones de gestión
+            if squadron['role'] == 'leader':
+                view = SquadronLeaderManagementView(squadron)
+                embed.add_field(
+                    name="👑 Opciones de Líder",
+                    value="Como líder, puedes gestionar tu escuadrón usando los botones de abajo",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error consultando escuadrón: {e}")
@@ -2336,15 +2441,22 @@ class SquadronSystemView(discord.ui.View):
             
             if existing_squadron:
                 embed = discord.Embed(
-                    title="⚠️ Ya Perteneces a un Escuadrón",
-                    description=f"Ya eres parte del escuadrón **{existing_squadron['squadron_name']}**",
-                    color=discord.Color.orange()
+                    title="💡 Ya Perteneces a un Escuadrón",
+                    description=f"Actualmente eres **{existing_squadron['role'].title()}** del escuadrón **{existing_squadron['squadron_name']}** ({existing_squadron['squadron_type']})",
+                    color=discord.Color.blue()
                 )
                 embed.add_field(
-                    name="🎯 Opciones Disponibles",
-                    value="• Usa el botón **'📋 Mi Escuadrón'** para ver detalles\n• Para cambiar de escuadrón, contacta a un administrador",
+                    name="🎯 ¿Qué puedes hacer?",
+                    value="• **📋 Mi Escuadrón** - Ver detalles y gestionar tu equipo\n• **🚪 Salir del Escuadrón** - Si quieres cambiar de equipo\n• **Ver info de otros** - Solo disponible sin escuadrón",
                     inline=False
                 )
+                
+                embed.add_field(
+                    name="💡 ¿Por qué no puedo explorar?",
+                    value="Solo usuarios sin escuadrón pueden explorar y unirse a otros equipos. Debes salir de tu escuadrón actual primero.",
+                    inline=False
+                )
+                
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
@@ -2461,19 +2573,29 @@ class SquadronSystemView(discord.ui.View):
             user_squadron = await get_user_squadron(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_squadron:
+                # Mensaje más útil cuando no pertenece a ningún escuadrón
                 embed = discord.Embed(
-                    title="❌ No Perteneces a Ningún Escuadrón",
-                    description="No puedes salir de un escuadrón si no perteneces a ninguno.",
-                    color=discord.Color.red()
+                    title="💡 No Perteneces a Ningún Escuadrón",
+                    description="No estás en ningún escuadrón actualmente, por lo que no hay nada de lo que salir.",
+                    color=discord.Color.blue()
                 )
+                
                 embed.add_field(
-                    name="🎯 ¿Quieres Unirte a Uno?",
-                    value="Usa el botón **'🔍 Explorar Escuadrones'** para encontrar un equipo",
+                    name="🎯 ¿Qué puedes hacer?",
+                    value="• **🏆 Crear Escuadrón** - Forma tu propio equipo\n• **🔍 Explorar Escuadrones** - Únete a uno existente",
                     inline=False
                 )
+                
+                embed.add_field(
+                    name="💡 ¿Por qué ves este botón?",
+                    value="Este botón está disponible para todos los usuarios. Solo funcionará si perteneces a un escuadrón.",
+                    inline=False
+                )
+                
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
+            # Si llegamos aquí, el usuario SÍ pertenece a un escuadrón
             # Verificar si es el líder
             if user_squadron['role'] == 'leader':
                 embed = discord.Embed(
@@ -3318,6 +3440,33 @@ class MechanicSystem(commands.Cog):
                     )
                 """)
                 
+                # Tabla de configuración de vehículos por escuadrón
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS squadron_vehicle_config (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id TEXT NOT NULL UNIQUE,
+                        vehicles_per_member INTEGER NOT NULL DEFAULT 2,
+                        max_total_vehicles INTEGER NOT NULL DEFAULT 50,
+                        updated_by TEXT,
+                        updated_at TEXT NOT NULL
+                    )
+                """)
+                
+                # Tabla de historial de salidas de escuadrones
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS squadron_leave_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        discord_id TEXT NOT NULL,
+                        guild_id TEXT NOT NULL,
+                        squadron_id INTEGER NOT NULL,
+                        squadron_name TEXT NOT NULL,
+                        left_at TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        removed_by TEXT,
+                        can_rejoin_at TEXT NOT NULL
+                    )
+                """)
+                
                 await db.commit()
                 logger.info("✅ Tablas de sistema de mecánico inicializadas")
                 
@@ -3353,6 +3502,91 @@ class MechanicSystem(commands.Cog):
                     
         except Exception as e:
             logger.error(f"Error cargando configuraciones de mecánico: {e}")
+    
+    async def cog_load(self):
+        """Ejecutar cuando se carga el cog"""
+        await self.init_database()
+        await self.load_channel_configs()
+        
+        # Iniciar task de limpieza automática
+        self._cleanup_task = asyncio.create_task(self._start_cleanup_loop())
+        logger.info("Task de limpieza automática de canales iniciado")
+    
+    async def cog_unload(self):
+        """Ejecutar cuando se descarga el cog"""
+        if hasattr(self, '_cleanup_task'):
+            self._cleanup_task.cancel()
+            logger.info("Task de limpieza automática cancelado")
+    
+    async def _start_cleanup_loop(self):
+        """Loop de limpieza automática cada 30 minutos"""
+        await self.bot.wait_until_ready()
+        
+        while not self.bot.is_closed():
+            try:
+                await asyncio.sleep(1800)  # 30 minutos
+                await self._auto_cleanup_channels()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error en loop de limpieza automática: {e}")
+                await asyncio.sleep(300)  # 5 minutos antes de reintentar
+    
+    async def _auto_cleanup_channels(self):
+        """Limpieza automática de canales de mecánico y escuadrones"""
+        try:
+            logger.info("Iniciando limpieza automática de canales...")
+            
+            # Limpiar canales de escuadrones
+            for guild_id, channel_id in self.squadron_channels.items():
+                await self._cleanup_channel_messages(channel_id, "escuadrones")
+                await asyncio.sleep(2)  # Pausa entre limpiezas
+            
+            # Limpiar canales de mecánico  
+            for guild_id, channel_id in self.mechanic_channels.items():
+                await self._cleanup_channel_messages(channel_id, "mecánico")
+                await asyncio.sleep(2)  # Pausa entre limpiezas
+                
+            logger.info("Limpieza automática de canales completada")
+            
+        except Exception as e:
+            logger.error(f"Error en limpieza automática de canales: {e}")
+    
+    async def _cleanup_channel_messages(self, channel_id: int, channel_type: str):
+        """Limpiar mensajes del bot en un canal específico"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                return
+            
+            # Solo limpiar si tenemos permisos
+            if not channel.permissions_for(channel.guild.me).manage_messages:
+                return
+                
+            deleted_count = 0
+            messages_to_check = 20  # Revisar solo los últimos 20 mensajes
+            
+            async for message in channel.history(limit=messages_to_check):
+                # Eliminar mensajes del bot que:
+                # 1. Sean respuestas efímeras que ya no sean útiles
+                # 2. Sean mensajes de error o confirmación antiguos
+                # 3. Sean más antiguos de 1 hora
+                
+                if (message.author == self.bot.user and 
+                    (datetime.now() - message.created_at).seconds > 3600):  # Más de 1 hora
+                    
+                    # Solo eliminar ciertos tipos de mensajes
+                    if any(keyword in message.content.lower() for keyword in 
+                           ['error', 'completado', 'exitoso', 'fallido', 'procesando']):
+                        await message.delete()
+                        deleted_count += 1
+                        await asyncio.sleep(0.3)
+            
+            if deleted_count > 0:
+                logger.info(f"Auto-limpieza: Eliminados {deleted_count} mensajes antiguos en canal de {channel_type}")
+                
+        except Exception as e:
+            logger.warning(f"Error en auto-limpieza de canal {channel_type}: {e}")
     
     async def _recreate_mechanic_panel(self, guild_id: int, channel_id: int):
         """Recrear panel de mecánico en el canal especificado con limpieza previa"""
@@ -3458,17 +3692,25 @@ class MechanicSystem(commands.Cog):
                 logger.warning(f"Sin permisos para enviar mensajes en canal de escuadrones {channel_id}")
                 return
             
-            # Limpiar mensajes anteriores del bot
+            # Limpiar mensajes anteriores del bot de manera más agresiva
             try:
                 logger.info(f"Limpiando mensajes anteriores en canal de escuadrones {channel_id}...")
                 deleted_count = 0
-                async for message in channel.history(limit=50):
+                
+                # Limpiar hasta 100 mensajes anteriores del bot para mantener el canal limpio
+                async for message in channel.history(limit=100):
                     if message.author == self.bot.user:
                         await message.delete()
                         deleted_count += 1
-                        await asyncio.sleep(0.1)  # Evitar rate limits
+                        await asyncio.sleep(0.2)  # Rate limit más conservador
+                        
+                        # También eliminar mensajes muy antiguos (más de 7 días)
+                        if (datetime.now() - message.created_at).days > 7:
+                            continue
+                
                 if deleted_count > 0:
                     logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot en canal de escuadrones")
+                    
             except Exception as cleanup_e:
                 logger.warning(f"Error limpiando mensajes anteriores en canal de escuadrones: {cleanup_e}")
             
@@ -3505,7 +3747,8 @@ class MechanicSystem(commands.Cog):
             
             squadron_embed.set_footer(text="Los escuadrones mejoran tu experiencia de juego en SCUM")
             
-            # Crear vista con botones para escuadrones
+            # Crear vista estática con custom_id persistente
+            # Usamos la vista estática original para mantener persistencia
             squadron_view = SquadronSystemView()
             await channel.send(embed=squadron_embed, view=squadron_view)
             logger.info(f"✅ Panel de escuadrones recreado en guild {guild_id}, canal {channel_id}")
@@ -4897,6 +5140,144 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @app_commands.command(name="squadron_admin_cleanup", description="[ADMIN] Limpiar mensajes del bot en canales de escuadrones y mecánico")
+    @app_commands.describe(
+        channel_type="Tipo de canal a limpiar (ambos por defecto)",
+        limit="Número máximo de mensajes a revisar (default: 50)"
+    )
+    async def squadron_admin_cleanup(self, interaction: discord.Interaction, 
+                                   channel_type: typing.Literal["squadron", "mechanic", "both"] = "both",
+                                   limit: int = 50):
+        """Limpiar mensajes del bot en canales del sistema"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos
+            if not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ejecutar la limpieza manual",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Validar límite
+            if limit < 10 or limit > 100:
+                await interaction.followup.send("❌ El límite debe estar entre 10 y 100 mensajes", ephemeral=True)
+                return
+            
+            total_deleted = 0
+            cleaned_channels = []
+            
+            # Limpiar canales según el tipo especificado
+            if channel_type in ["squadron", "both"]:
+                if interaction.guild.id in self.squadron_channels:
+                    channel_id = self.squadron_channels[interaction.guild.id]
+                    deleted = await self._manual_cleanup_channel(channel_id, "escuadrones", limit)
+                    if deleted > 0:
+                        total_deleted += deleted
+                        cleaned_channels.append(f"🏆 Escuadrones: {deleted} mensajes")
+            
+            if channel_type in ["mechanic", "both"]:
+                if interaction.guild.id in self.mechanic_channels:
+                    channel_id = self.mechanic_channels[interaction.guild.id]
+                    deleted = await self._manual_cleanup_channel(channel_id, "mecánico", limit)
+                    if deleted > 0:
+                        total_deleted += deleted
+                        cleaned_channels.append(f"🔧 Mecánico: {deleted} mensajes")
+            
+            # Crear embed de resultado
+            if total_deleted > 0:
+                embed = discord.Embed(
+                    title="✅ Limpieza Completada",
+                    description=f"Se han eliminado **{total_deleted} mensajes** del bot exitosamente",
+                    color=discord.Color.green()
+                )
+                
+                if cleaned_channels:
+                    embed.add_field(
+                        name="📊 Canales Limpiados",
+                        value="\n".join(cleaned_channels),
+                        inline=False
+                    )
+                
+                embed.add_field(
+                    name="⚙️ Configuración",
+                    value=f"• **Tipo de canal:** {channel_type}\n• **Mensajes revisados:** {limit}",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🕒 Próxima Limpieza Automática",
+                    value="Cada 30 minutos el bot limpia automáticamente mensajes antiguos",
+                    inline=True
+                )
+                
+            else:
+                embed = discord.Embed(
+                    title="💡 Sin Cambios",
+                    description="No se encontraron mensajes del bot para eliminar",
+                    color=discord.Color.blue()
+                )
+                
+                embed.add_field(
+                    name="ℹ️ Información",
+                    value="Esto puede significar que:\n• Los canales ya están limpios\n• No hay mensajes del bot en el rango especificado\n• Los canales no están configurados",
+                    inline=False
+                )
+            
+            embed.set_footer(text=f"Limpieza ejecutada por {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en limpieza manual: {e}")
+            embed = discord.Embed(
+                title="❌ Error en Limpieza",
+                description="Hubo un error durante el proceso de limpieza",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    async def _manual_cleanup_channel(self, channel_id: int, channel_type: str, limit: int) -> int:
+        """Limpiar mensajes del bot en un canal específico manualmente"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal {channel_id} no encontrado para limpieza manual")
+                return 0
+            
+            # Verificar permisos
+            if not channel.permissions_for(channel.guild.me).manage_messages:
+                logger.warning(f"Sin permisos para gestionar mensajes en canal {channel_id}")
+                return 0
+                
+            deleted_count = 0
+            
+            async for message in channel.history(limit=limit):
+                if message.author == self.bot.user:
+                    # Eliminar todos los mensajes del bot (no solo los antiguos)
+                    try:
+                        await message.delete()
+                        deleted_count += 1
+                        await asyncio.sleep(0.3)  # Rate limit
+                    except discord.NotFound:
+                        # El mensaje ya fue eliminado
+                        pass
+                    except discord.Forbidden:
+                        # Sin permisos para eliminar este mensaje específico
+                        logger.warning(f"Sin permisos para eliminar mensaje {message.id}")
+                        break
+            
+            if deleted_count > 0:
+                logger.info(f"Limpieza manual: Eliminados {deleted_count} mensajes en canal de {channel_type}")
+            
+            return deleted_count
+                
+        except Exception as e:
+            logger.error(f"Error en limpieza manual de canal {channel_type}: {e}")
+            return 0
+
 # === FUNCIONES AUXILIARES PARA VEHÍCULOS ===
 
 async def register_vehicle(vehicle_id: str, vehicle_type: str, owner_discord_id: str, 
@@ -4920,12 +5301,33 @@ async def get_user_vehicles(discord_id: str, guild_id: str) -> list:
     """Obtener vehículos registrados por un usuario"""
     try:
         async with aiosqlite.connect(taxi_db.db_path) as db:
+            # Verificar si la tabla existe
+            cursor = await db.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='registered_vehicles'
+            """)
+            table_exists = await cursor.fetchone()
+            
+            if not table_exists:
+                logger.warning("La tabla 'registered_vehicles' no existe")
+                return []
+            
+            # Verificar el total de registros en la tabla
+            cursor = await db.execute("SELECT COUNT(*) FROM registered_vehicles")
+            total_count = (await cursor.fetchone())[0]
+            logger.info(f"Total de vehículos en la tabla: {total_count}")
+            
+            # Consultar vehículos del usuario
             cursor = await db.execute("""
                 SELECT * FROM registered_vehicles 
                 WHERE owner_discord_id = ? AND guild_id = ? AND status = 'active'
                 ORDER BY registered_at DESC
             """, (discord_id, guild_id))
-            return await cursor.fetchall()
+            
+            results = await cursor.fetchall()
+            logger.info(f"Consultando vehículos para discord_id={discord_id}, guild_id={guild_id}, encontrados: {len(results)}")
+            
+            return results
     except Exception as e:
         logger.error(f"Error obteniendo vehículos del usuario: {e}")
         return []
@@ -5136,9 +5538,9 @@ async def update_squadron_vehicle_config(guild_id: str, vehicles_per_member: int
                 
                 await db.execute("""
                     INSERT INTO squadron_vehicle_config 
-                    (guild_id, vehicles_per_member, max_total_vehicles)
-                    VALUES (?, ?, ?)
-                """, (guild_id, vpm, mtv))
+                    (guild_id, vehicles_per_member, max_total_vehicles, updated_at)
+                    VALUES (?, ?, ?, ?)
+                """, (guild_id, vpm, mtv, datetime.now().isoformat()))
             
             await db.commit()
             return True
@@ -5267,6 +5669,17 @@ async def can_leave_squadron(discord_id: str, guild_id: str) -> tuple:
     """Verificar si un usuario puede salir del escuadrón (24h enfriamiento)"""
     try:
         async with aiosqlite.connect(taxi_db.db_path) as db:
+            # Verificar si la tabla existe
+            cursor = await db.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='squadron_leave_history'
+            """)
+            table_exists = await cursor.fetchone()
+            
+            if not table_exists:
+                logger.info("Tabla squadron_leave_history no existe, permitiendo salida")
+                return True, None, None  # Si no hay tabla de historial, permitir salida
+            
             # Buscar la última salida del usuario en cualquier escuadrón del servidor
             cursor = await db.execute("""
                 SELECT left_at, can_rejoin_at, squadron_name 
@@ -5298,7 +5711,21 @@ async def can_leave_squadron(discord_id: str, guild_id: str) -> tuple:
 async def leave_squadron(discord_id: str, guild_id: str, reason: str = 'voluntary', removed_by: str = None) -> bool:
     """Hacer que un usuario salga del escuadrón y registrar el historial"""
     try:
+        logger.info(f"Iniciando proceso de salida de escuadrón para usuario {discord_id}, razón: {reason}")
+        
         async with aiosqlite.connect(taxi_db.db_path) as db:
+            # Verificar que las tablas existen
+            cursor = await db.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name IN ('squadron_members', 'squadrons', 'squadron_leave_history')
+            """)
+            existing_tables = [row[0] for row in await cursor.fetchall()]
+            logger.info(f"Tablas encontradas: {existing_tables}")
+            
+            if 'squadron_members' not in existing_tables or 'squadrons' not in existing_tables:
+                logger.error("Tablas requeridas no existen")
+                return False
+            
             # Obtener información del escuadrón actual
             cursor = await db.execute("""
                 SELECT s.id, s.squadron_name, sm.role 
@@ -5308,48 +5735,62 @@ async def leave_squadron(discord_id: str, guild_id: str, reason: str = 'voluntar
             """, (discord_id, guild_id))
             
             squadron_info = await cursor.fetchone()
+            logger.info(f"Información del escuadrón obtenida: {squadron_info}")
             
             if not squadron_info:
+                logger.warning(f"Usuario {discord_id} no está en ningún escuadrón activo")
                 return False  # Usuario no está en ningún escuadrón
                 
             squadron_id, squadron_name, role = squadron_info
             
             # Verificar si es el líder (los líderes no pueden salir a menos que sean removidos por admin)
             if role == 'leader' and reason == 'voluntary':
+                logger.warning(f"Líder {discord_id} intentó salir voluntariamente del escuadrón {squadron_name}")
                 return False  # Los líderes no pueden salir voluntariamente
             
             # Marcar como inactivo en squadron_members
             await db.execute("""
                 UPDATE squadron_members 
-                SET status = 'left', role = 'former_member' 
+                SET status = 'left'
                 WHERE discord_id = ? AND squadron_id = ?
             """, (discord_id, squadron_id))
+            logger.info(f"Marcado como 'left' en squadron_members")
             
-            # Registrar en historial
-            left_at = datetime.now().isoformat()
-            
-            # Calcular cuándo puede volver a unirse
-            if reason == 'admin_removed':
-                # Admin removió: puede unirse inmediatamente
-                can_rejoin_at = left_at
+            # Registrar en historial solo si la tabla existe
+            if 'squadron_leave_history' in existing_tables:
+                left_at = datetime.now().isoformat()
+                
+                # Calcular cuándo puede volver a unirse
+                if reason == 'admin_removed':
+                    # Admin removió: puede unirse inmediatamente
+                    can_rejoin_at = left_at
+                else:
+                    # Salida voluntaria: 24 horas de enfriamiento
+                    can_rejoin_timestamp = datetime.now() + timedelta(hours=24)
+                    can_rejoin_at = can_rejoin_timestamp.isoformat()
+                
+                try:
+                    await db.execute("""
+                        INSERT INTO squadron_leave_history 
+                        (discord_id, guild_id, squadron_id, squadron_name, left_at, reason, removed_by, can_rejoin_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (discord_id, guild_id, squadron_id, squadron_name, left_at, reason, removed_by, can_rejoin_at))
+                    logger.info(f"Historial de salida registrado")
+                except Exception as history_error:
+                    logger.warning(f"Error registrando historial (no crítico): {history_error}")
+                    # No hacer que la función falle por esto
             else:
-                # Salida voluntaria: 24 horas de enfriamiento
-                can_rejoin_timestamp = datetime.now() + timedelta(hours=24)
-                can_rejoin_at = can_rejoin_timestamp.isoformat()
-            
-            await db.execute("""
-                INSERT INTO squadron_leave_history 
-                (discord_id, guild_id, squadron_id, squadron_name, left_at, reason, removed_by, can_rejoin_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (discord_id, guild_id, squadron_id, squadron_name, left_at, reason, removed_by, can_rejoin_at))
+                logger.warning("Tabla squadron_leave_history no existe, omitiendo historial")
             
             await db.commit()
             
-            logger.info(f"Usuario {discord_id} salió del escuadrón {squadron_name} (razón: {reason})")
+            logger.info(f"Usuario {discord_id} salió exitosamente del escuadrón {squadron_name} (razón: {reason})")
             return True
             
     except Exception as e:
         logger.error(f"Error al salir del escuadrón: {e}")
+        import traceback
+        logger.error(f"Traceback completo: {traceback.format_exc()}")
         return False
 
 async def get_squadron_vehicle_config(guild_id: str) -> dict:
@@ -5392,6 +5833,465 @@ async def update_squadron_vehicle_config(guild_id: str, vehicles_per_member: int
     except Exception as e:
         logger.error(f"Error actualizando configuración de vehículos: {e}")
         return False
+
+
+class SquadronLeaderManagementView(discord.ui.View):
+    """Vista de gestión para líderes de escuadrón"""
+    
+    def __init__(self, squadron_data: dict):
+        super().__init__(timeout=300)
+        self.squadron_data = squadron_data
+    
+    @discord.ui.button(label="👑 Transferir Liderazgo", style=discord.ButtonStyle.primary, emoji="👑")
+    async def transfer_leadership(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Transferir liderazgo a otro miembro del escuadrón"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Obtener miembros del escuadrón (excepto el líder actual)
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT sm.discord_id, sm.ingame_name, sm.role
+                    FROM squadron_members sm
+                    WHERE sm.squadron_id = ? 
+                    AND sm.status = 'active' 
+                    AND sm.role != 'leader'
+                    ORDER BY sm.joined_at ASC
+                """, (self.squadron_data['id'],))
+                
+                members = await cursor.fetchall()
+            
+            if not members:
+                embed = discord.Embed(
+                    title="❌ Sin Miembros Disponibles",
+                    description="No hay otros miembros en tu escuadrón para transferir el liderazgo.",
+                    color=discord.Color.red()
+                )
+                embed.add_field(
+                    name="💡 Sugerencia",
+                    value="Invita a otros usuarios a tu escuadrón primero antes de transferir el liderazgo.",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear embed informativo
+            embed = discord.Embed(
+                title="👑 Transferir Liderazgo",
+                description=f"Selecciona a quién transferir el liderazgo del escuadrón **{self.squadron_data['squadron_name']}**",
+                color=0xffd700
+            )
+            
+            embed.add_field(
+                name="⚠️ Importante",
+                value="• Una vez transferido, **NO podrás recuperar** el liderazgo automáticamente\n"
+                      "• El nuevo líder tendrá control total del escuadrón\n"
+                      "• Tu rol cambiará a 'miembro'",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="👥 Miembros Disponibles",
+                value=f"**{len(members)}** miembros pueden recibir el liderazgo",
+                inline=True
+            )
+            
+            # Crear vista con selector de miembros
+            view = LeadershipTransferView(self.squadron_data, members)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en transferencia de liderazgo: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error al preparar la transferencia de liderazgo.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label="📋 Gestionar Miembros", style=discord.ButtonStyle.secondary, emoji="📋")
+    async def manage_members(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver y gestionar miembros del escuadrón"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Obtener todos los miembros del escuadrón
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT sm.discord_id, sm.ingame_name, sm.role, sm.joined_at, sm.status
+                    FROM squadron_members sm
+                    WHERE sm.squadron_id = ?
+                    ORDER BY 
+                        CASE sm.role 
+                            WHEN 'leader' THEN 1 
+                            WHEN 'officer' THEN 2 
+                            ELSE 3 
+                        END,
+                        sm.joined_at ASC
+                """, (self.squadron_data['id'],))
+                
+                members = await cursor.fetchall()
+            
+            embed = discord.Embed(
+                title=f"👥 Miembros de {self.squadron_data['squadron_name']}",
+                description=f"Total de miembros: **{len(members)}**/{self.squadron_data['max_members']}",
+                color=0x00aa88
+            )
+            
+            # Mostrar miembros por rol
+            leaders = [m for m in members if m[2] == 'leader']
+            officers = [m for m in members if m[2] == 'officer']
+            regular_members = [m for m in members if m[2] == 'member']
+            
+            if leaders:
+                leader_text = ""
+                for member in leaders:
+                    discord_id, ingame_name, role, joined_at, status = member
+                    status_emoji = "🟢" if status == 'active' else "🔴"
+                    leader_text += f"{status_emoji} **{ingame_name}** (`{discord_id}`)\n"
+                
+                embed.add_field(
+                    name="👑 Líder",
+                    value=leader_text,
+                    inline=False
+                )
+            
+            if officers:
+                officer_text = ""
+                for member in officers[:5]:  # Máximo 5 oficiales
+                    discord_id, ingame_name, role, joined_at, status = member
+                    status_emoji = "🟢" if status == 'active' else "🔴"
+                    officer_text += f"{status_emoji} **{ingame_name}**\n"
+                
+                if len(officers) > 5:
+                    officer_text += f"... y {len(officers) - 5} más"
+                
+                embed.add_field(
+                    name="⭐ Oficiales",
+                    value=officer_text,
+                    inline=True
+                )
+            
+            if regular_members:
+                member_text = ""
+                for member in regular_members[:8]:  # Máximo 8 miembros
+                    discord_id, ingame_name, role, joined_at, status = member
+                    status_emoji = "🟢" if status == 'active' else "🔴"
+                    member_text += f"{status_emoji} {ingame_name}\n"
+                
+                if len(regular_members) > 8:
+                    member_text += f"... y {len(regular_members) - 8} más"
+                
+                embed.add_field(
+                    name="👤 Miembros",
+                    value=member_text if member_text else "Sin miembros regulares",
+                    inline=True
+                )
+            
+            embed.add_field(
+                name="ℹ️ Información",
+                value="🟢 = Activo • 🔴 = Inactivo\nComo líder, puedes gestionar roles y permisos.",
+                inline=False
+            )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error gestionando miembros: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error al obtener la lista de miembros.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class LeadershipTransferView(discord.ui.View):
+    """Vista para seleccionar nuevo líder del escuadrón"""
+    
+    def __init__(self, squadron_data: dict, members: list):
+        super().__init__(timeout=300)
+        self.squadron_data = squadron_data
+        self.members = members
+        
+        # Crear selector con miembros disponibles
+        if members:
+            options = []
+            for member in members[:25]:  # Discord limit
+                discord_id, ingame_name, role = member
+                
+                role_emoji = "⭐" if role == "officer" else "👤"
+                
+                options.append(discord.SelectOption(
+                    label=f"{ingame_name}",
+                    description=f"{role_emoji} {role.title()} • ID: {discord_id}",
+                    value=discord_id,
+                    emoji="👑"
+                ))
+            
+            self.add_item(LeadershipTransferSelect(options, self.squadron_data))
+    
+    @discord.ui.button(
+        label="❌ Cancelar",
+        style=discord.ButtonStyle.danger,
+        emoji="❌"
+    )
+    async def cancel_transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancelar transferencia de liderazgo"""
+        embed = discord.Embed(
+            title="❌ Transferencia Cancelada",
+            description="La transferencia de liderazgo ha sido cancelada.",
+            color=discord.Color.orange()
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+class LeadershipTransferSelect(discord.ui.Select):
+    """Selector para elegir nuevo líder"""
+    
+    def __init__(self, options: list, squadron_data: dict):
+        super().__init__(
+            placeholder="👑 Selecciona el nuevo líder...",
+            options=options
+        )
+        self.squadron_data = squadron_data
+    
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            new_leader_discord_id = self.values[0]
+            current_leader_discord_id = str(interaction.user.id)
+            
+            # Buscar información del nuevo líder
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT ingame_name FROM squadron_members
+                    WHERE squadron_id = ? AND discord_id = ? AND status = 'active'
+                """, (self.squadron_data['id'], new_leader_discord_id))
+                
+                new_leader_data = await cursor.fetchone()
+                
+                if not new_leader_data:
+                    embed = discord.Embed(
+                        title="❌ Error",
+                        description="El miembro seleccionado no se encuentra en el escuadrón.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                
+                new_leader_ingame_name = new_leader_data[0]
+            
+            # Crear vista de confirmación
+            embed = discord.Embed(
+                title="⚠️ Confirmar Transferencia de Liderazgo",
+                description=f"¿Estás seguro de que quieres transferir el liderazgo del escuadrón **{self.squadron_data['squadron_name']}** a **{new_leader_ingame_name}**?",
+                color=0xff9900
+            )
+            
+            embed.add_field(
+                name="📋 Cambios que ocurrirán",
+                value=f"• **{new_leader_ingame_name}** se convertirá en el líder\n"
+                      f"• Tu rol cambiará a 'miembro'\n"
+                      f"• **NO podrás** recuperar el liderazgo automáticamente",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="⚠️ Esta acción es irreversible",
+                value="Solo el nuevo líder podrá transferir el liderazgo de vuelta.",
+                inline=False
+            )
+            
+            view = LeadershipTransferConfirmView(
+                self.squadron_data, 
+                current_leader_discord_id, 
+                new_leader_discord_id, 
+                new_leader_ingame_name
+            )
+            
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en callback de transferencia: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error al procesar la selección.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class LeadershipTransferConfirmView(discord.ui.View):
+    """Vista de confirmación final para transferencia de liderazgo"""
+    
+    def __init__(self, squadron_data: dict, current_leader_id: str, new_leader_id: str, new_leader_name: str):
+        super().__init__(timeout=300)
+        self.squadron_data = squadron_data
+        self.current_leader_id = current_leader_id
+        self.new_leader_id = new_leader_id
+        self.new_leader_name = new_leader_name
+    
+    @discord.ui.button(
+        label="✅ Confirmar Transferencia",
+        style=discord.ButtonStyle.success,
+        emoji="👑"
+    )
+    async def confirm_transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirmar y ejecutar transferencia de liderazgo"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            success = await transfer_squadron_leadership(
+                self.squadron_data['id'],
+                self.current_leader_id,
+                self.new_leader_id,
+                str(interaction.guild.id)
+            )
+            
+            if success:
+                embed = discord.Embed(
+                    title="✅ Liderazgo Transferido",
+                    description=f"El liderazgo del escuadrón **{self.squadron_data['squadron_name']}** ha sido transferido exitosamente a **{self.new_leader_name}**.",
+                    color=discord.Color.green()
+                )
+                
+                embed.add_field(
+                    name="🎉 ¡Transferencia Completada!",
+                    value=f"• **{self.new_leader_name}** es ahora el líder\n"
+                          f"• Tu rol ha cambiado a 'miembro'\n"
+                          f"• El nuevo líder ha sido notificado",
+                    inline=False
+                )
+                
+                # Notificar al nuevo líder
+                try:
+                    guild = interaction.guild
+                    new_leader_member = guild.get_member(int(self.new_leader_id))
+                    
+                    if new_leader_member:
+                        leader_embed = discord.Embed(
+                            title="👑 ¡Felicidades! Eres el nuevo líder",
+                            description=f"Has sido promovido a líder del escuadrón **{self.squadron_data['squadron_name']}**",
+                            color=discord.Color.gold()
+                        )
+                        
+                        leader_embed.add_field(
+                            name="📋 Tus nuevas responsabilidades",
+                            value="• Gestionar miembros del escuadrón\n"
+                                  "• Transferir liderazgo si es necesario\n"
+                                  "• Representar al escuadrón",
+                            inline=False
+                        )
+                        
+                        try:
+                            await new_leader_member.send(embed=leader_embed)
+                        except:
+                            pass  # Si no se puede enviar DM, no es crítico
+                
+                except Exception as notify_error:
+                    logger.warning(f"No se pudo notificar al nuevo líder: {notify_error}")
+                
+            else:
+                embed = discord.Embed(
+                    title="❌ Error en Transferencia",
+                    description="No se pudo completar la transferencia de liderazgo. Inténtalo nuevamente.",
+                    color=discord.Color.red()
+                )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error confirmando transferencia: {e}")
+            embed = discord.Embed(
+                title="❌ Error Inesperado",
+                description="Hubo un error al procesar la transferencia de liderazgo.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(
+        label="❌ Cancelar",
+        style=discord.ButtonStyle.danger,
+        emoji="❌"
+    )
+    async def cancel_transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancelar transferencia de liderazgo"""
+        embed = discord.Embed(
+            title="❌ Transferencia Cancelada",
+            description="La transferencia de liderazgo ha sido cancelada.",
+            color=discord.Color.orange()
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+
+async def transfer_squadron_leadership(squadron_id: int, current_leader_id: str, new_leader_id: str, guild_id: str) -> bool:
+    """Transferir liderazgo de escuadrón a otro miembro"""
+    try:
+        async with aiosqlite.connect(taxi_db.db_path) as db:
+            # Verificar que ambos usuarios están en el escuadrón
+            cursor = await db.execute("""
+                SELECT discord_id, role FROM squadron_members
+                WHERE squadron_id = ? AND discord_id IN (?, ?) AND status = 'active'
+            """, (squadron_id, current_leader_id, new_leader_id))
+            
+            members = await cursor.fetchall()
+            
+            if len(members) != 2:
+                logger.warning(f"No se encontraron ambos miembros para transferencia: {members}")
+                return False
+            
+            # Verificar que el usuario actual es realmente el líder
+            current_is_leader = any(member[0] == current_leader_id and member[1] == 'leader' for member in members)
+            new_is_member = any(member[0] == new_leader_id for member in members)
+            
+            if not current_is_leader or not new_is_member:
+                logger.warning(f"Verificación de roles falló - current_is_leader: {current_is_leader}, new_is_member: {new_is_member}")
+                return False
+            
+            # Obtener nombre del nuevo líder
+            cursor = await db.execute("""
+                SELECT ingame_name FROM squadron_members
+                WHERE squadron_id = ? AND discord_id = ? AND status = 'active'
+            """, (squadron_id, new_leader_id))
+            
+            new_leader_data = await cursor.fetchone()
+            if not new_leader_data:
+                return False
+            
+            new_leader_ingame_name = new_leader_data[0]
+            
+            # Actualizar el registro del escuadrón con el nuevo líder
+            await db.execute("""
+                UPDATE squadrons 
+                SET leader_discord_id = ?, leader_ingame_name = ?
+                WHERE id = ?
+            """, (new_leader_id, new_leader_ingame_name, squadron_id))
+            
+            # Cambiar rol del líder actual a miembro
+            await db.execute("""
+                UPDATE squadron_members 
+                SET role = 'member'
+                WHERE squadron_id = ? AND discord_id = ?
+            """, (squadron_id, current_leader_id))
+            
+            # Cambiar rol del nuevo líder
+            await db.execute("""
+                UPDATE squadron_members 
+                SET role = 'leader'
+                WHERE squadron_id = ? AND discord_id = ?
+            """, (squadron_id, new_leader_id))
+            
+            await db.commit()
+            
+            logger.info(f"Liderazgo de escuadrón {squadron_id} transferido de {current_leader_id} a {new_leader_id} ({new_leader_ingame_name})")
+            return True
+            
+    except Exception as e:
+        logger.error(f"Error transfiriendo liderazgo de escuadrón: {e}")
+        return False
+
 
 async def setup(bot):
     await bot.add_cog(MechanicSystem(bot))
