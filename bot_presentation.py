@@ -17,6 +17,8 @@ class BotPresentationView(discord.ui.View):
             self.create_overview_embed,
             self.create_taxi_embed,
             self.create_banking_embed,
+            self.create_mechanic_embed,
+            self.create_squadron_embed,
             self.create_bunker_embed,
             self.create_admin_embed,
             self.create_economy_embed,
@@ -64,6 +66,8 @@ class BotPresentationView(discord.ui.View):
             🏠 **Sistema de Bunkers** - Monitoreo automático de 4 bunkers
             🚖 **Sistema de Taxi** - Transporte inteligente con múltiples vehículos
             🏦 **Sistema Bancario** - Economía completa con transferencias
+            🔧 **Sistema de Mecánico** - Seguros vehiculares profesionales
+            🏆 **Sistema de Escuadrones** - Organizaciones con límites inteligentes
             📊 **Monitoreo de Servidores** - Estado en tiempo real
             ⚙️ **Administración Avanzada** - Control total del bot
             """,
@@ -72,7 +76,7 @@ class BotPresentationView(discord.ui.View):
         
         embed.add_field(
             name="📈 **Estadísticas del Bot**",
-            value="```yaml\nComandos Disponibles: 45+\nSistemas Integrados: 7\nCanales Configurables: 6\nVehículos de Taxi: 5\nZonas del Mapa: 20+```",
+            value="```yaml\nComandos Disponibles: 55+\nSistemas Integrados: 9\nCanales Configurables: 8\nVehículos de Taxi: 5\nTipos de Vehículos: 6\nZonas del Mapa: 20+```",
             inline=True
         )
         
@@ -88,7 +92,7 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 1/7 • Usa los botones para navegar • /help para comandos")
+        embed.set_footer(text="Página 1/9 • Usa los botones para navegar • /help para comandos")
         embed.set_thumbnail(url="https://cdn.discordapp.com/attachments/placeholder/bot_logo.png")
         
         return embed
@@ -107,7 +111,6 @@ class BotPresentationView(discord.ui.View):
             🚗 **Automóvil** - Transporte terrestre estándar (4 pasajeros)
             🏍️ **Motocicleta** - Rápido y ágil (+30% velocidad, 2 pasajeros)
             ✈️ **Avión** - Transporte aéreo (+200% velocidad, requiere pistas)
-            🛩️ **Hidroavión** - Aterrizaje en agua (+150% velocidad)
             🚢 **Barco** - Transporte marítimo (4 pasajeros, acceso a islas)
             """,
             inline=False
@@ -137,7 +140,7 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 2/7 • Sistema de transporte más avanzado de SCUM")
+        embed.set_footer(text="Página 2/9 • Sistema de transporte más avanzado de SCUM")
         
         return embed
     
@@ -185,12 +188,107 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 3/7 • Economía optimizada para progresión rápida")
+        embed.set_footer(text="Página 3/9 • Economía optimizada para progresión rápida")
+        
+        return embed
+    
+    def create_mechanic_embed(self):
+        """Página 4: Sistema de Mecánico"""
+        embed = discord.Embed(
+            title="🔧 Sistema de Mecánico Profesional",
+            description="**Seguros vehiculares con gestión automática y precios personalizables**",
+            color=0xff8800
+        )
+        
+        embed.add_field(
+            name="🚗 **Registro de Vehículos**",
+            value="""
+            🏍️ **Motocicletas** - Vehículos ágiles y económicos
+            🚗 **Rangers** - SUVs resistentes para terreno difícil
+            🚙 **Laikas** - Vehículos todoterreno premium
+            🚛 **WW (Camiones)** - Transporte pesado y robusto
+            ✈️ **Aviones** - Transporte aéreo de lujo
+            🚢 **Barcas** - Embarcaciones para navegación
+            """,
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🛡️ **Seguros Inteligentes**",
+            value="```yaml\nDetección Automática:\n• PvP Zone: +Recargo configurable\n• PvE Zone: Precio estándar\n• Automático según escuadrón\n\nMétodos de Pago:\n• Discord: Inmediato\n• InGame: Coordinación manual```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💰 **Gestión de Precios**",
+            value="```yaml\nPrecios Personalizables:\n• Por tipo de vehículo\n• Por servidor\n• Interfaz con botones\n• Recargo PvP configurable\n\nNotificaciones:\n• DM automático a mecánicos\n• Información completa```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🎯 **Comandos de Mecánico**",
+            value="• **Panel interactivo** - Botones para solicitar seguro\n• `/mechanic_admin_register` - Registrar mecánicos\n• `/mechanic_admin_set_price` - Configurar precios\n• `/mechanic_admin_config_pvp` - Configurar recargo PvP",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="👨‍🔧 **Funcionalidades para Mecánicos**",
+            value="• **Panel centralizado** con gestión de precios\n• **Notificaciones automáticas** de nuevos seguros\n• **Historial completo** de transacciones\n• **Configuración de preferencias** de notificaciones",
+            inline=False
+        )
+        
+        embed.set_footer(text="Página 4/9 • Protección vehicular profesional")
+        
+        return embed
+    
+    def create_squadron_embed(self):
+        """Página 5: Sistema de Escuadrones"""
+        embed = discord.Embed(
+            title="🏆 Sistema de Escuadrones",
+            description="**Organizaciones de jugadores con límites inteligentes y detección automática**",
+            color=0x8844ff
+        )
+        
+        embed.add_field(
+            name="⚔️ **Tipos de Escuadrones**",
+            value="""
+            ⚔️ **PvP** - Escuadrones de combate (zona PvP automática)
+            🛡️ **PvE** - Escuadrones cooperativos (zona PvE automática)  
+            ⚡ **Mixto** - Escuadrones híbridos (zona PvP automática)
+            """,
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🚗 **Límites Simplificados**",
+            value="```yaml\nSistema Nuevo (Mejorado):\n• 2 vehículos por miembro\n• Cualquier tipo de vehículo\n• Límite total configurable\n• Fórmula: min(miembros×2, límite_max)\n\nEjemplos:\n• 1 miembro = 2 vehículos\n• 5 miembros = 10 vehículos\n• 10 miembros = 20 vehículos*```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="👥 **Gestión de Miembros**",
+            value="```yaml\nRoles:\n• Líder: Control total\n• Oficial: Gestión limitada\n• Miembro: Participación\n\nFunciones:\n• Invitaciones automáticas\n• Confirmación de unión\n• Gestión de roles```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🎯 **Detección Automática**",
+            value="• **Seguros automáticos** según tipo de escuadrón\n• **Sin configuración manual** - El sistema detecta tu escuadrón\n• **Usuarios sin escuadrón** - Límite de 2 vehículos total\n• **Integración total** con sistema de mecánico",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🛠️ **Comandos de Administración**",
+            value="• `/squadron_admin_config_limits` - Configurar límites globales\n• `/squadron_admin_view_config` - Ver configuración actual\n• **Panel interactivo** para crear y unirse a escuadrones",
+            inline=False
+        )
+        
+        embed.set_footer(text="Página 5/9 • Organización inteligente de jugadores")
         
         return embed
     
     def create_bunker_embed(self):
-        """Página 4: Sistema de Bunkers"""
+        """Página 6: Sistema de Bunkers"""
         embed = discord.Embed(
             title="🏠 Sistema de Bunkers Abandonados",
             description="**Monitoreo automático de los 4 bunkers principales de SCUM**",
@@ -232,12 +330,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 4/7 • Nunca pierdas un bunker por falta de tiempo")
+        embed.set_footer(text="Página 6/9 • Nunca pierdas un bunker por falta de tiempo")
         
         return embed
     
     def create_admin_embed(self):
-        """Página 5: Panel de Administración"""
+        """Página 7: Panel de Administración"""
         embed = discord.Embed(
             title="⚙️ Panel de Administración Avanzado",
             description="**Control total del bot con herramientas profesionales**",
@@ -247,8 +345,10 @@ class BotPresentationView(discord.ui.View):
         embed.add_field(
             name="🛠️ **Configuración de Canales**",
             value="""
-            🚖 `/taxi_admin_setup` - Configurar canal de taxi
+            🚖 `/ba_admin_channels_setup` - Configurar TODOS los canales
             🏦 `/banco_admin_setup` - Configurar canal bancario
+            🔧 **Canal de Mecánico** - Seguros y gestión vehicular
+            🏆 **Canal de Escuadrones** - Organizaciones de jugadores
             🎉 `/welcome_admin_setup` - Configurar registro
             🛒 `/shop_admin_setup` - Configurar tienda
             📊 `/ba_admin_setup_status` - Estado del bot (admin)
@@ -281,12 +381,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 5/7 • Control profesional con herramientas avanzadas")
+        embed.set_footer(text="Página 7/9 • Control profesional con herramientas avanzadas")
         
         return embed
     
     def create_economy_embed(self):
-        """Página 6: Economía del Servidor"""
+        """Página 8: Economía del Servidor"""
         embed = discord.Embed(
             title="💎 Economía Optimizada del Servidor",
             description="**Sistema económico balanceado para progresión satisfactoria**",
@@ -327,12 +427,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 6/7 • Economía balanceada para todos los tipos de jugadores")
+        embed.set_footer(text="Página 8/9 • Economía balanceada para todos los tipos de jugadores")
         
         return embed
     
     def create_stats_embed(self):
-        """Página 7: Estadísticas y Características"""
+        """Página 9: Estadísticas y Características"""
         embed = discord.Embed(
             title="📊 Estadísticas y Características Técnicas",
             description="**Números que demuestran la calidad y robustez del sistema**",
@@ -341,7 +441,7 @@ class BotPresentationView(discord.ui.View):
         
         embed.add_field(
             name="🔢 **Estadísticas del Bot**",
-            value="```yaml\nComandos Totales: 45+\nComandos de Usuario: 25+\nComandos de Admin: 20+\nSistemas Integrados: 7\nCanales Configurables: 6\nVehículos de Taxi: 5\nZonas del Mapa: 20+\nBunkers Monitoreados: 4```",
+            value="```yaml\nComandos Totales: 55+\nComandos de Usuario: 30+\nComandos de Admin: 25+\nSistemas Integrados: 9\nCanales Configurables: 8\nVehículos de Taxi: 5\nTipos de Vehículos: 6\nZonas del Mapa: 20+\nBunkers Monitoreados: 4```",
             inline=True
         )
         
@@ -355,11 +455,13 @@ class BotPresentationView(discord.ui.View):
             name="🚀 **Características Únicas**",
             value="""
             🔄 **Persistencia Total** - Nada se pierde al reiniciar
-            🤖 **Notificaciones Inteligentes** - Conexión/desconexión
+            🤖 **Notificaciones Inteligentes** - Conexión/desconexión  
             🌐 **Multi-servidor** - Configuración independiente
             🎨 **Interfaz Moderna** - Botones y embeds interactivos
             📱 **Responsive** - Funciona en mobile y desktop
             🛡️ **Seguro** - Validaciones y protecciones
+            🏆 **Integración Total** - Sistemas interconectados
+            🔧 **Gestión Vehicular** - Registro y seguros automáticos
             """,
             inline=False
         )
@@ -372,11 +474,11 @@ class BotPresentationView(discord.ui.View):
         
         embed.add_field(
             name="📈 **Futuras Actualizaciones**",
-            value="🔮 **En desarrollo:**\n• Sistema de misiones\n• Tienda expandida\n• Clanes y grupos\n• Estadísticas avanzadas\n• Integración con APIs externas\n• Dashboard web",
+            value="🔮 **En desarrollo:**\n• Mejoras en sistema de escuadrones\n• Expansión de tipos de vehículos\n• Sistema de misiones\n• Tienda expandida\n• Estadísticas avanzadas\n• Dashboard web\n• Integración con APIs SCUM",
             inline=False
         )
         
-        embed.set_footer(text="Página 7/7 • Bot profesional en constante evolución")
+        embed.set_footer(text="Página 9/9 • Bot profesional en constante evolución")
         
         return embed
     
@@ -423,8 +525,8 @@ async def show_presentation(channel):
 Este es el bot más completo para servidores de SCUM. Navega por las páginas usando los botones de abajo para descubrir todo lo que puede hacer por tu servidor.
 
 ✨ **¿Por qué elegir nuestro bot?**
-• **7 sistemas integrados** en una sola herramienta
-• **45+ comandos** para todas las necesidades
+• **9 sistemas integrados** en una sola herramienta
+• **55+ comandos** para todas las necesidades
 • **Economía optimizada** para progresión rápida
 • **Interfaz moderna** con botones interactivos
 • **Soporte 24/7** y actualizaciones constantes

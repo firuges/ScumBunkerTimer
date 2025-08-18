@@ -15,6 +15,127 @@ from taxi_config import taxi_config
 
 logger = logging.getLogger(__name__)
 
+class InGameNameModal(discord.ui.Modal, title="🎮 Registro - Nombre InGame"):
+    def __init__(self):
+        super().__init__()
+    
+    ingame_name = discord.ui.TextInput(
+        label="Nombre del Jugador en SCUM",
+        placeholder="Escribe tu nombre de jugador tal como aparece en el juego...",
+        required=True,
+        max_length=50
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Procesar el registro con el nombre InGame"""
+        await interaction.response.defer(ephemeral=True)
+        
+        ingame_name = self.ingame_name.value.strip()
+        
+        # Validaciones básicas
+        if len(ingame_name) < 2:
+            embed = discord.Embed(
+                title="❌ Nombre Inválido",
+                description="El nombre debe tener al menos 2 caracteres",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Intentar registrar usuario con nombre InGame
+        try:
+            success, result = await taxi_db.register_user(
+                str(interaction.user.id),
+                str(interaction.guild.id),
+                interaction.user.name,
+                display_name=interaction.user.display_name,
+                ingame_name=ingame_name
+            )
+            
+            if success:
+                # Dar dinero inicial
+                await taxi_db.add_money(interaction.user.id, taxi_config.WELCOME_BONUS)
+                
+                embed = discord.Embed(
+                    title="🎉 ¡Welcome Pack Recibido!",
+                    description=f"¡Bienvenido **{ingame_name}**! Has sido registrado exitosamente",
+                    color=discord.Color.green()
+                )
+                
+                embed.add_field(
+                    name="🎮 Jugador SCUM",
+                    value=f"`{ingame_name}`",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="💰 Dinero Recibido",
+                    value=f"${taxi_config.WELCOME_BONUS:,.0f}",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🎫 Vouchers de Taxi",
+                    value="3 viajes gratis",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🚖 Próximos Pasos",
+                    value="• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles\n• Usa `/bot_presentacion` para conocer todas las funciones",
+                    inline=False
+                )
+                
+                # Auto-desplegar presentación para nuevos usuarios
+                try:
+                    bot = interaction.client
+                    if hasattr(bot, 'get_channel'):
+                        presentation_channel = None
+                        for channel in interaction.guild.channels:
+                            if channel.name.lower() in ['bot-presentation', 'presentacion', 'presentation']:
+                                presentation_channel = channel
+                                break
+                        
+                        if presentation_channel:
+                            from BunkerAdvice_V2 import BotPresentationView
+                            view = BotPresentationView()
+                            embed_presentation = view.create_overview_embed()
+                            
+                            intro_text = f"""
+🎉 **¡Bienvenido {ingame_name}!**
+
+Como eres nuevo en nuestro sistema, aquí tienes la presentación completa del bot. Navega por las **7 páginas** usando los botones para conocer todas las funcionalidades.
+
+⬇️ **Usa los botones para explorar**
+                            """
+                            
+                            await presentation_channel.send(
+                                content=intro_text, 
+                                embed=embed_presentation, 
+                                view=view
+                            )
+                except Exception as e:
+                    logger.error(f"Error auto-desplegando presentación: {e}")
+                    
+            else:
+                embed = discord.Embed(
+                    title="❌ Error de Registro",
+                    description=f"No se pudo registrar: {result}",
+                    color=discord.Color.red()
+                )
+                
+            embed.set_footer(text="Sistema de Taxi SCUM • Gracias por registrarte")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en registro con nombre InGame: {e}")
+            embed = discord.Embed(
+                title="❌ Error Interno",
+                description="Hubo un error procesando tu registro. Intenta nuevamente.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
 class WelcomePackSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -168,8 +289,6 @@ class WelcomePackSystem(commands.Cog):
     @app_commands.command(name="welcome_registro", description="🎁 Registrarse para recibir el welcome pack")
     async def welcome_registro(self, interaction: discord.Interaction):
         """Registrarse para recibir el welcome pack"""
-        await interaction.response.defer(ephemeral=True)
-        
         # Verificar si el sistema está habilitado
         if not taxi_config.FEATURE_ENABLED or not taxi_config.WELCOME_PACK_ENABLED:
             embed = discord.Embed(
@@ -177,109 +296,33 @@ class WelcomePackSystem(commands.Cog):
                 description="El sistema de welcome pack está temporalmente deshabilitado",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Intentar registrar usuario
-        success, result = await taxi_db.register_user(
-            interaction.user.id,
-            interaction.user.display_name,
-            "player"  # Tipo de usuario por defecto
-        )
-        
-        if success:
-            # Dar dinero inicial
-            await taxi_db.add_money(interaction.user.id, taxi_config.WELCOME_BONUS)
-            
+        # Verificar si ya está registrado
+        user_exists = await taxi_db.user_exists(interaction.user.id)
+        if user_exists:
             embed = discord.Embed(
-                title="🎉 ¡Welcome Pack Recibido!",
-                description="Has sido registrado exitosamente en el sistema SCUM",
-                color=discord.Color.green()
+                title="ℹ️ Ya Registrado",
+                description="Ya tienes una cuenta en el sistema SCUM",
+                color=discord.Color.blue()
             )
             
+            # Mostrar balance actual
+            balance = await taxi_db.get_user_balance(interaction.user.id)
             embed.add_field(
-                name="💰 Dinero Recibido",
-                value=f"${taxi_config.WELCOME_BONUS:,.0f}",
+                name="💰 Balance Actual",
+                value=f"${balance:,.0f}",
                 inline=True
             )
             
-            embed.add_field(
-                name="🎫 Vouchers de Taxi",
-                value="3 viajes gratis",
-                inline=True
-            )
-            
-            embed.add_field(
-                name="📈 Estado",
-                value="Usuario registrado",
-                inline=True
-            )
-            
-            embed.add_field(
-                name="🚖 Próximos Pasos",
-                value="• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles\n• Usa `/bot_presentacion` para conocer todas las funciones",
-                inline=False
-            )
-            
-            # Auto-desplegar presentación para nuevos usuarios
-            try:
-                # Importar aquí para evitar circular import
-                bot = interaction.client
-                if hasattr(bot, 'get_channel'):
-                    # Buscar canal de presentación configurado
-                    presentation_channel = None
-                    for channel in interaction.guild.channels:
-                        if channel.name.lower() in ['bot-presentation', 'presentacion', 'presentation']:
-                            presentation_channel = channel
-                            break
-                    
-                    if presentation_channel:
-                        # Importar la clase de presentación desde el bot principal
-                        from BunkerAdvice_V2 import BotPresentationView
-                        view = BotPresentationView()
-                        embed_presentation = view.create_overview_embed()
-                        
-                        intro_text = f"""
-🎉 **¡Bienvenido {interaction.user.display_name}!**
-
-Como eres nuevo en nuestro sistema, aquí tienes la presentación completa del bot. Navega por las **7 páginas** usando los botones para conocer todas las funcionalidades.
-
-⬇️ **Usa los botones para explorar**
-                        """
-                        
-                        await presentation_channel.send(
-                            content=intro_text, 
-                            embed=embed_presentation, 
-                            view=view
-                        )
-            except Exception as e:
-                # No interrumpir el flujo si falla la presentación
-                logger.error(f"Error auto-desplegando presentación: {e}")
-            
-        else:
-            if "already registered" in result.lower():
-                embed = discord.Embed(
-                    title="ℹ️ Ya Registrado",
-                    description="Ya tienes una cuenta en el sistema SCUM",
-                    color=discord.Color.blue()
-                )
-                
-                # Mostrar balance actual
-                balance = await taxi_db.get_user_balance(interaction.user.id)
-                embed.add_field(
-                    name="💰 Balance Actual",
-                    value=f"${balance:,.0f}",
-                    inline=True
-                )
-            else:
-                embed = discord.Embed(
-                    title="❌ Error de Registro",
-                    description=f"No se pudo registrar: {result}",
-                    color=discord.Color.red()
-                )
+            embed.set_footer(text="Sistema de Taxi SCUM • Ya registrado")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
         
-        embed.set_footer(text="Sistema de Taxi SCUM • Gracias por registrarte")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Mostrar modal para pedir nombre InGame
+        modal = InGameNameModal()
+        await interaction.response.send_modal(modal)
 
     @app_commands.command(name="welcome_status", description="📊 Ver tu estado de registro")
     async def welcome_status(self, interaction: discord.Interaction):

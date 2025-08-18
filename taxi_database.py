@@ -161,6 +161,7 @@ class TaxiDatabase:
                     discord_guild_id TEXT NOT NULL,
                     username TEXT NOT NULL,
                     display_name TEXT,
+                    ingame_name TEXT,
                     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'active',
@@ -482,12 +483,25 @@ class TaxiDatabase:
             
             logger.info("✅ Tablas del sistema de alertas de reinicio creadas")
             
+            # === MIGRACIONES ===
+            # Agregar columna ingame_name si no existe
+            try:
+                cursor = await db.execute("PRAGMA table_info(taxi_users)")
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+                if 'ingame_name' not in column_names:
+                    await db.execute("ALTER TABLE taxi_users ADD COLUMN ingame_name TEXT")
+                    logger.info("✅ Migración: Columna ingame_name agregada a taxi_users")
+            except Exception as e:
+                logger.error(f"Error en migración ingame_name: {e}")
+            
             await db.commit()
             logger.info("✅ Base de datos del sistema de taxi inicializada")
 
     # === GESTIÓN DE USUARIOS ===
     
-    async def register_user(self, discord_id: str, guild_id: str, username: str, display_name: str = None, timezone: str = None) -> Tuple[bool, Dict]:
+    async def register_user(self, discord_id: str, guild_id: str, username: str, display_name: str = None, timezone: str = None, ingame_name: str = None) -> Tuple[bool, Dict]:
         """Registrar nuevo usuario con welcome pack"""
         async with aiosqlite.connect(self.db_path) as db:
             try:
@@ -507,9 +521,9 @@ class TaxiDatabase:
                 
                 # Registrar usuario
                 cursor = await db.execute("""
-                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed, timezone)
-                    VALUES (?, ?, ?, ?, TRUE, ?)
-                """, (discord_id, guild_id, username, display_name, timezone))
+                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed, timezone, ingame_name)
+                    VALUES (?, ?, ?, ?, TRUE, ?, ?)
+                """, (discord_id, guild_id, username, display_name, timezone, ingame_name))
                 
                 user_id = cursor.lastrowid
                 
@@ -570,7 +584,9 @@ class TaxiDatabase:
         """Obtener usuario por Discord ID"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
-                SELECT tu.*, ba.account_number, ba.balance
+                SELECT tu.user_id, tu.discord_id, tu.discord_guild_id, tu.username, tu.display_name, 
+                       tu.joined_at, tu.last_active, tu.status, tu.welcome_pack_claimed, tu.created_at, 
+                       tu.timezone, tu.ingame_name, ba.account_number, ba.balance
                 FROM taxi_users tu
                 LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
                 WHERE tu.discord_id = ? AND tu.discord_guild_id = ?
@@ -592,8 +608,9 @@ class TaxiDatabase:
                 "welcome_pack_claimed": bool(row[8]),
                 "created_at": row[9],
                 "timezone": row[10] if len(row) > 10 and row[10] else "UTC",
-                "account_number": row[11] if len(row) > 11 else None,
-                "balance": float(row[12]) if len(row) > 12 and row[12] else 0.0
+                "ingame_name": row[11] if len(row) > 11 and row[11] else None,
+                "account_number": row[12] if len(row) > 12 else None,
+                "balance": float(row[13]) if len(row) > 13 and row[13] else 0.0
             }
 
     async def update_user_timezone(self, discord_id: str, guild_id: str, timezone: str) -> bool:

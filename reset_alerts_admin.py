@@ -785,7 +785,7 @@ class ResetAlertsAdmin(commands.Cog):
                     if inconsistencies:
                         embed.add_field(
                             name="🔧 Inconsistencias Detectadas",
-                            value="\n".join(inconsistencies) + "\n\n💡 **Solución**: Reconfigurar canales con `/taxi_admin_setup`",
+                            value="\n".join(inconsistencies) + "\n\n💡 **Solución**: Reconfigurar canales con `/ba_admin_channels_setup`",
                             inline=False
                         )
                 

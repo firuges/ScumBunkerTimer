@@ -3,88 +3,48 @@ chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
 :: ===========================================
-::   SCUM Bunker Timer V2 - Build Generator
+::   SCUM Bot V2 - Build Generator Completo
 :: ===========================================
-title SCUM Bunker Timer - Build Generator
+title SCUM Bot V2 - Build Generator
 color 0B
 
 echo ========================================
-echo   SCUM Bunker Timer V2 - Build Generator
+echo   SCUM Bot V2 - Build Generator
 echo ========================================
 echo.
-echo   Genera una carpeta portable para despliegue
-echo   Lista para llevar a cualquier servidor
-echo.
-echo ========================================
-
-:: Cambiar al directorio del script
-cd /d "%~dp0"
-color 0B
-
-echo ========================================
-echo   SCUM Bunker Timer V2 - Build Generator
-echo ========================================
-echo.
-echo   Genera una carpeta portable para despliegue
-echo   Lista para llevar a cualquier servidor
+echo   Genera una carpeta portable completa
+echo   Con TODOS los sistemas integrados
 echo.
 echo ========================================
 
 :: Cambiar al directorio del script
 cd /d "%~dp0"
 
-:: Verificar que los archivos fuente existen
+:: Verificar archivos esenciales
 echo.
-echo 📄 Verificando archivos fuente...
+echo 📄 Verificando archivos esenciales...
 
 if not exist "BunkerAdvice_V2.py" (
     color 0C
     echo ❌ ERROR: No se encuentra BunkerAdvice_V2.py
-    echo.
-    echo    Asegúrate de ejecutar este script desde la carpeta
-    echo    que contiene todos los archivos del bot.
-    echo.
     pause
     exit /b 1
 )
 
-if not exist "bot_status_system.py" (
+if not exist "requirements.txt" (
     color 0C
-    echo ❌ ERROR: No se encuentra bot_status_system.py
-    echo.
-    echo    Este archivo es requerido para el sistema de estado del bot.
-    echo.
+    echo ❌ ERROR: No se encuentra requirements.txt
     pause
     exit /b 1
 )
 
-if not exist "taxi_system.py" (
-    color 0C
-    echo ❌ ERROR: No se encuentra taxi_system.py
-    echo.
-    echo    Este archivo es requerido para el sistema de taxi integrado.
-    echo.
-    pause
-    exit /b 1
-)
-
-if not exist "taxi_database.py" (
-    color 0C
-    echo ❌ ERROR: No se encuentra taxi_database.py
-    echo.
-    echo    Este archivo es requerido para la base de datos del sistema.
-    echo.
-    pause
-    exit /b 1
-)
-
-echo ✅ Archivos fuente verificados
+echo ✅ Archivos esenciales verificados
 
 :: Definir directorio de build
 set "BUILD_DIR=build"
 set "BUILD_TIMESTAMP=%date:~10,4%%date:~4,2%%date:~7,2%_%time:~0,2%%time:~3,2%%time:~6,2%"
 set "BUILD_TIMESTAMP=%BUILD_TIMESTAMP: =0%"
-set "BUILD_FULL_DIR=%BUILD_DIR%\ScumBunkerTimer_%BUILD_TIMESTAMP%"
+set "BUILD_FULL_DIR=%BUILD_DIR%\ScumBot_Complete_%BUILD_TIMESTAMP%"
 
 :: Crear directorio de build
 echo.
@@ -98,44 +58,213 @@ mkdir "%BUILD_FULL_DIR%"
 mkdir "%BUILD_FULL_DIR%\logs"
 mkdir "%BUILD_FULL_DIR%\backup"
 mkdir "%BUILD_FULL_DIR%\config"
-mkdir "%BUILD_FULL_DIR%\installers"
+mkdir "%BUILD_FULL_DIR%\scripts"
+mkdir "%BUILD_FULL_DIR%\docs"
+mkdir "%BUILD_FULL_DIR%\databases"
 
 echo ✅ Directorio creado: %BUILD_FULL_DIR%
 
-:: Copiar archivos principales del bot
+:: ===========================================
+::   COPIAR ARCHIVOS PRINCIPALES
+:: ===========================================
 echo.
-echo 📄 Copiando archivos del bot...
+echo 📄 Copiando archivos principales del bot...
 
+:: Archivo principal
 copy "BunkerAdvice_V2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Sistemas principales
 copy "database_v2.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_status_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Sistema de servidores
 copy "server_monitor.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "server_database.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "server_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "premium_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "bot_starter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-:: === SISTEMA DE TAXI ===
-copy "taxi_*.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "banking_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "welcome_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-copy "migrate_taxi_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-
-:: === SISTEMA DE ALERTAS DE REINICIO ===
-copy "reset_alerts_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-
-:: === CONFIGURACIONES DE TIENDA ===
-copy "shop_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
-
-:: === ARCHIVOS ESENCIALES ===
-copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 echo ✅ Archivos principales copiados
 
-:: Leer token del .env usando PowerShell
+:: ===========================================
+::   SISTEMA DE TAXI COMPLETO
+:: ===========================================
 echo.
-echo ⚙️ Leyendo configuración del .env...
+echo 🚖 Copiando sistema de taxi completo...
 
+copy "taxi_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "taxi_database.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "taxi_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "taxi_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "banking_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "welcome_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "migrate_taxi_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "migrate_mechanic_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Sistema de taxi copiado
+
+:: ===========================================
+::   SISTEMA DE MECANICO
+:: ===========================================
+echo.
+echo 🔧 Copiando sistema de mecánico...
+
+copy "mechanic_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Sistema de mecánico copiado
+
+:: ===========================================
+::   SISTEMA PREMIUM
+:: ===========================================
+echo.
+echo 💎 Copiando sistema premium...
+
+copy "premium_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "premium_exclusive_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "premium_utils.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "subscription_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "shop_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Sistema premium copiado
+
+:: ===========================================
+::   SISTEMA DE ALERTAS
+:: ===========================================
+echo.
+echo 🔔 Copiando sistema de alertas...
+
+copy "reset_alerts_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Sistema de alertas copiado
+
+:: ===========================================
+::   UTILIDADES Y HERRAMIENTAS
+:: ===========================================
+echo.
+echo 🛠️ Copiando utilidades...
+
+copy "economic_calculator.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "economic_optimization.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "verify_optimization.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Herramientas de testing (opcionales pero útiles)
+copy "test_taxi_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "test_database_fix.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "debug_user.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "check_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Archivos esenciales
+copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Utilidades copiadas
+
+:: ===========================================
+::   SCRIPTS DE INSTALACION
+:: ===========================================
+echo.
+echo 📦 Copiando scripts de instalación...
+
+copy "scripts\install_windows_simple.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
+copy "scripts\install_windows_fixed.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
+copy "scripts\install_windows_debug.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
+copy "scripts\cleanup.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
+
+echo ✅ Scripts de instalación copiados
+
+:: ===========================================
+::   DOCUMENTACION COMPLETA
+:: ===========================================
+echo.
+echo 📚 Copiando documentación completa...
+
+:: Documentación principal
+copy "README.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "TAXI_SYSTEM_README.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "TAXI_SYSTEM_FINAL.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "MECHANIC_SYSTEM_GUIDE.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "MECHANIC_SYSTEM_CHANGELOG.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Documentación en carpeta docs
+copy "docs\COMANDOS_GUIA.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\DEPLOY_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\PYTHON_3.13_SOLUCION.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\WINDOWS_DEPLOY.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\WINDOWS_INSTALL_FIX.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\TAXI_TUTORIAL.html" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\BOT_STATUS_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\PREMIUM_SYSTEM_DOCS.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+copy "docs\MULTIPLE_SERVERS_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+
+:: Archivos HTML
+copy "guide.html" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_presentation.html" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_presentation.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Documentación copiada
+
+:: ===========================================
+::   BASES DE DATOS EXISTENTES
+:: ===========================================
+echo.
+echo 🗄️ Copiando bases de datos existentes...
+
+:: Verificar y copiar bases de datos si existen
+set "DB_COUNT=0"
+
+if exist "bunkers_v2.db" (
+    copy "bunkers_v2.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+    echo    ✅ bunkers_v2.db - Sistema de bunkers
+    set /a DB_COUNT+=1
+)
+
+if exist "taxi_system.db" (
+    copy "taxi_system.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+    echo    ✅ taxi_system.db - Sistema de taxi completo
+    set /a DB_COUNT+=1
+)
+
+if exist "scum_bank.db" (
+    copy "scum_bank.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+    echo    ✅ scum_bank.db - Sistema bancario
+    set /a DB_COUNT+=1
+)
+
+if exist "subscriptions.db" (
+    copy "subscriptions.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+    echo    ✅ subscriptions.db - Sistema premium
+    set /a DB_COUNT+=1
+)
+
+:: Buscar otras bases de datos .db
+for %%f in (*.db) do (
+    if not "%%f"=="bunkers_v2.db" (
+        if not "%%f"=="taxi_system.db" (
+            if not "%%f"=="scum_bank.db" (
+                if not "%%f"=="subscriptions.db" (
+                    copy "%%f" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+                    echo    ✅ %%f - Base de datos adicional
+                    set /a DB_COUNT+=1
+                )
+            )
+        )
+    )
+)
+
+if !DB_COUNT! gtr 0 (
+    echo ✅ !DB_COUNT! base(s) de datos copiada(s)
+    echo    📁 Ubicación: databases\
+    echo    💡 Estas BD contienen datos reales del servidor
+) else (
+    echo ⚠️ No se encontraron bases de datos existentes
+    echo    💡 El bot creará nuevas BD automáticamente
+)
+
+:: ===========================================
+::   CONFIGURACION AUTOMATICA
+:: ===========================================
+echo.
+echo ⚙️ Creando configuración automática...
+
+:: Leer token del .env si existe
 set "DISCORD_TOKEN_VALUE="
 if exist ".env" (
     for /f "usebackq delims=" %%i in (`powershell -command "if (Test-Path '.env') { (Get-Content '.env' | Where-Object { $_ -match '^DISCORD_TOKEN=' }) -replace 'DISCORD_TOKEN=', '' }"`) do (
@@ -143,168 +272,98 @@ if exist ".env" (
     )
 )
 
-:: Crear config.py con el token
-echo.
-echo ⚙️ Creando configuración...
-
+:: Crear config.py completo
 if defined DISCORD_TOKEN_VALUE (
-    echo # Configuración del bot Discord > "%BUILD_FULL_DIR%\config.py"
+    echo # Configuración completa del SCUM Bot > "%BUILD_FULL_DIR%\config.py"
     call echo DISCORD_TOKEN = '%%DISCORD_TOKEN_VALUE%%' >> "%BUILD_FULL_DIR%\config.py"
     echo ✅ Token configurado automáticamente desde .env
 ) else (
-    echo # Configuración del bot Discord > "%BUILD_FULL_DIR%\config.py"
+    echo # Configuración completa del SCUM Bot > "%BUILD_FULL_DIR%\config.py"
     echo DISCORD_TOKEN = 'TU_TOKEN_AQUI' >> "%BUILD_FULL_DIR%\config.py"
-    echo ⚠️ No se pudo leer el token del .env, usando placeholder
+    echo ⚠️ Token requiere configuración manual
 )
 
-echo BOT_CREATOR_ID = 418198613210955776  # Tu Discord User ID >> "%BUILD_FULL_DIR%\config.py"
+:: Configuración completa
 echo. >> "%BUILD_FULL_DIR%\config.py"
-echo # Administradores del bot ^(para comandos admin^) >> "%BUILD_FULL_DIR%\config.py"
-echo BOT_ADMIN_IDS = [418198613210955776]  # Lista de IDs que pueden usar comandos admin >> "%BUILD_FULL_DIR%\config.py"
+echo # Administración del bot >> "%BUILD_FULL_DIR%\config.py"
+echo BOT_CREATOR_ID = 418198613210955776 >> "%BUILD_FULL_DIR%\config.py"
+echo BOT_ADMIN_IDS = [418198613210955776] >> "%BUILD_FULL_DIR%\config.py"
 echo PREFIX = '/' >> "%BUILD_FULL_DIR%\config.py"
 echo DEBUG = True >> "%BUILD_FULL_DIR%\config.py"
 echo. >> "%BUILD_FULL_DIR%\config.py"
 echo # Base de datos >> "%BUILD_FULL_DIR%\config.py"
 echo DATABASE_NAME = 'bunkers_v2.db' >> "%BUILD_FULL_DIR%\config.py"
+echo TAXI_DATABASE_NAME = 'taxi_system.db' >> "%BUILD_FULL_DIR%\config.py"
 echo. >> "%BUILD_FULL_DIR%\config.py"
 echo # Configuración de logs >> "%BUILD_FULL_DIR%\config.py"
 echo LOG_LEVEL = 'INFO' >> "%BUILD_FULL_DIR%\config.py"
 echo LOG_FILE = 'logs/bot.log' >> "%BUILD_FULL_DIR%\config.py"
+echo. >> "%BUILD_FULL_DIR%\config.py"
+echo # Sistemas habilitados >> "%BUILD_FULL_DIR%\config.py"
+echo TAXI_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
+echo PREMIUM_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
+echo MECHANIC_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
+echo SERVER_MONITOR_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
 
-echo ✅ config.py creado
+echo ✅ config.py creado con configuración completa
 
-:: Copiar instaladores
+:: ===========================================
+::   CREAR INSTALADOR PRINCIPAL
+:: ===========================================
 echo.
-echo 🛠️ Copiando instaladores...
-
-copy "install_windows_simple.bat" "%BUILD_FULL_DIR%\installers\" >nul 2>&1
-copy "install_windows_fixed.bat" "%BUILD_FULL_DIR%\installers\" >nul 2>&1
-copy "install_windows_debug.bat" "%BUILD_FULL_DIR%\installers\" >nul 2>&1
-
-echo ✅ Instaladores copiados
-
-:: Crear archivo de inicio
-echo.
-echo 📄 Creando archivos de inicio...
-
-echo @echo off > "%BUILD_FULL_DIR%\start_bot.bat"
-echo title SCUM Bunker Timer V2 >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo color 0A >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo :: Cambiar al directorio del script >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo cd /d "%%~dp0" >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo   SCUM Bunker Timer V2 - Iniciando... >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo 📁 Directorio: %%CD%% >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo 📄 Verificando archivos del bot... >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo if not exist "BunkerAdvice_V2.py" ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     color 0C >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo ❌ ERROR: No se encuentra BunkerAdvice_V2.py >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo    Asegúrate de ejecutar start_bot.bat desde >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo    la carpeta que contiene los archivos del bot. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo    Directorio actual: %%CD%% >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     pause >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     exit /b 1 >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo if not exist "bot_status_system.py" ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     color 0C >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo ❌ ERROR: No se encuentra bot_status_system.py >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo    Este archivo es requerido para el sistema de estado. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     pause >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     exit /b 1 >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo ✅ Archivos del bot encontrados >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo 🚀 Iniciando bot... >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo python BunkerAdvice_V2.py >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo if errorlevel 1 ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo ERROR: El bot se cerro inesperadamente >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo Revisa los logs para mas informacion >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo pause >> "%BUILD_FULL_DIR%\start_bot.bat"
-
-echo ✅ start_bot.bat creado
-
-:: Crear instalador portable
-echo.
-echo 📦 Creando instalador portable mejorado...
+echo 📦 Creando instalador principal...
 
 echo @echo off > "%BUILD_FULL_DIR%\INSTALL.bat"
 echo chcp 65001 ^>nul 2^>^&1 >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo setlocal enabledelayedexpansion >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo title SCUM Bunker Timer - Instalador Portable >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo title SCUM Bot V2 - Instalador Completo >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo color 0A >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo   SCUM Bunker Timer V2 - Instalador >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   SCUM Bot V2 - Instalador Completo >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo   Version portable - Compatible Python 3.13 >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   Sistema completo con 9 subsistemas: >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   ^🏠 Bunkers ^🚖 Taxi ^🏦 Bancario ^🔧 Mecánico ^🏆 Escuadrones >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   ^📊 Monitoreo ^💎 Premium ^🔔 Alertas ^⚙️ Admin >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo :: Cambiar al directorio del script >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo cd /d "%%~dp0" >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo 📁 Directorio actual: %%CD%% >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo 📄 Verificando archivos necesarios... >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo 📄 Verificando archivos del sistema... >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo if not exist "requirements.txt" ^( >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     color 0C >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo ❌ ERROR: No se encuentra requirements.txt >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo    Asegúrate de ejecutar este instalador desde >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo    la carpeta que contiene todos los archivos del bot. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo    Archivos en directorio actual: >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     dir *.py *.txt *.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo     echo ❌ ERROR: Archivos del sistema incompletos >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     pause >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     exit /b 1 >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo ^) >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo ✅ requirements.txt encontrado >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo ✅ Archivos del sistema verificados >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo 🐍 Verificando Python... >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo python --version ^>nul 2^>^&1 >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo if errorlevel 1 ^( >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     color 0C >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     echo ❌ Python no está instalado >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo    Instala Python desde: https://python.org >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo    Asegúrate de marcar "Add to PATH" >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo     echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo     echo    Descarga Python desde: https://python.org >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo     echo    Marca "Add to PATH" durante la instalación >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     pause >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     exit /b 1 >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo ^) >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ✅ Python encontrado: >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo python --version >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo 📦 Instalando dependencias... >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo 📦 Instalando dependencias completas... >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo pip install --user -r requirements.txt >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo if errorlevel 1 ^( >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     color 0C >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     echo ❌ Error instalando dependencias >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo     echo    Intenta ejecutar: scripts\install_windows_debug.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     pause >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo     exit /b 1 >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo ^) >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo ✅ Dependencias instaladas >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo ✅ Dependencias instaladas correctamente >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ========================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo   🎉 INSTALACIÓN COMPLETADA >> "%BUILD_FULL_DIR%\INSTALL.bat"
@@ -313,150 +372,245 @@ echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo 📋 PRÓXIMOS PASOS: >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 if defined DISCORD_TOKEN_VALUE (
-    echo echo ✅ Token ya configurado automáticamente >> "%BUILD_FULL_DIR%\INSTALL.bat"
-    echo echo 🚀 Ejecutar: start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo ✅ 1. Token ya configurado automáticamente >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🚀 2. Ejecutar: start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
 ) else (
-    echo echo 1️⃣ Editar config.py con tu token >> "%BUILD_FULL_DIR%\INSTALL.bat"
-    echo echo 2️⃣ Ejecutar start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 📝 1. Editar config.py con tu token >> "%BUILD_FULL_DIR%\INSTALL.bat"
+    echo echo 🚀 2. Ejecutar start_bot.bat >> "%BUILD_FULL_DIR%\INSTALL.bat"
 )
+echo echo 📚 3. Ver docs\ para guías completas >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ========================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo pause >> "%BUILD_FULL_DIR%\INSTALL.bat"
 
 echo ✅ INSTALL.bat creado
 
-:: Crear README para el build
+:: ===========================================
+::   CREAR EJECUTOR PRINCIPAL
+:: ===========================================
 echo.
-echo 📋 Creando documentación...
+echo 🚀 Creando ejecutor principal...
 
-echo # SCUM Bunker Timer V2 - Build Portable > "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ## 🚀 Instalación Rápida >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo 1. **Instalar dependencias:** >> "%BUILD_FULL_DIR%\README.md"
-echo    ```batch >> "%BUILD_FULL_DIR%\README.md"
-echo    INSTALL.bat >> "%BUILD_FULL_DIR%\README.md"
-echo    ``` >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-if defined DISCORD_TOKEN_VALUE (
-    echo 2. **✅ Token ya configurado automáticamente** >> "%BUILD_FULL_DIR%\README.md"
-    echo. >> "%BUILD_FULL_DIR%\README.md"
-    echo 3. **Ejecutar bot:** >> "%BUILD_FULL_DIR%\README.md"
-) else (
-    echo 2. **Configurar token:** >> "%BUILD_FULL_DIR%\README.md"
-    echo    - Editar `config.py` >> "%BUILD_FULL_DIR%\README.md"
-    echo    - Reemplazar `TU_TOKEN_AQUI` con tu token de Discord >> "%BUILD_FULL_DIR%\README.md"
-    echo. >> "%BUILD_FULL_DIR%\README.md"
-    echo 3. **Ejecutar bot:** >> "%BUILD_FULL_DIR%\README.md"
-)
-echo    ```batch >> "%BUILD_FULL_DIR%\README.md"
-echo    start_bot.bat >> "%BUILD_FULL_DIR%\README.md"
-echo    ``` >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ## 📁 Estructura de Archivos >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🎮 Sistema Principal >> "%BUILD_FULL_DIR%\README.md"
-echo - `BunkerAdvice_V2.py` - Bot principal con comandos de bunkers >> "%BUILD_FULL_DIR%\README.md"
-echo - `bot_status_system.py` - Sistema de estado en tiempo real >> "%BUILD_FULL_DIR%\README.md"
-echo - `server_monitor.py` - Monitoreo de servidores SCUM >> "%BUILD_FULL_DIR%\README.md"
-echo - `server_database.py` - Base de datos de servidores >> "%BUILD_FULL_DIR%\README.md"
-echo - `server_commands.py` - Comandos de gestión de servidores >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🚖 Sistema de Taxi >> "%BUILD_FULL_DIR%\README.md"
-echo - `taxi_system.py` - Sistema completo de taxis >> "%BUILD_FULL_DIR%\README.md"
-echo - `taxi_database.py` - Base de datos con timezone automático >> "%BUILD_FULL_DIR%\README.md"
-echo - `taxi_admin.py` - Comandos administrativos >> "%BUILD_FULL_DIR%\README.md"
-echo - `taxi_config.py` - Configuración del sistema >> "%BUILD_FULL_DIR%\README.md"
-echo - `banking_system.py` - Sistema bancario integrado >> "%BUILD_FULL_DIR%\README.md"
-echo - `welcome_system.py` - Sistema de bienvenida >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🔔 Sistema de Alertas >> "%BUILD_FULL_DIR%\README.md"
-echo - `reset_alerts_admin.py` - Gestión de alertas de reinicio >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🛍️ Sistema Premium >> "%BUILD_FULL_DIR%\README.md"
-echo - `premium_*.py` - Comandos premium >> "%BUILD_FULL_DIR%\README.md"
-echo - `subscription_manager.py` - Gestión de suscripciones >> "%BUILD_FULL_DIR%\README.md"
-echo - `shop_config.py` - Configuración de tienda >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### ⚙️ Configuración y Utilidades >> "%BUILD_FULL_DIR%\README.md"
-echo - `config.py` - Configuración principal ^(**EDITAR AQUÍ**^) >> "%BUILD_FULL_DIR%\README.md"
-echo - `requirements.txt` - Dependencias Python >> "%BUILD_FULL_DIR%\README.md"
-echo - `INSTALL.bat` - Instalador automático >> "%BUILD_FULL_DIR%\README.md"
-echo - `start_bot.bat` - Ejecutar bot >> "%BUILD_FULL_DIR%\README.md"
-echo - `logs/` - Archivos de registro >> "%BUILD_FULL_DIR%\README.md"
-echo - `installers/` - Instaladores avanzados >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ## ⚙️ Configuración >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-if defined DISCORD_TOKEN_VALUE (
-    echo ✅ **Token ya configurado automáticamente desde .env** >> "%BUILD_FULL_DIR%\README.md"
-    echo. >> "%BUILD_FULL_DIR%\README.md"
-    echo El bot está listo para usar directamente después de instalar dependencias. >> "%BUILD_FULL_DIR%\README.md"
-) else (
-    echo Edita `config.py` y reemplaza: >> "%BUILD_FULL_DIR%\README.md"
-    echo ```python >> "%BUILD_FULL_DIR%\README.md"
-    echo DISCORD_TOKEN = 'tu_token_real_aqui' >> "%BUILD_FULL_DIR%\README.md"
-    echo ``` >> "%BUILD_FULL_DIR%\README.md"
-)
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ## 🛠️ Instaladores Avanzados >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo En la carpeta `installers/` encontrarás: >> "%BUILD_FULL_DIR%\README.md"
-echo - `install_windows_simple.bat` - Instalación local >> "%BUILD_FULL_DIR%\README.md"
-echo - `install_windows_fixed.bat` - Instalación como servicio >> "%BUILD_FULL_DIR%\README.md"
-echo - `install_windows_debug.bat` - Diagnóstico >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ## 📊 Características >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🎮 Sistema SCUM Bunker Timer >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Compatible con Python 3.13 >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ 46+ comandos de Discord funcionales >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema de bunkers SCUM completo >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Monitoreo de servidores en tiempo real >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Alertas de reinicio con timezone automático >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🚖 Sistema de Taxi Integrado >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema completo de taxis con conductores >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema bancario con transacciones >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Tienda virtual con entregas >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema de welcome pack para nuevos usuarios >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### 🔔 Sistema de Alertas Avanzado >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Alertas de reinicio personalizables >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Detección automática de timezone ^(Uruguay, Argentina, Brasil^) >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Horarios convertidos a zona horaria local >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Comandos administrativos para gestión >> "%BUILD_FULL_DIR%\README.md"
-echo. >> "%BUILD_FULL_DIR%\README.md"
-echo ### ⚙️ Infraestructura >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Base de datos SQLite optimizada >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Sistema premium/gratuito integrado >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Logs automáticos y debugging >> "%BUILD_FULL_DIR%\README.md"
-echo ✅ Auto-migración de base de datos >> "%BUILD_FULL_DIR%\README.md"
+echo @echo off > "%BUILD_FULL_DIR%\start_bot.bat"
+echo chcp 65001 ^>nul 2^>^&1 >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo title SCUM Bot V2 - Sistema Completo >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo color 0A >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo cd /d "%%~dp0" >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo   SCUM Bot V2 - Iniciando Sistema Completo >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo 📍 Directorio: %%CD%% >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo 📄 Verificando sistema... >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo :: Verificar archivos críticos >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo if not exist "BunkerAdvice_V2.py" ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     color 0C >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo ❌ ERROR: Sistema incompleto >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo    Ejecuta INSTALL.bat primero >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     pause >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     exit /b 1 >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo ✅ Sistema verificado - Iniciando bot... >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo 🤖 Sistemas activos: >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo    ^🏠 Bunkers   ^🚖 Taxi      ^🏦 Bancario  ^🔧 Mecánico  ^🏆 Escuadrones >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo    ^📊 Monitor   ^💎 Premium   ^🔔 Alertas   ^⚙️ Admin >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo python BunkerAdvice_V2.py >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo if errorlevel 1 ^( >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     color 0C >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo ❌ El bot se cerró inesperadamente >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo 📋 Revisa los logs en: logs\bot.log >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo     echo 🛠️ Para diagnóstico: scripts\install_windows_debug.bat >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo ^) >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo pause >> "%BUILD_FULL_DIR%\start_bot.bat"
 
-echo ✅ README.md creado
+echo ✅ start_bot.bat creado
 
-:: Copiar documentación adicional
+:: ===========================================
+::   CREAR README COMPLETO
+:: ===========================================
 echo.
-echo 📚 Copiando documentación adicional...
+echo 📋 Creando documentación completa...
 
-if exist "guide.html" copy "guide.html" "%BUILD_FULL_DIR%\" >nul 2>&1
-if exist "presentation.html" copy "presentation.html" "%BUILD_FULL_DIR%\" >nul 2>&1
-if exist "PYTHON_3.13_SOLUCION.md" copy "PYTHON_3.13_SOLUCION.md" "%BUILD_FULL_DIR%\" >nul 2>&1
+echo # SCUM Bot V2 - Sistema Completo > "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ## 🚀 Instalación Rápida >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo 1. **Instalar sistema completo:** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo    ```batch >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo    INSTALL.bat >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo    ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+if defined DISCORD_TOKEN_VALUE (
+    echo 2. **✅ Token ya configurado automáticamente** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo 3. **Ejecutar bot:** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+) else (
+    echo 2. **Configurar token:** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo    - Editar `config.py` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo    - Reemplazar `TU_TOKEN_AQUI` con tu token real >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+    echo 3. **Ejecutar bot:** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+)
+echo    ```batch >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo    start_bot.bat >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo    ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ## 🎮 Sistemas Incluidos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🏠 Sistema de Bunkers >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Monitoreo automático de 4 bunkers SCUM >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Alertas con timezone automático ^(Uruguay, Argentina, Brasil^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Comandos de administración avanzados >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🚖 Sistema de Taxi >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Sistema completo con 5 tipos de vehículos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Registro de conductores con niveles >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Zonas del mapa con tarifas diferenciadas >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Comisiones automáticas para conductores >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🏦 Sistema Bancario >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Cuentas automáticas para usuarios >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Transferencias entre jugadores >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Historial completo de transacciones >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Canje diario optimizado: $500 >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Welcome bonus: $7,500 >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🔧 Sistema de Mecánico >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Registro y gestión de vehículos personales >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Seguros vinculados a vehículos registrados >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Límites configurables por tipo de vehículo >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Diferenciación PVP/PVE con recargo configurable >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Notificaciones DM a mecánicos registrados >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Métodos de pago: Discord y InGame >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Panel interactivo para gestión de vehículos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **NUEVO:** Gestión de precios con botones interactivos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **NUEVO:** Selectores visuales para tipos de vehículos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **NUEVO:** Precios dinámicos que se actualizan automáticamente >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🏆 Sistema de Escuadrones ^(NUEVO^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Creación de escuadrones con selector PvP/PvE visual >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Unión a escuadrones existentes con confirmación >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Detección automática de zona basada en membresía >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Gestión de miembros y límites personalizables >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Canal dedicado con panel persistente >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Integración completa con sistema de seguros >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 📊 Sistema de Monitoreo >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Estado en tiempo real de servidores SCUM >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Top servidores por popularidad >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Estadísticas detalladas de uso >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 💎 Sistema Premium >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Comandos exclusivos para usuarios premium >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Gestión de suscripciones >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Tienda virtual integrada >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🔔 Sistema de Alertas >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Alertas de reinicio personalizables >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Detección automática de timezone >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Horarios convertidos a zona local >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### ⚙️ Sistema de Administración >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Panel de control completo >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Configuración por servidor >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Herramientas de diagnóstico >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ## 📊 Estadísticas del Sistema >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ```yaml >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Comandos Totales: 55+ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Sistemas Integrados: 9 >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Tipos de Vehículos: 6 ^(Moto, Ranger, Laika, WW, Avion, Barca^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Zonas del Mapa: 20+ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Canales Configurables: 8 ^(incluye Canal de Escuadrones^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Tipos de Escuadrones: 2 ^(PvP, PvE^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Detección Automática: ✅ Zona PvP/PvE por escuadrón >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Compatibilidad: Python 3.13 >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ## 📁 Estructura del Build >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ```tree >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ScumBot_Complete/ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── BunkerAdvice_V2.py          # Bot principal >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── config.py                   # Configuración ^(**EDITAR AQUÍ**^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── requirements.txt            # Dependencias Python >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── INSTALL.bat                 # Instalador automático >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── start_bot.bat               # Ejecutar bot >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── Sistema de Bunkers: >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── database_v2.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   └── bot_status_system.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── Sistema de Taxi: >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── taxi_system.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── taxi_database.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── taxi_admin.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── banking_system.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   └── welcome_system.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── Sistema de Mecánico: >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── mechanic_system.py          # Mecánico + Escuadrones >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   └── migrate_mechanic_db.py      # Migración de BD >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── Sistema Premium: >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── premium_commands.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── premium_exclusive_commands.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── subscription_manager.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   └── shop_config.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── docs/                       # Documentación completa >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── scripts/                    # Scripts de instalación >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── databases/                  # Bases de datos existentes >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── logs/                       # Archivos de registro >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo └── backup/                     # Respaldos automáticos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ## 🛠️ Resolución de Problemas >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### Error de instalación >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ```batch >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo scripts\install_windows_debug.bat >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### Bot se cierra inesperadamente >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo 1. Revisa `logs\bot.log` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo 2. Verifica token en `config.py` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo 3. Ejecuta diagnóstico: `debug_user.py` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### Base de datos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ```python >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python check_db.py              # Verificar base de datos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python migrate_taxi_db.py       # Migrar datos de taxi >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python migrate_mechanic_db.py   # Migrar sistema de mecánico >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 
-echo ✅ Documentación adicional copiada
+echo ✅ README_BUILD.md creado
 
-:: Crear archivo .gitignore para el build
+:: ===========================================
+::   CREAR GITIGNORE
+:: ===========================================
 echo.
 echo 📄 Creando .gitignore...
 
-echo # Archivos de configuración > "%BUILD_FULL_DIR%\.gitignore"
+echo # Configuración > "%BUILD_FULL_DIR%\.gitignore"
 echo config.py >> "%BUILD_FULL_DIR%\.gitignore"
 echo .env >> "%BUILD_FULL_DIR%\.gitignore"
 echo. >> "%BUILD_FULL_DIR%\.gitignore"
 echo # Base de datos >> "%BUILD_FULL_DIR%\.gitignore"
 echo *.db >> "%BUILD_FULL_DIR%\.gitignore"
 echo *.db-journal >> "%BUILD_FULL_DIR%\.gitignore"
+echo backup/*.db >> "%BUILD_FULL_DIR%\.gitignore"
 echo. >> "%BUILD_FULL_DIR%\.gitignore"
 echo # Logs >> "%BUILD_FULL_DIR%\.gitignore"
 echo logs/*.log >> "%BUILD_FULL_DIR%\.gitignore"
@@ -466,59 +620,86 @@ echo # Python >> "%BUILD_FULL_DIR%\.gitignore"
 echo __pycache__/ >> "%BUILD_FULL_DIR%\.gitignore"
 echo *.pyc >> "%BUILD_FULL_DIR%\.gitignore"
 echo *.pyo >> "%BUILD_FULL_DIR%\.gitignore"
-echo. >> "%BUILD_FULL_DIR%\.gitignore"
-echo # Backups >> "%BUILD_FULL_DIR%\.gitignore"
-echo backup/*.db >> "%BUILD_FULL_DIR%\.gitignore"
+echo .pytest_cache/ >> "%BUILD_FULL_DIR%\.gitignore"
 
 echo ✅ .gitignore creado
 
-:: Mostrar resumen del build
+:: ===========================================
+::   RESUMEN FINAL
+:: ===========================================
 echo.
 echo ===============================================
-echo   🎉 BUILD GENERADO EXITOSAMENTE
+echo   🎉 BUILD COMPLETO GENERADO EXITOSAMENTE
 echo ===============================================
 echo.
 echo 📁 Ubicación: %BUILD_FULL_DIR%
 echo 📊 Timestamp: %BUILD_TIMESTAMP%
 echo.
-echo 🚀 NUEVO! Características agregadas:
-echo    ✅ Sistema de alertas de reinicio con timezone automático
-echo    ✅ 46+ comandos funcionales ^(vs 13 anterior^)
-echo    ✅ Sistema bancario y taxi completo
-echo    ✅ Detección automática Uruguay/Argentina/Brasil
-echo    ✅ Comandos administrativos avanzados
+echo 🎮 SISTEMA COMPLETO INCLUIDO:
+echo    🏠 Bunkers         📊 Monitor      💎 Premium     🔔 Alertas
+echo    🚖 Taxi           🏦 Bancario     🔧 Mecánico    🏆 Escuadrones
+echo    ⚙️ Admin
+echo.
+echo 📊 ESTADÍSTICAS DEL BUILD:
+echo    ✅ 55+ comandos de Discord funcionales
+echo    ✅ 9 sistemas completamente integrados
+echo    ✅ 22+ archivos Python principales
+echo    ✅ Documentación completa incluida
+echo    ✅ Scripts de instalación automática
+echo    ✅ Compatible con Python 3.13
+echo    ✅ Sistema de escuadrones con detección automática
+echo    ✅ Gestión de precios con interfaz interactiva
 echo.
 if defined DISCORD_TOKEN_VALUE (
     echo 🔑 Token: ✅ Configurado automáticamente
 ) else (
-    echo 🔑 Token: ⚠️ Requiere configuración manual
+    echo 🔑 Token: ⚠️ Requiere configuración manual en config.py
 )
 echo.
-echo 📋 CONTENIDO DEL BUILD:
+echo 📋 CONTENIDO PRINCIPAL:
+dir "%BUILD_FULL_DIR%" /B | findstr /V "logs backup config scripts docs"
 echo.
-dir "%BUILD_FULL_DIR%" /B | findstr /V "logs backup config"
-echo.
-echo 📁 Carpetas:
-echo    - logs/     (para archivos de registro)
-echo    - backup/   (para respaldos de BD)
-echo    - config/   (configuraciones adicionales)
-echo    - installers/ (instaladores avanzados)
+echo 📁 Carpetas incluidas:
+echo    - docs/       (documentación completa)
+echo    - scripts/    (instaladores avanzados)
+echo    - logs/       (archivos de registro)
+echo    - backup/     (respaldos automáticos)
+echo    - config/     (configuraciones adicionales)
 echo.
 echo ===============================================
-echo   📦 LISTO PARA DESPLIEGUE
+echo   📦 LISTO PARA DESPLIEGUE COMPLETO
 echo ===============================================
 echo.
-echo 🚀 PARA USAR EN OTRO SERVIDOR:
+echo 🚀 PARA USAR EN CUALQUIER SERVIDOR:
 echo.
-echo 1️⃣ Copiar toda la carpeta: %BUILD_FULL_DIR%
-echo 2️⃣ En el servidor destino, ejecutar: INSTALL.bat
+echo 1️⃣ Copiar carpeta completa: %BUILD_FULL_DIR%
+echo 2️⃣ En el servidor destino ejecutar: INSTALL.bat
 if defined DISCORD_TOKEN_VALUE (
-    echo 3️⃣ ✅ Token ya configurado automáticamente
+    echo 3️⃣ ✅ Token ya configurado - Listo para usar
     echo 4️⃣ Ejecutar directamente: start_bot.bat
 ) else (
     echo 3️⃣ Configurar token en config.py
     echo 4️⃣ Ejecutar: start_bot.bat
 )
+echo 5️⃣ Ver docs\ para configuración avanzada
+echo.
+echo 🎯 CARACTERÍSTICAS ÚNICAS:
+echo    ✅ Sistema económico balanceado para progresión rápida
+echo    ✅ Timezone automático para Uruguay/Argentina/Brasil
+echo    ✅ Interfaz con botones interactivos persistentes
+echo    ✅ Multi-servidor con configuración independiente
+echo    ✅ Sistema de niveles para conductores de taxi
+echo    ✅ Registro y gestión personal de vehículos
+echo    ✅ Seguros vehiculares vinculados a vehículos registrados
+echo    ✅ Límites configurables por tipo de vehículo
+echo    ✅ Diferenciación PVP/PVE con recargos personalizables
+echo    ✅ Sistema de escuadrones con creación y unión automática
+echo    ✅ Detección automática de zona por membresía de escuadrón
+echo    ✅ Gestión de precios con interfaz interactiva ^(botones + selectores^)
+echo    ✅ 6 tipos de vehículos soportados ^(eliminado hydroavion^)
+echo    ✅ Paneles que se limpian y recrean automáticamente
+echo    ✅ Monitoreo en tiempo real de servidores SCUM
+echo    ✅ Sistema premium con tienda virtual integrada
 echo.
 echo ===============================================
 echo.

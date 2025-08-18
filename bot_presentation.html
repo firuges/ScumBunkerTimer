@@ -217,15 +217,15 @@
         
         <div class="section">
             <h2><span class="emoji">🎯</span>Vista General</h2>
-            <p>Nuestro bot integra <strong>7 sistemas completos</strong> en una sola herramienta profesional, diseñada específicamente para servidores de SCUM. Con más de <strong>45 comandos</strong> y una interfaz moderna con botones interactivos.</p>
+            <p>Nuestro bot integra <strong>9 sistemas completos</strong> en una sola herramienta profesional, diseñada específicamente para servidores de SCUM. Con más de <strong>55 comandos</strong> y una interfaz moderna con botones interactivos.</p>
             
             <div class="stats-container">
                 <div class="stat-box">
-                    <span class="stat-number">45+</span>
+                    <span class="stat-number">55+</span>
                     <span class="stat-label">Comandos</span>
                 </div>
                 <div class="stat-box">
-                    <span class="stat-number">7</span>
+                    <span class="stat-number">9</span>
                     <span class="stat-label">Sistemas</span>
                 </div>
                 <div class="stat-box">
@@ -246,7 +246,7 @@
             <div class="features-grid">
                 <div class="feature-card">
                     <h3>🚗 Vehículos Múltiples</h3>
-                    <p>Automóviles, motocicletas, aviones, hidroaviones y barcos. Cada uno con características únicas y acceso a diferentes zonas del mapa.</p>
+                    <p>Automóviles, motocicletas, aviones y barcos. Cada uno con características únicas y acceso a diferentes zonas del mapa.</p>
                 </div>
                 <div class="feature-card">
                     <h3>🗺️ Sistema de Zonas</h3>
@@ -298,6 +298,80 @@
                 <div class="feature-card">
                     <h3>📊 Análisis Avanzado</h3>
                     <p>Estadísticas de gastos, ingresos, actividad y proyecciones de crecimiento.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2><span class="emoji">🔧</span>Sistema de Mecánico</h2>
+            <p>Seguros vehiculares profesionales con <strong>6 tipos de vehículos</strong> y gestión automática de precios.</p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>🚗 Registro de Vehículos</h3>
+                    <p>Sistema completo de registro con límites configurables. Soporta motos, rangers, laikas, ww, aviones y barcas.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🛡️ Seguros Inteligentes</h3>
+                    <p>Seguros automáticos con detección PvP/PvE. Recargo configurable para zonas de combate.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>💰 Gestión de Precios</h3>
+                    <p>Precios personalizables por servidor con interfaz de botones. Notificaciones automáticas a mecánicos.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>👨‍🔧 Panel de Mecánicos</h3>
+                    <p>Registra mecánicos, gestiona seguros y configura precios desde un panel centralizado.</p>
+                </div>
+            </div>
+            
+            <div class="command-list">
+                <div class="command">
+                    <span class="command-name">/mechanic_admin_register</span>
+                    <span>Registrar mecánico</span>
+                </div>
+                <div class="command">
+                    <span class="command-name">/mechanic_admin_set_price</span>
+                    <span>Configurar precios de seguros</span>
+                </div>
+                <div class="command">
+                    <span class="command-name">/mechanic_admin_config_pvp</span>
+                    <span>Configurar recargo PvP</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2><span class="emoji">🏆</span>Sistema de Escuadrones</h2>
+            <p>Organizaciones de jugadores con <strong>límites inteligentes</strong> de vehículos y detección automática PvP/PvE.</p>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>⚔️ Creación de Escuadrones</h3>
+                    <p>Crea escuadrones PvP, PvE o Mixtos. Cada tipo determina automáticamente la zona de seguros.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>👥 Gestión de Miembros</h3>
+                    <p>Sistema de invitaciones, roles (líder, oficial, miembro) y gestión completa de membresía.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🚗 Límites Inteligentes</h3>
+                    <p>Sistema simplificado: 2 vehículos por miembro (cualquier tipo). Límite total configurable por servidor.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🎯 Detección Automática</h3>
+                    <p>El sistema detecta automáticamente si un usuario debe estar en zona PvP o PvE según su escuadrón.</p>
+                </div>
+            </div>
+            
+            <div class="command-list">
+                <div class="command">
+                    <span class="command-name">/squadron_admin_config_limits</span>
+                    <span>Configurar límites globales</span>
+                </div>
+                <div class="command">
+                    <span class="command-name">/squadron_admin_view_config</span>
+                    <span>Ver configuración actual</span>
                 </div>
             </div>
         </div>
@@ -360,7 +434,7 @@
             <div class="features-grid">
                 <div class="feature-card">
                     <h3>🛠️ Configuración Fácil</h3>
-                    <p>Configura todos los canales con comandos simples. Persistencia automática.</p>
+                    <p>Configura TODOS los canales (taxi, banco, bunkers, mecánico, escuadrones) con un solo comando. Persistencia automática.</p>
                 </div>
                 <div class="feature-card">
                     <h3>📊 Monitoreo en Tiempo Real</h3>
@@ -404,6 +478,14 @@
                 <div class="feature-card">
                     <h3>🛡️ Seguridad Avanzada</h3>
                     <p>Validaciones completas, protección anti-fraude, respaldos automáticos diarios.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>👥 Sistema de Registro Mejorado</h3>
+                    <p>Welcome system con registro automático, gestión de nombres InGame y validaciones inteligentes.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔗 Integración Total</h3>
+                    <p>Todos los sistemas están conectados: escuadrones determinan tipo de seguro, mecánicos gestionan vehículos, etc.</p>
                 </div>
             </div>
         </div>

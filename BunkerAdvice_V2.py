@@ -90,6 +90,14 @@ class BunkerBotV2(commands.Bot):
             
             await self.load_extension('taxi_system')
             await self.load_extension('taxi_admin')  # ✅ Rehabilitado con migración completa
+            
+            # Cargar sistema de mecánico
+            try:
+                await self.load_extension('mechanic_system')
+                logger.info("✅ Sistema de mecánico cargado exitosamente")
+            except Exception as mechanic_error:
+                logger.error(f"❌ Error cargando sistema de mecánico: {mechanic_error}")
+            
             logger.info("✅ Sistema de taxi - Extensiones principales cargadas")
             
             # Registrar vistas persistentes para el sistema de shop
@@ -202,6 +210,11 @@ class BunkerBotV2(commands.Bot):
             if welcome_cog:
                 await welcome_cog.load_channel_configs()
             
+            # Cargar configuraciones de mecánico
+            mechanic_cog = self.get_cog('MechanicSystem')
+            if mechanic_cog:
+                await mechanic_cog.load_channel_configs()
+            
             # Cargar configuraciones de shop (no tiene cog dedicado)
             await self._load_shop_configs()
             
@@ -213,6 +226,14 @@ class BunkerBotV2(commands.Bot):
                 logger.info("✅ Vista de presentación agregada para persistencia")
             except Exception as e:
                 logger.error(f"Error agregando vista de presentación: {e}")
+            
+            # Agregar vistas persistentes para mecánico
+            try:
+                from mechanic_system import MechanicSystemView
+                self.add_view(MechanicSystemView())
+                logger.info("✅ Vista de mecánico agregada para persistencia")
+            except Exception as e:
+                logger.error(f"Error agregando vista de mecánico: {e}")
             
             # Enviar notificación de startup a canales de estado
             if hasattr(self, 'status_system') and self.status_system:
@@ -2370,6 +2391,7 @@ class BotPresentationView(discord.ui.View):
             self.create_overview_embed,
             self.create_taxi_embed,
             self.create_banking_embed,
+            self.create_mechanic_embed,
             self.create_bunker_embed,
             self.create_admin_embed,
             self.create_economy_embed,
@@ -2417,6 +2439,7 @@ class BotPresentationView(discord.ui.View):
             🏠 **Sistema de Bunkers** - Monitoreo automático de 4 bunkers
             🚖 **Sistema de Taxi** - Transporte inteligente con múltiples vehículos
             🏦 **Sistema Bancario** - Economía completa con transferencias
+            🔧 **Sistema de Mecánico** - Seguros de vehículos con zonas PVP/PVE
             📊 **Monitoreo de Servidores** - Estado en tiempo real
             ⚙️ **Administración Avanzada** - Control total del bot
             """,
@@ -2425,7 +2448,7 @@ class BotPresentationView(discord.ui.View):
         
         embed.add_field(
             name="📈 **Estadísticas del Bot**",
-            value="```yaml\nComandos Disponibles: 45+\nSistemas Integrados: 7\nCanales Configurables: 6\nVehículos de Taxi: 5\nZonas del Mapa: 20+```",
+            value="```yaml\nComandos Disponibles: 50+\nSistemas Integrados: 8\nCanales Configurables: 7\nVehículos de Taxi: 5\nVehículos Asegurables: 5\nZonas del Mapa: 20+```",
             inline=True
         )
         
@@ -2441,7 +2464,7 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 1/7 • Usa los botones para navegar • /help para comandos")
+        embed.set_footer(text="Página 1/8 • Usa los botones para navegar • /help para comandos")
         
         return embed
     
@@ -2489,7 +2512,7 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 2/7 • Sistema de transporte más avanzado de SCUM")
+        embed.set_footer(text="Página 2/8 • Sistema de transporte más avanzado de SCUM")
         
         return embed
     
@@ -2537,12 +2560,70 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 3/7 • Economía optimizada para progresión rápida")
+        embed.set_footer(text="Página 3/8 • Economía optimizada para progresión rápida")
+        
+        return embed
+    
+    def create_mechanic_embed(self):
+        """Página 4: Sistema de Mecánico"""
+        embed = discord.Embed(
+            title="🔧 Sistema de Mecánico - Seguros Vehiculares",
+            description="**Protección completa para tus vehículos con diferenciación PVP/PVE**",
+            color=0xff8800
+        )
+        
+        embed.add_field(
+            name="🚗 **Vehículos Asegurables**",
+            value="""
+            🚗 **Ranger** - $1,200 (Vehículo versátil)
+            🚙 **Laika** - $1,500 (Todoterreno robusto)
+            🚐 **WW (Willys Wagon)** - $900 (Transporte económico)
+            🏍️ **Moto** - $500 (Rápido y ágil)
+            ✈️ **Avion** - $3,500 (Transporte aéreo)
+            """,
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🗺️ **Sistema de Zonas**",
+            value="```yaml\nZona PVE: Precio normal\nZona PVP: +25% recargo\n\nEjemplos:\n• Moto PVE: $500\n• Moto PVP: $625\n• Ranger PVE: $1,200\n• Ranger PVP: $1,500```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💰 **Métodos de Pago**",
+            value="```diff\n+ Discord: Pago inmediato\n  - Descuento automático\n  - Seguro activo al instante\n  \n+ InGame: Pago manual\n  - Coordinación con mecánico\n  - Pago en el juego```",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🔧 **Roles del Sistema**",
+            value="""
+            👤 **Usuarios**: Solicitar seguros con selectores interactivos
+            🔧 **Mecánicos**: Recibir notificaciones DM, ver panel completo
+            👑 **Admins**: Registrar mecánicos, configurar recargo PVP
+            """,
+            inline=False
+        )
+        
+        embed.add_field(
+            name="⚙️ **Comandos Principales**",
+            value="• `/seguro_solicitar` - Formulario interactivo con selectores\n• `/seguro_consultar` - Ver vehículos asegurados\n• `/mechanic_notifications` - Config notificaciones (mecánicos)\n• `/mechanic_admin_register` - Registrar mecánico (admin)",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🎯 **Características Únicas**",
+            value="• **Selectores interactivos** - Sin necesidad de escribir\n• **Cálculo automático** - Precio con recargo PVP visible\n• **Notificaciones inteligentes** - DM a mecánicos configurables\n• **Validación completa** - Sistema robusto anti-errores",
+            inline=False
+        )
+        
+        embed.set_footer(text="Página 4/8 • Sistema de seguros con interfaz moderna")
         
         return embed
     
     def create_bunker_embed(self):
-        """Página 4: Sistema de Bunkers"""
+        """Página 5: Sistema de Bunkers"""
         embed = discord.Embed(
             title="🏠 Sistema de Bunkers Abandonados",
             description="**Monitoreo automático de los 4 bunkers principales de SCUM**",
@@ -2584,12 +2665,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 4/7 • Nunca pierdas un bunker por falta de tiempo")
+        embed.set_footer(text="Página 5/8 • Nunca pierdas un bunker por falta de tiempo")
         
         return embed
     
     def create_admin_embed(self):
-        """Página 5: Panel de Administración"""
+        """Página 6: Panel de Administración"""
         embed = discord.Embed(
             title="⚙️ Panel de Administración Avanzado",
             description="**Control total del bot con herramientas profesionales**",
@@ -2599,7 +2680,7 @@ class BotPresentationView(discord.ui.View):
         embed.add_field(
             name="🛠️ **Configuración de Canales**",
             value="""
-            🚖 `/taxi_admin_setup` - Configurar canal de taxi
+            🚖 `/ba_admin_channels_setup` - Configurar todos los canales
             🏦 `/banco_admin_setup` - Configurar canal bancario
             🎉 `/welcome_admin_setup` - Configurar registro
             🛒 `/shop_admin_setup` - Configurar tienda
@@ -2633,12 +2714,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 5/7 • Control profesional con herramientas avanzadas")
+        embed.set_footer(text="Página 6/8 • Control profesional con herramientas avanzadas")
         
         return embed
     
     def create_economy_embed(self):
-        """Página 6: Economía del Servidor"""
+        """Página 7: Economía del Servidor"""
         embed = discord.Embed(
             title="💎 Economía Optimizada del Servidor",
             description="**Sistema económico balanceado para progresión satisfactoria**",
@@ -2679,12 +2760,12 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 6/7 • Economía balanceada para todos los tipos de jugadores")
+        embed.set_footer(text="Página 7/8 • Economía balanceada para todos los tipos de jugadores")
         
         return embed
     
     def create_stats_embed(self):
-        """Página 7: Estadísticas y Características"""
+        """Página 8: Estadísticas y Características"""
         embed = discord.Embed(
             title="📊 Estadísticas y Características Técnicas",
             description="**Números que demuestran la calidad y robustez del sistema**",
@@ -2728,7 +2809,7 @@ class BotPresentationView(discord.ui.View):
             inline=False
         )
         
-        embed.set_footer(text="Página 7/7 • Bot profesional en constante evolución")
+        embed.set_footer(text="Página 8/8 • Bot profesional en constante evolución")
         
         return embed
     

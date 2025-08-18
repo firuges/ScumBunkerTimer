@@ -3341,6 +3341,72 @@ class TransferModal(discord.ui.Modal, title="💸 Transferir Dinero"):
             logger.error(f"Error en transferencia: {e}")
             await interaction.followup.send(f"❌ Error en transferencia: {str(e)}", ephemeral=True)
 
+class UpdateInGameNameModal(discord.ui.Modal, title="🎮 Actualizar Nombre InGame"):
+    """Modal para actualizar el nombre InGame del usuario"""
+    
+    def __init__(self, current_name: str = ""):
+        super().__init__()
+        self.current_name = current_name
+        # Si hay un nombre actual, lo usamos como valor por defecto
+        if current_name:
+            self.ingame_name.default = current_name
+    
+    ingame_name = discord.ui.TextInput(
+        label="Nuevo Nombre del Jugador en SCUM",
+        placeholder="Escribe tu nombre actualizado...",
+        required=True,
+        max_length=50
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        new_name = self.ingame_name.value.strip()
+        
+        if len(new_name) < 2:
+            embed = discord.Embed(
+                title="❌ Nombre Inválido",
+                description="El nombre debe tener al menos 2 caracteres",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Actualizar nombre InGame en base de datos
+        try:
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                await db.execute(
+                    "UPDATE taxi_users SET ingame_name = ? WHERE discord_id = ? AND discord_guild_id = ?",
+                    (new_name, str(interaction.user.id), str(interaction.guild.id))
+                )
+                await db.commit()
+            
+            embed = discord.Embed(
+                title="✅ Nombre Actualizado",
+                description=f"Tu nombre InGame ha sido actualizado correctamente",
+                color=discord.Color.green()
+            )
+            embed.add_field(
+                name="🎮 Nuevo Nombre",
+                value=f"`{new_name}`",
+                inline=True
+            )
+            embed.add_field(
+                name="🔧 Sistema de Mecánico",
+                value="¡Ahora puedes usar el taller mecánico con `/seguro_solicitar`!",
+                inline=False
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error actualizando nombre InGame: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error actualizando tu nombre. Intenta nuevamente.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
 class WelcomeSystemView(discord.ui.View):
     """Vista con botones para el sistema de bienvenida"""
     def __init__(self):
@@ -3517,10 +3583,94 @@ class WelcomeSystemView(discord.ui.View):
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label="🎮 Actualizar Nombre InGame", style=discord.ButtonStyle.secondary, custom_id="update_ingame_name")
+    async def update_ingame_name(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Actualizar nombre InGame del usuario"""
+        try:
+            # Verificar si el usuario está registrado
+            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            
+            if not user_data:
+                embed = discord.Embed(
+                    title="❌ No Registrado",
+                    description="Debes registrarte primero antes de actualizar tu nombre InGame.",
+                    color=discord.Color.red()
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Crear y mostrar modal para actualizar nombre InGame
+            current_name = user_data.get('ingame_name', '')
+            modal = UpdateInGameNameModal(current_name)
+            await interaction.response.send_modal(modal)
+                
+        except Exception as e:
+            logger.error(f"Error en actualización de nombre InGame: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description=f"Error procesando la solicitud: {str(e)}",
+                color=discord.Color.red()
+            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
 class TaxiAdminCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.admin_channels = {}  # guild_id -> channel_id
+
+    async def cog_load(self):
+        """Cargar configuraciones al inicializar el cog"""
+        await self.load_admin_channels()
+    
+    async def load_admin_channels(self):
+        """Cargar canales de administración desde la base de datos"""
+        try:
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT guild_id, channel_id 
+                    FROM channel_config 
+                    WHERE channel_type = 'admin'
+                """)
+                rows = await cursor.fetchall()
+                
+                for row in rows:
+                    guild_id = int(row[0])
+                    channel_id = int(row[1])
+                    self.admin_channels[guild_id] = channel_id
+                    logger.info(f"Canal admin cargado para guild {guild_id}: {channel_id}")
+                    
+                    # Recrear panel administrativo
+                    await self._recreate_admin_panel(guild_id, channel_id)
+                    
+        except Exception as e:
+            logger.error(f"Error cargando canales de administración: {e}")
+    
+    async def _recreate_admin_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel administrativo en el canal especificado con limpieza previa"""
+        try:
+            channel = self.bot.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal admin {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Verificar permisos
+            if not channel.permissions_for(channel.guild.me).send_messages:
+                logger.warning(f"Sin permisos para enviar mensajes en canal admin {channel_id}")
+                return
+            
+            # Recrear panel con limpieza automática
+            panel_success = await setup_admin_panel(channel, self.bot)
+            if panel_success:
+                logger.info(f"Panel administrativo recreado en guild {guild_id}, canal {channel_id}")
+            else:
+                logger.warning(f"Error recreando panel administrativo para guild {guild_id}")
+                
+        except Exception as e:
+            logger.error(f"Error recreando panel administrativo para guild {guild_id}: {e}")
 
     @app_commands.command(name="debug_shop_stock", description="[DEBUG] Ver stock actual de la tienda")
     @app_commands.default_permissions(administrator=True)
@@ -3624,21 +3774,27 @@ class TaxiAdminCommands(commands.Cog):
             logger.error(f"Error obteniendo paquetes pendientes: {e}")
             await interaction.followup.send("❌ Error obteniendo paquetes pendientes", ephemeral=True)
 
-    @app_commands.command(name="taxi_admin_setup", description="[ADMIN] Configurar todos los canales del sistema")
+    @app_commands.command(name="ba_admin_channels_setup", description="[ADMIN] Configurar todos los canales del sistema BunkerAdvice")
     @app_commands.describe(
         welcome_channel="Canal para sistema de bienvenida",
         bank_channel="Canal para sistema bancario", 
         taxi_channel="Canal para sistema de taxi",
+        mechanic_channel="Canal para sistema de mecánico",
+        squadron_channel="Canal para registro de escuadrones PvP/PvE",
         shop_channel="Canal para tienda de supervivencia",
-        shop_claimer_channel="Canal para notificaciones de compras (solo admins)"
+        shop_claimer_channel="Canal para notificaciones de compras (solo admins)",
+        admin_channel="Canal para panel de administración (gestión usuarios/conductores)"
     )
     @app_commands.default_permissions(administrator=True)
     async def setup_all_channels(self, interaction: discord.Interaction, 
                                  welcome_channel: discord.TextChannel,
                                  bank_channel: discord.TextChannel,
                                  taxi_channel: discord.TextChannel,
+                                 mechanic_channel: discord.TextChannel,
+                                 squadron_channel: discord.TextChannel,
                                  shop_channel: discord.TextChannel,
-                                 shop_claimer_channel: discord.TextChannel):
+                                 shop_claimer_channel: discord.TextChannel,
+                                 admin_channel: discord.TextChannel):
         """Configurar todos los canales de una vez con limpieza de paneles anteriores"""
         await interaction.response.defer(ephemeral=True)
         
@@ -3828,6 +3984,125 @@ class TaxiAdminCommands(commands.Cog):
             except Exception as e:
                 results.append(f"🚖 Taxi: ❌ Error - {str(e)}")
             
+            # === CONFIGURAR CANAL DE MECÁNICO ===
+            try:
+                mechanic_cog = self.bot.get_cog('MechanicSystem')
+                if mechanic_cog:
+                    guild_id = str(interaction.guild.id)
+                    try:
+                        # Guardar configuración en la base de datos
+                        async with aiosqlite.connect(taxi_db.db_path) as db:
+                            await db.execute(
+                                """INSERT OR REPLACE INTO channel_config 
+                                (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                                VALUES (?, ?, ?, ?, ?)""",
+                                (guild_id, 'mechanic', str(mechanic_channel.id), 
+                                 datetime.now().isoformat(), str(interaction.user.id))
+                            )
+                            await db.commit()
+                        results.append(f"🔧 Mecánico: ✅ {mechanic_channel.mention}")
+                        
+                        # Configurar canal de mecánico
+                        try:
+                            success = await mechanic_cog.setup_mechanic_channel(interaction.guild.id, mechanic_channel.id)
+                            if success:
+                                results[-1] += " + Panel"
+                            else:
+                                results[-1] += " ⚠️ (error de panel)"
+                        except Exception as panel_e:
+                            logger.error(f"Error creando panel de mecánico: {panel_e}")
+                            results[-1] += " ⚠️ (error de panel)"
+                    except Exception as db_e:
+                        logger.error(f"Error guardando configuración de mecánico: {db_e}")
+                        results.append(f"🔧 Mecánico: ⚠️ {mechanic_channel.mention} (sin persistencia)")
+                else:
+                    results.append("🔧 Mecánico: ❌ Cog no encontrado")
+            except Exception as e:
+                results.append(f"🔧 Mecánico: ❌ Error - {str(e)}")
+            
+            # === CONFIGURAR CANAL DE ESCUADRONES ===
+            try:
+                guild_id = str(interaction.guild.id)
+                try:
+                    # Guardar configuración en la base de datos
+                    async with aiosqlite.connect(taxi_db.db_path) as db:
+                        await db.execute(
+                            """INSERT OR REPLACE INTO channel_config 
+                            (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                            VALUES (?, ?, ?, ?, ?)""",
+                            (guild_id, 'squadron', str(squadron_channel.id), 
+                             datetime.now().isoformat(), str(interaction.user.id))
+                        )
+                        await db.commit()
+                    results.append(f"🏆 Escuadrones: ✅ {squadron_channel.mention}")
+                    
+                    # Limpiar mensajes anteriores del bot
+                    try:
+                        logger.info("Limpiando mensajes anteriores en canal de escuadrones...")
+                        deleted_count = 0
+                        async for message in squadron_channel.history(limit=50):
+                            if message.author == self.bot.user:
+                                await message.delete()
+                                deleted_count += 1
+                                await asyncio.sleep(0.1)  # Evitar rate limits
+                        if deleted_count > 0:
+                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+                    except Exception as cleanup_e:
+                        logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
+                    
+                    # Crear panel nuevo de escuadrones
+                    try:
+                        if not squadron_channel.permissions_for(interaction.guild.me).send_messages:
+                            logger.warning("Bot no tiene permisos para enviar mensajes en el canal de escuadrones")
+                            results[-1] += " ⚠️ (sin permisos para panel)"
+                        else:
+                            squadron_embed = discord.Embed(
+                                title="🏆 Registro de Escuadrones SCUM",
+                                description="**¡Únete o crea tu escuadrón para dominar SCUM!**\n\nLos escuadrones determinan el tipo de gameplay y beneficios en vehículos.",
+                                color=0xff6600
+                            )
+                            
+                            squadron_embed.add_field(
+                                name="⚔️ Tipos de Escuadrones",
+                                value="• **PvP:** Combate y raids activos\n• **PvE:** Exploración y supervivencia\n• **Mixto:** Adaptable según situación",
+                                inline=True
+                            )
+                            
+                            squadron_embed.add_field(
+                                name="🎯 Beneficios",
+                                value="• Límites de vehículos optimizados\n• Seguros con tarifas grupales\n• Coordinación de actividades\n• Identificación automática PvP/PvE",
+                                inline=True
+                            )
+                            
+                            squadron_embed.add_field(
+                                name="📋 Requisitos",
+                                value="• Estar registrado en el sistema\n• Tener nombre InGame configurado\n• No pertenecer a otro escuadrón activo",
+                                inline=False
+                            )
+                            
+                            squadron_embed.add_field(
+                                name="🚀 ¿Cómo empezar?",
+                                value="1. **Registrarte** en el sistema usando `/welcome_registro`\n2. **Configurar** tu nombre InGame en el canal de bienvenida\n3. **Crear** o **unirte** a un escuadrón usando los botones de abajo",
+                                inline=False
+                            )
+                            
+                            squadron_embed.set_footer(text="Los escuadrones mejoran tu experiencia de juego en SCUM")
+                            
+                            # Crear vista con botones para escuadrones
+                            from mechanic_system import SquadronSystemView
+                            squadron_view = SquadronSystemView()
+                            await squadron_channel.send(embed=squadron_embed, view=squadron_view)
+                            results[-1] += " + Panel"
+                            logger.info("Panel de escuadrones creado exitosamente")
+                    except Exception as panel_e:
+                        logger.error(f"Error creando panel de escuadrones: {panel_e}")
+                        results[-1] += " ⚠️ (error de panel)"
+                except Exception as db_e:
+                    logger.error(f"Error guardando configuración de escuadrones: {db_e}")
+                    results.append(f"🏆 Escuadrones: ⚠️ {squadron_channel.mention} (sin persistencia)")
+            except Exception as e:
+                results.append(f"🏆 Escuadrones: ❌ Error - {str(e)}")
+            
             # === CONFIGURAR CANAL DE TIENDA ===
             try:
                 guild_id = str(interaction.guild.id)
@@ -3954,6 +4229,40 @@ class TaxiAdminCommands(commands.Cog):
             except Exception as e:
                 results.append(f"🔔 Shop-Claimer: ❌ Error - {str(e)}")
             
+            # === CONFIGURAR CANAL DE ADMINISTRACIÓN ===
+            try:
+                guild_id = str(interaction.guild.id)
+                try:
+                    # Guardar configuración en la base de datos
+                    async with aiosqlite.connect(taxi_db.db_path) as db:
+                        await db.execute(
+                            """INSERT OR REPLACE INTO channel_config 
+                            (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                            VALUES (?, ?, ?, ?, ?)""",
+                            (guild_id, 'admin', str(admin_channel.id), 
+                             datetime.now().isoformat(), str(interaction.user.id))
+                        )
+                        await db.commit()
+                    results.append(f"🛠️ Admin: ✅ {admin_channel.mention}")
+                    
+                    # Configurar panel administrativo con limpieza
+                    try:
+                        admin_panel_success = await setup_admin_panel(admin_channel, self.bot)
+                        if admin_panel_success:
+                            results[-1] += " + Panel"
+                            logger.info("Panel administrativo creado exitosamente")
+                        else:
+                            results[-1] += " ⚠️ (error de panel)"
+                    except Exception as panel_e:
+                        logger.error(f"Error creando panel administrativo: {panel_e}")
+                        results[-1] += " ⚠️ (error de panel)"
+                        
+                except Exception as db_e:
+                    logger.error(f"Error guardando configuración de administración: {db_e}")
+                    results.append(f"🛠️ Admin: ⚠️ {admin_channel.mention} (sin persistencia)")
+            except Exception as e:
+                results.append(f"🛠️ Admin: ❌ Error - {str(e)}")
+            
             # Resultado final
             embed = discord.Embed(
                 title="⚙️ Configuración de Canales Completa",
@@ -4003,6 +4312,70 @@ class TaxiAdminCommands(commands.Cog):
                     await interaction.followup.send(embed=error_embed, ephemeral=True)
                 except:
                     logger.error("No se pudo enviar mensaje de error")
+
+    @app_commands.command(name="mechanic_admin_setup", description="[ADMIN] Configurar canal de mecánico")
+    @app_commands.describe(mechanic_channel="Canal para sistema de mecánico y seguros")
+    @app_commands.default_permissions(administrator=True)
+    async def setup_mechanic_channel(self, interaction: discord.Interaction, mechanic_channel: discord.TextChannel):
+        """Configurar canal del sistema de mecánico"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            guild_id = str(interaction.guild.id)
+            
+            # Guardar configuración en base de datos
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                await db.execute(
+                    """INSERT OR REPLACE INTO channel_config 
+                    (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (guild_id, 'mechanic', str(mechanic_channel.id), 
+                     datetime.now().isoformat(), str(interaction.user.id))
+                )
+                await db.commit()
+            
+            # Configurar canal en el cog
+            mechanic_cog = self.bot.get_cog('MechanicSystem')
+            if mechanic_cog:
+                await mechanic_cog.setup_mechanic_channel(int(guild_id), mechanic_channel.id)
+            
+            embed = discord.Embed(
+                title="✅ Canal de Mecánico Configurado",
+                description=f"El canal {mechanic_channel.mention} ha sido configurado exitosamente",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="🔧 Funcionalidades Disponibles",
+                value="• `/seguro_solicitar` - Contratar seguro de vehículo\n• `/seguro_consultar` - Ver seguros activos\n• Panel interactivo con botones",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💰 Costos de Seguros",
+                value="• Motocicleta: $500\n• Automóvil: $1,000\n• SUV/Pickup: $1,200\n• Camión: $1,500\n• Avión: $3,500\n• Barco: $2,500",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📋 Requisitos",
+                value="• Usuario registrado en el sistema\n• Nombre InGame configurado\n• Fondos suficientes\n• ID único del vehículo",
+                inline=True
+            )
+            
+            embed.set_footer(text=f"Configurado por {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.info(f"Canal de mecánico configurado en {mechanic_channel.name} por {interaction.user.display_name}")
+            
+        except Exception as e:
+            logger.error(f"Error configurando canal de mecánico: {e}")
+            error_embed = discord.Embed(
+                title="❌ Error de Configuración",
+                description=f"Error configurando el canal de mecánico: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
 
     @app_commands.command(name="taxi_admin_stats", description="[ADMIN] Ver estadísticas completas del sistema")
     @app_commands.default_permissions(administrator=True)
@@ -5137,7 +5510,501 @@ class DeliveryConfirmationView(discord.ui.View):
         else:
             await interaction.followup.send("❌ Error marcando paquete como entregado", ephemeral=True)
 
+class AdminPanelView(discord.ui.View):
+    """Panel administrativo centralizado para gestión del sistema"""
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="👥 Ver Todos los Usuarios", style=discord.ButtonStyle.primary, custom_id="admin_view_all_users")
+    async def view_all_users_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver todos los usuarios registrados y sus nombres InGame"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos de administrador
+            if not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ver la lista de usuarios",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener todos los usuarios registrados del servidor
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT discord_id, username, display_name, ingame_name, 
+                           balance, welcome_pack_claimed, created_at
+                    FROM taxi_users 
+                    WHERE discord_guild_id = ? 
+                    ORDER BY created_at DESC
+                """, (str(interaction.guild.id),))
+                
+                users = await cursor.fetchall()
+            
+            if not users:
+                embed = discord.Embed(
+                    title="👥 Lista de Usuarios",
+                    description="No hay usuarios registrados en este servidor.",
+                    color=discord.Color.blue()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear páginas para mostrar usuarios (máximo 10 por página)
+            page_size = 10
+            total_pages = (len(users) + page_size - 1) // page_size
+            current_page = 0
+            
+            def create_users_embed(page: int):
+                start_idx = page * page_size
+                end_idx = min(start_idx + page_size, len(users))
+                page_users = users[start_idx:end_idx]
+                
+                embed = discord.Embed(
+                    title="👥 Lista de Usuarios Registrados",
+                    description=f"Usuarios del servidor **{interaction.guild.name}**\n\n**Página {page + 1}/{total_pages}** • **{len(users)} usuarios totales**",
+                    color=0x3498db
+                )
+                
+                users_text = ""
+                for i, user_data in enumerate(page_users, start=start_idx + 1):
+                    discord_id, username, display_name, ingame_name, balance, welcome_claimed, created_at = user_data
+                    
+                    # Verificar si el usuario aún está en el servidor
+                    member = interaction.guild.get_member(int(discord_id))
+                    status_emoji = "✅" if member else "❌"
+                    
+                    # Formatear información
+                    ingame_display = ingame_name if ingame_name else "❌ Sin configurar"
+                    balance_display = f"${balance:,.0f}" if balance else "$0"
+                    welcome_status = "✅" if welcome_claimed else "❌"
+                    
+                    users_text += f"**{i}.** {status_emoji} **{display_name}**\n"
+                    users_text += f"   • **InGame:** {ingame_display}\n"
+                    users_text += f"   • **Balance:** {balance_display} | **Welcome:** {welcome_status}\n"
+                    users_text += f"   • **ID:** `{discord_id}`\n\n"
+                
+                embed.add_field(
+                    name="📋 Usuarios en esta Página",
+                    value=users_text if users_text else "Sin usuarios",
+                    inline=False
+                )
+                
+                # Estadísticas rápidas
+                users_with_ingame = sum(1 for u in users if u[3])  # ingame_name no null
+                users_in_server = sum(1 for u in users if interaction.guild.get_member(int(u[0])))
+                
+                embed.add_field(
+                    name="📊 Estadísticas",
+                    value=f"• **Con nombre InGame:** {users_with_ingame}/{len(users)}\n• **Aún en servidor:** {users_in_server}/{len(users)}",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🎯 Filtros Útiles",
+                    value="• ✅ = Usuario activo en servidor\n• ❌ = Usuario no encontrado\n• **Sin configurar** = Nombre InGame faltante",
+                    inline=True
+                )
+                
+                embed.set_footer(text=f"Consultado por {interaction.user.display_name} • Página {page + 1} de {total_pages}")
+                
+                return embed
+            
+            # Crear vista con navegación si hay múltiples páginas
+            if total_pages > 1:
+                view = UserListNavigationView(users, total_pages, interaction.user)
+                embed = create_users_embed(0)
+            else:
+                view = None
+                embed = create_users_embed(0)
+            
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando lista de usuarios: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error consultando la lista de usuarios",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @discord.ui.button(label="🚗 Ver Conductores", style=discord.ButtonStyle.secondary, custom_id="admin_view_drivers")
+    async def view_drivers_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver todos los conductores registrados"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos de administrador
+            if not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ver la lista de conductores",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener todos los conductores del servidor
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT td.driver_id, td.license_number, td.vehicle_type, td.vehicle_name,
+                           td.status, td.level, td.experience, td.total_trips,
+                           tu.discord_id, tu.display_name, tu.ingame_name, tu.balance,
+                           td.created_at, td.last_activity
+                    FROM taxi_drivers td
+                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    WHERE tu.discord_guild_id = ?
+                    ORDER BY td.created_at DESC
+                """, (str(interaction.guild.id),))
+                
+                drivers = await cursor.fetchall()
+            
+            if not drivers:
+                embed = discord.Embed(
+                    title="🚗 Lista de Conductores",
+                    description="No hay conductores registrados en este servidor.",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="💡 ¿Cómo registrar conductores?",
+                    value="Los usuarios pueden registrarse como conductores usando el comando `/taxi_conductor_registro` en el canal de taxi.",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear embed con información de conductores
+            embed = discord.Embed(
+                title="🚗 Lista de Conductores Registrados",
+                description=f"Conductores del servidor **{interaction.guild.name}**\n\n**{len(drivers)} conductor(es) registrado(s)**",
+                color=0xf39c12
+            )
+            
+            # Separar por estado
+            online_drivers = [d for d in drivers if d[4] == 'online']  # status
+            offline_drivers = [d for d in drivers if d[4] != 'online']
+            
+            # Mostrar conductores online
+            if online_drivers:
+                online_text = ""
+                for driver_data in online_drivers[:5]:  # Máximo 5 para no saturar
+                    (driver_id, license_number, vehicle_type, vehicle_name, status, level, 
+                     experience, total_trips, discord_id, display_name, ingame_name, 
+                     balance, created_at, last_activity) = driver_data
+                    
+                    # Verificar si aún está en el servidor
+                    member = interaction.guild.get_member(int(discord_id))
+                    status_emoji = "🟢" if member else "🔴"
+                    
+                    ingame_display = ingame_name if ingame_name else "Sin configurar"
+                    vehicle_display = f"{vehicle_type.title()}"
+                    if vehicle_name:
+                        vehicle_display += f" ({vehicle_name})"
+                    
+                    online_text += f"{status_emoji} **{display_name}**\n"
+                    online_text += f"   • **InGame:** {ingame_display}\n"
+                    online_text += f"   • **Vehículo:** {vehicle_display}\n"
+                    online_text += f"   • **Licencia:** `{license_number}` | **Viajes:** {total_trips or 0}\n\n"
+                
+                embed.add_field(
+                    name=f"🟢 Conductores Online ({len(online_drivers)})",
+                    value=online_text[:1024] if online_text else "Ninguno",
+                    inline=False
+                )
+            
+            # Mostrar algunos conductores offline
+            if offline_drivers:
+                offline_text = ""
+                for driver_data in offline_drivers[:3]:  # Máximo 3 offline
+                    (driver_id, license_number, vehicle_type, vehicle_name, status, level, 
+                     experience, total_trips, discord_id, display_name, ingame_name, 
+                     balance, created_at, last_activity) = driver_data
+                    
+                    member = interaction.guild.get_member(int(discord_id))
+                    status_emoji = "🟡" if member else "🔴"
+                    
+                    ingame_display = ingame_name if ingame_name else "Sin configurar"
+                    offline_text += f"{status_emoji} **{display_name}** - {ingame_display}\n"
+                
+                embed.add_field(
+                    name=f"🟡 Conductores Offline ({len(offline_drivers)})",
+                    value=offline_text[:1024] if offline_text else "Ninguno",
+                    inline=True
+                )
+            
+            # Estadísticas
+            total_trips = sum(d[7] or 0 for d in drivers)  # total_trips
+            avg_trips = total_trips / len(drivers) if drivers else 0
+            
+            embed.add_field(
+                name="📊 Estadísticas",
+                value=f"• **Total viajes:** {total_trips}\n• **Promedio por conductor:** {avg_trips:.1f}\n• **Activos:** {len(online_drivers)}/{len(drivers)}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🎯 Leyenda",
+                value="🟢 Online y en servidor\n🟡 Offline pero en servidor\n🔴 No está en servidor",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Consultado por {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando lista de conductores: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error consultando la lista de conductores",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🔧 Comandos Admin", style=discord.ButtonStyle.success, custom_id="admin_commands_help")
+    async def admin_commands_help(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar lista de comandos administrativos disponibles"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos
+            is_admin = interaction.user.guild_permissions.administrator
+            
+            if not is_admin:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ver los comandos administrativos",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            embed = discord.Embed(
+                title="🔧 Comandos Administrativos Disponibles",
+                description=f"Comandos de administración para **{interaction.guild.name}**",
+                color=0x9b59b6
+            )
+            
+            # Comandos de configuración
+            embed.add_field(
+                name="⚙️ Configuración de Canales",
+                value="""
+                `/ba_admin_channels_setup` - Configurar todos los canales
+                `/welcome_admin_setup` - Configurar canal de bienvenida
+                `/banco_admin_setup` - Configurar canal bancario
+                `/mechanic_admin_setup` - Configurar canal de mecánico
+                """,
+                inline=False
+            )
+            
+            # Comandos de gestión de usuarios
+            embed.add_field(
+                name="👥 Gestión de Usuarios",
+                value="""
+                **Panel Admin** - Ver usuarios y conductores
+                `/squadron_admin_remove_member` - Remover de escuadrón
+                `/squadron_admin_view_member` - Ver info de miembro
+                """,
+                inline=False
+            )
+            
+            # Comandos del sistema de mecánico
+            embed.add_field(
+                name="🔧 Sistema de Mecánico",
+                value="""
+                `/mechanic_admin_register` - Registrar mecánico
+                `/mechanic_admin_set_price` - Configurar precios
+                `/mechanic_admin_config_pvp` - Configurar recargo PvP
+                `/squadron_admin_config_limits` - Límites de vehículos
+                """,
+                inline=False
+            )
+            
+            # Comandos del sistema de taxi
+            embed.add_field(
+                name="🚖 Sistema de Taxi",
+                value="""
+                `/taxi_admin_stats` - Ver estadísticas
+                `/taxi_admin_tarifa` - Configurar tarifas
+                """,
+                inline=False
+            )
+            
+            # Comandos del sistema de alertas
+            embed.add_field(
+                name="🔔 Sistema de Alertas",
+                value="""
+                `/ba_admin_resethour_add` - Agregar horario de reset
+                `/ba_admin_resethour_remove` - Quitar horario
+                `/ba_admin_test_reset_alert` - Probar alerta
+                """,
+                inline=False
+            )
+            
+            # Comandos de diagnóstico
+            embed.add_field(
+                name="🔍 Diagnóstico",
+                value="""
+                `/ba_admin_debug_channels` - Diagnosticar canales
+                `/ba_admin_fix_channels` - Reparar configuraciones
+                `/ba_admin_debug_user_cache` - Cache de usuario
+                """,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💡 Consejos",
+                value="• Usa los **botones del panel** para tareas frecuentes\n• Los comandos con `/` son para configuraciones específicas\n• **Este panel persiste** después de reiniciar el bot",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Panel administrativo • {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando comandos admin: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error mostrando los comandos",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+class UserListNavigationView(discord.ui.View):
+    """Vista para navegar por páginas de usuarios"""
+    
+    def __init__(self, users: list, total_pages: int, requester: discord.Member):
+        super().__init__(timeout=300)  # 5 minutos
+        self.users = users
+        self.total_pages = total_pages
+        self.current_page = 0
+        self.requester = requester
+        self.page_size = 10
+        
+        # Deshabilitar botones según la página actual
+        self.update_buttons()
+    
+    def update_buttons(self):
+        """Actualizar estado de botones según página actual"""
+        self.children[0].disabled = self.current_page == 0  # Previous
+        self.children[1].disabled = self.current_page >= self.total_pages - 1  # Next
+    
+    def create_users_embed(self, page: int):
+        """Crear embed para una página específica"""
+        start_idx = page * self.page_size
+        end_idx = min(start_idx + self.page_size, len(self.users))
+        page_users = self.users[start_idx:end_idx]
+        
+        embed = discord.Embed(
+            title="👥 Lista de Usuarios Registrados",
+            description=f"**Página {page + 1}/{self.total_pages}** • **{len(self.users)} usuarios totales**",
+            color=0x3498db
+        )
+        
+        users_text = ""
+        for i, user_data in enumerate(page_users, start=start_idx + 1):
+            discord_id, username, display_name, ingame_name, balance, welcome_claimed, created_at = user_data
+            
+            ingame_display = ingame_name if ingame_name else "❌ Sin configurar"
+            balance_display = f"${balance:,.0f}" if balance else "$0"
+            welcome_status = "✅" if welcome_claimed else "❌"
+            
+            users_text += f"**{i}.** **{display_name}**\n"
+            users_text += f"   • **InGame:** {ingame_display}\n"
+            users_text += f"   • **Balance:** {balance_display} | **Welcome:** {welcome_status}\n\n"
+        
+        embed.add_field(
+            name="📋 Usuarios en esta Página",
+            value=users_text if users_text else "Sin usuarios",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Consultado por {self.requester.display_name} • Página {page + 1} de {self.total_pages}")
+        
+        return embed
+    
+    @discord.ui.button(label="◀️ Anterior", style=discord.ButtonStyle.secondary)
+    async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ir a página anterior"""
+        if interaction.user != self.requester:
+            await interaction.response.send_message("❌ Solo quien solicitó la lista puede navegar", ephemeral=True)
+            return
+            
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_buttons()
+            embed = self.create_users_embed(self.current_page)
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.defer()
+    
+    @discord.ui.button(label="▶️ Siguiente", style=discord.ButtonStyle.secondary)
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ir a página siguiente"""
+        if interaction.user != self.requester:
+            await interaction.response.send_message("❌ Solo quien solicitó la lista puede navegar", ephemeral=True)
+            return
+            
+        if self.current_page < self.total_pages - 1:
+            self.current_page += 1
+            self.update_buttons()
+            embed = self.create_users_embed(self.current_page)
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.defer()
+
+async def setup_admin_panel(channel: discord.TextChannel, bot):
+    """Configurar panel administrativo en un canal"""
+    try:
+        # Limpiar mensajes anteriores del bot en el canal
+        async for message in channel.history(limit=50):
+            if message.author == bot.user:
+                try:
+                    await message.delete()
+                except:
+                    pass
+        
+        # Crear embed del panel
+        embed = discord.Embed(
+            title="🛠️ Panel de Administración",
+            description="**Centro de control administrativo del sistema BunkerAdvice**\n\nUtiliza los botones de abajo para gestionar usuarios, conductores y configuraciones del servidor.",
+            color=0x9b59b6
+        )
+        
+        embed.add_field(
+            name="👥 Gestión de Usuarios",
+            value="• **Ver Todos los Usuarios** - Lista completa con nombres InGame\n• **Ver Conductores** - Conductores registrados y su estado",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🔧 Herramientas Administrativas",
+            value="• **Comandos Admin** - Lista completa de comandos disponibles\n• **Panel Persistente** - Se mantiene después de reinicios",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📊 Información del Sistema",
+            value=f"• **Servidor:** {channel.guild.name}\n• **Canal:** {channel.mention}\n• **Bot:** BunkerAdvice V2\n• **Sistemas:** 9 integrados",
+            inline=False
+        )
+        
+        embed.set_footer(text="Panel administrativo • Persistente y actualizado automáticamente")
+        embed.set_thumbnail(url=channel.guild.icon.url if channel.guild.icon else None)
+        
+        # Enviar mensaje con botones
+        view = AdminPanelView()
+        message = await channel.send(embed=embed, view=view)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error configurando panel administrativo: {e}")
+        return False
 
 
 # === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===
