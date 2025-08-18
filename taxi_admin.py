@@ -3624,30 +3624,30 @@ class TaxiAdminCommands(commands.Cog):
 
     async def cog_load(self):
         """Cargar configuraciones al inicializar el cog"""
-        await self.load_admin_channels()
+        await self.load_channel_configs()
     
-    async def load_admin_channels(self):
-        """Cargar canales de administración desde la base de datos"""
+    async def load_channel_configs(self):
+        """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
         try:
-            async with aiosqlite.connect(taxi_db.db_path) as db:
-                cursor = await db.execute("""
-                    SELECT guild_id, channel_id 
-                    FROM channel_config 
-                    WHERE channel_type = 'admin'
-                """)
-                rows = await cursor.fetchall()
-                
-                for row in rows:
-                    guild_id = int(row[0])
-                    channel_id = int(row[1])
-                    self.admin_channels[guild_id] = channel_id
-                    logger.info(f"Canal admin cargado para guild {guild_id}: {channel_id}")
+            configs = await taxi_db.load_all_channel_configs()
+            
+            for guild_id, channels in configs.items():
+                if "admin" in channels:
+                    guild_id_int = int(guild_id)
+                    channel_id = channels["admin"]
                     
-                    # Recrear panel administrativo
-                    await self._recreate_admin_panel(guild_id, channel_id)
+                    # Cargar en memoria
+                    self.admin_channels[guild_id_int] = channel_id
                     
+                    # Recrear panel administrativo en el canal
+                    await self._recreate_admin_panel(guild_id_int, channel_id)
+                    
+                    logger.info(f"Cargada y recreada configuración de admin para guild {guild_id}: canal {channel_id}")
+            
+            logger.info(f"Sistema administrativo: {len(self.admin_channels)} canales cargados con paneles recreados")
+            
         except Exception as e:
-            logger.error(f"Error cargando canales de administración: {e}")
+            logger.error(f"Error cargando configuraciones administrativas: {e}")
     
     async def _recreate_admin_panel(self, guild_id: int, channel_id: int):
         """Recrear panel administrativo en el canal especificado con limpieza previa"""
@@ -3665,7 +3665,7 @@ class TaxiAdminCommands(commands.Cog):
             # Recrear panel con limpieza automática
             panel_success = await setup_admin_panel(channel, self.bot)
             if panel_success:
-                logger.info(f"Panel administrativo recreado en guild {guild_id}, canal {channel_id}")
+                logger.info(f"✅ Panel administrativo recreado en guild {guild_id}, canal {channel_id}")
             else:
                 logger.warning(f"Error recreando panel administrativo para guild {guild_id}")
                 
@@ -4231,15 +4231,21 @@ class TaxiAdminCommands(commands.Cog):
             
             # === CONFIGURAR CANAL DE ADMINISTRACIÓN ===
             try:
-                guild_id = str(interaction.guild.id)
+                guild_id_str = str(interaction.guild.id)
+                guild_id_int = interaction.guild.id
+                
+                # Guardar en memoria (para acceso rápido)
+                self.admin_channels[guild_id_int] = admin_channel.id
+                logger.info(f"Canal admin guardado en memoria para guild {guild_id_int}: {admin_channel.id}")
+                
                 try:
-                    # Guardar configuración en la base de datos
+                    # Guardar configuración en la base de datos (para persistencia)
                     async with aiosqlite.connect(taxi_db.db_path) as db:
                         await db.execute(
                             """INSERT OR REPLACE INTO channel_config 
                             (guild_id, channel_type, channel_id, updated_at, updated_by) 
                             VALUES (?, ?, ?, ?, ?)""",
-                            (guild_id, 'admin', str(admin_channel.id), 
+                            (guild_id_str, 'admin', str(admin_channel.id), 
                              datetime.now().isoformat(), str(interaction.user.id))
                         )
                         await db.commit()
@@ -4397,9 +4403,9 @@ class TaxiAdminCommands(commands.Cog):
             
             try:
                 # Contar usuarios registrados
-                async with taxi_db.get_connection() as db:
+                async with aiosqlite.connect(taxi_db.db_path) as db:
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM users WHERE guild_id = ?", 
+                        "SELECT COUNT(*) FROM taxi_users WHERE discord_guild_id = ?", 
                         (guild_id,)
                     )
                     result = await cursor.fetchone()
@@ -4407,23 +4413,30 @@ class TaxiAdminCommands(commands.Cog):
                     
                     # Contar conductores activos
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM drivers WHERE guild_id = ? AND is_active = 1", 
+                        """SELECT COUNT(*) FROM taxi_drivers td 
+                           JOIN taxi_users tu ON td.user_id = tu.user_id 
+                           WHERE tu.discord_guild_id = ? AND td.status != 'inactive'""", 
                         (guild_id,)
                     )
                     result = await cursor.fetchone()
                     stats['active_drivers'] = result[0] if result else 0
                     
-                    # Contar viajes
+                    # Contar viajes completados
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM rides WHERE guild_id = ?", 
+                        """SELECT COUNT(*) FROM taxi_requests tr 
+                           JOIN taxi_users tu ON tr.passenger_id = tu.user_id 
+                           WHERE tu.discord_guild_id = ? AND tr.status = 'completed'""", 
                         (guild_id,)
                     )
                     result = await cursor.fetchone()
                     stats['total_rides'] = result[0] if result else 0
                     
-                    # Contar transacciones
+                    # Contar transacciones bancarias
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM transactions WHERE guild_id = ?", 
+                        """SELECT COUNT(*) FROM bank_transactions bt
+                           JOIN bank_accounts ba ON bt.to_account = ba.account_number
+                           JOIN taxi_users tu ON ba.user_id = tu.user_id
+                           WHERE tu.discord_guild_id = ?""", 
                         (guild_id,)
                     )
                     result = await cursor.fetchone()
@@ -4564,6 +4577,76 @@ class TaxiAdminCommands(commands.Cog):
             embed = discord.Embed(
                 title="❌ Error",
                 description=f"Error configurando tarifa: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="taxi_admin_refresh", description="[ADMIN] Recrear el panel de administración")
+    @app_commands.default_permissions(administrator=True)
+    async def refresh_admin_panel(self, interaction: discord.Interaction):
+        """Recrear el panel administrativo con limpieza previa"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            guild_id = interaction.guild.id
+            
+            # Verificar si hay un canal de admin configurado
+            if guild_id not in self.admin_channels:
+                embed = discord.Embed(
+                    title="❌ Canal no Configurado",
+                    description="No hay un canal de administración configurado para este servidor.\n\nUsa `/ba_admin_channels_setup` para configurar los canales.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            channel_id = self.admin_channels[guild_id]
+            channel = interaction.guild.get_channel(channel_id)
+            
+            if not channel:
+                embed = discord.Embed(
+                    title="❌ Canal no Encontrado",
+                    description=f"El canal de administración configurado (ID: {channel_id}) ya no existe.\n\nReconfigura los canales con `/ba_admin_channels_setup`.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar permisos
+            if not channel.permissions_for(interaction.guild.me).send_messages:
+                embed = discord.Embed(
+                    title="❌ Sin Permisos",
+                    description=f"No tengo permisos para enviar mensajes en {channel.mention}.\n\nVerifica los permisos del bot en ese canal.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Recrear panel administrativo
+            panel_success = await setup_admin_panel(channel, self.bot)
+            
+            if panel_success:
+                embed = discord.Embed(
+                    title="✅ Panel Recreado",
+                    description=f"El panel de administración ha sido recreado exitosamente en {channel.mention}.\n\n• Mensajes anteriores limpiados\n• Panel actualizado con todos los botones\n• Configuración preservada",
+                    color=discord.Color.green()
+                )
+                embed.set_footer(text=f"Recreado por {interaction.user.display_name}")
+                logger.info(f"Panel administrativo recreado manualmente por {interaction.user.display_name} en guild {guild_id}")
+            else:
+                embed = discord.Embed(
+                    title="⚠️ Error Recreando Panel",
+                    description="Hubo un problema al recrear el panel administrativo. Revisa los logs para más detalles.",
+                    color=discord.Color.orange()
+                )
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en refresh_admin_panel: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description=f"Error recreando el panel: {str(e)}",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -5534,11 +5617,12 @@ class AdminPanelView(discord.ui.View):
             # Obtener todos los usuarios registrados del servidor
             async with aiosqlite.connect(taxi_db.db_path) as db:
                 cursor = await db.execute("""
-                    SELECT discord_id, username, display_name, ingame_name, 
-                           balance, welcome_pack_claimed, created_at
-                    FROM taxi_users 
-                    WHERE discord_guild_id = ? 
-                    ORDER BY created_at DESC
+                    SELECT tu.discord_id, tu.username, tu.display_name, tu.ingame_name, 
+                           COALESCE(ba.balance, 0.00) as balance, tu.welcome_pack_claimed, tu.created_at
+                    FROM taxi_users tu
+                    LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
+                    WHERE tu.discord_guild_id = ? 
+                    ORDER BY tu.created_at DESC
                 """, (str(interaction.guild.id),))
                 
                 users = await cursor.fetchall()
@@ -5616,11 +5700,10 @@ class AdminPanelView(discord.ui.View):
             if total_pages > 1:
                 view = UserListNavigationView(users, total_pages, interaction.user)
                 embed = create_users_embed(0)
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
             else:
-                view = None
                 embed = create_users_embed(0)
-            
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error mostrando lista de usuarios: {e}")
@@ -5651,11 +5734,12 @@ class AdminPanelView(discord.ui.View):
             async with aiosqlite.connect(taxi_db.db_path) as db:
                 cursor = await db.execute("""
                     SELECT td.driver_id, td.license_number, td.vehicle_type, td.vehicle_name,
-                           td.status, td.level, td.experience, td.total_trips,
-                           tu.discord_id, tu.display_name, tu.ingame_name, tu.balance,
+                           td.status, td.rating, td.total_rides, td.total_earnings,
+                           tu.discord_id, tu.display_name, tu.ingame_name, COALESCE(ba.balance, 0.00) as balance,
                            td.created_at, td.last_activity
                     FROM taxi_drivers td
                     JOIN taxi_users tu ON td.user_id = tu.user_id
+                    LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
                     WHERE tu.discord_guild_id = ?
                     ORDER BY td.created_at DESC
                 """, (str(interaction.guild.id),))
@@ -5691,8 +5775,8 @@ class AdminPanelView(discord.ui.View):
             if online_drivers:
                 online_text = ""
                 for driver_data in online_drivers[:5]:  # Máximo 5 para no saturar
-                    (driver_id, license_number, vehicle_type, vehicle_name, status, level, 
-                     experience, total_trips, discord_id, display_name, ingame_name, 
+                    (driver_id, license_number, vehicle_type, vehicle_name, status, rating, 
+                     total_rides, total_earnings, discord_id, display_name, ingame_name, 
                      balance, created_at, last_activity) = driver_data
                     
                     # Verificar si aún está en el servidor
@@ -5707,7 +5791,7 @@ class AdminPanelView(discord.ui.View):
                     online_text += f"{status_emoji} **{display_name}**\n"
                     online_text += f"   • **InGame:** {ingame_display}\n"
                     online_text += f"   • **Vehículo:** {vehicle_display}\n"
-                    online_text += f"   • **Licencia:** `{license_number}` | **Viajes:** {total_trips or 0}\n\n"
+                    online_text += f"   • **Licencia:** `{license_number}` | **Viajes:** {total_rides or 0}\n\n"
                 
                 embed.add_field(
                     name=f"🟢 Conductores Online ({len(online_drivers)})",
@@ -5719,8 +5803,8 @@ class AdminPanelView(discord.ui.View):
             if offline_drivers:
                 offline_text = ""
                 for driver_data in offline_drivers[:3]:  # Máximo 3 offline
-                    (driver_id, license_number, vehicle_type, vehicle_name, status, level, 
-                     experience, total_trips, discord_id, display_name, ingame_name, 
+                    (driver_id, license_number, vehicle_type, vehicle_name, status, rating, 
+                     total_rides, total_earnings, discord_id, display_name, ingame_name, 
                      balance, created_at, last_activity) = driver_data
                     
                     member = interaction.guild.get_member(int(discord_id))
@@ -5736,12 +5820,12 @@ class AdminPanelView(discord.ui.View):
                 )
             
             # Estadísticas
-            total_trips = sum(d[7] or 0 for d in drivers)  # total_trips
-            avg_trips = total_trips / len(drivers) if drivers else 0
+            total_rides = sum(d[6] or 0 for d in drivers)  # total_rides
+            avg_trips = total_rides / len(drivers) if drivers else 0
             
             embed.add_field(
                 name="📊 Estadísticas",
-                value=f"• **Total viajes:** {total_trips}\n• **Promedio por conductor:** {avg_trips:.1f}\n• **Activos:** {len(online_drivers)}/{len(drivers)}",
+                value=f"• **Total viajes:** {total_rides}\n• **Promedio por conductor:** {avg_trips:.1f}\n• **Activos:** {len(online_drivers)}/{len(drivers)}",
                 inline=True
             )
             
@@ -5760,6 +5844,140 @@ class AdminPanelView(discord.ui.View):
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error consultando la lista de conductores",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🏭 Vehículos por Escuadrón", style=discord.ButtonStyle.secondary, custom_id="admin_squadron_vehicles")
+    async def view_squadron_vehicles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver vehículos registrados agrupados por escuadrón"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos
+            is_admin = interaction.user.guild_permissions.administrator
+            
+            if not is_admin:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ver esta información",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener vehículos por escuadrón
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT 
+                        s.squadron_name,
+                        s.squadron_type,
+                        rv.vehicle_id,
+                        rv.vehicle_type,
+                        rv.owner_ingame_name,
+                        rv.status,
+                        rv.registered_at
+                    FROM squadrons s
+                    JOIN squadron_members sm ON s.id = sm.squadron_id
+                    JOIN registered_vehicles rv ON sm.discord_id = rv.owner_discord_id
+                    WHERE s.guild_id = ? AND s.status = 'active' AND rv.status = 'active'
+                    ORDER BY s.squadron_name, rv.vehicle_type, rv.registered_at DESC
+                """, (str(interaction.guild.id),))
+                
+                results = await cursor.fetchall()
+            
+            if not results:
+                embed = discord.Embed(
+                    title="🏭 Vehículos por Escuadrón",
+                    description="No hay vehículos registrados en escuadrones activos.",
+                    color=discord.Color.blue()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Agrupar por escuadrón
+            squadrons_data = {}
+            for row in results:
+                squadron_name, squadron_type, vehicle_id, vehicle_type, owner_name, status, registered_at = row
+                
+                if squadron_name not in squadrons_data:
+                    squadrons_data[squadron_name] = {
+                        'type': squadron_type,
+                        'vehicles': []
+                    }
+                
+                squadrons_data[squadron_name]['vehicles'].append({
+                    'id': vehicle_id,
+                    'type': vehicle_type,
+                    'owner': owner_name
+                })
+            
+            # Crear embed compacto
+            embed = discord.Embed(
+                title="🏭 Vehículos Registrados por Escuadrón",
+                description=f"Vehículos activos del servidor **{interaction.guild.name}**",
+                color=0x2ecc71
+            )
+            
+            total_vehicles = sum(len(squad['vehicles']) for squad in squadrons_data.values())
+            
+            for squadron_name, squad_data in list(squadrons_data.items())[:8]:  # Máximo 8 escuadrones
+                vehicle_list = []
+                vehicle_types = {}
+                
+                # Contar por tipo
+                for vehicle in squad_data['vehicles']:
+                    vehicle_types[vehicle['type']] = vehicle_types.get(vehicle['type'], 0) + 1
+                
+                # Crear lista compacta
+                type_summary = [f"**{vtype}**: {count}" for vtype, count in vehicle_types.items()]
+                
+                # Mostrar algunos vehículos específicos si hay espacio
+                if len(squad_data['vehicles']) <= 5:
+                    vehicle_details = [f"• `{v['id']}` ({v['type']}) - {v['owner']}" for v in squad_data['vehicles'][:3]]
+                    if len(squad_data['vehicles']) > 3:
+                        vehicle_details.append(f"• ...y {len(squad_data['vehicles']) - 3} más")
+                else:
+                    vehicle_details = [f"**Total:** {len(squad_data['vehicles'])} vehículos"]
+                
+                field_value = f"**Tipo:** {squad_data['type']}\n" + " | ".join(type_summary)
+                if vehicle_details:
+                    field_value += f"\n{chr(10).join(vehicle_details)}"
+                
+                embed.add_field(
+                    name=f"🏭 {squadron_name} ({len(squad_data['vehicles'])})",
+                    value=field_value[:1024],  # Límite Discord
+                    inline=False
+                )
+            
+            # Obtener también vehículos sin escuadrón
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM registered_vehicles rv
+                WHERE rv.guild_id = ? AND rv.status = 'active'
+                AND rv.owner_discord_id NOT IN (
+                    SELECT sm.discord_id FROM squadron_members sm 
+                    JOIN squadrons s ON sm.squadron_id = s.id 
+                    WHERE s.guild_id = ? AND s.status = 'active'
+                )
+            """, (str(interaction.guild.id), str(interaction.guild.id)))
+            
+            vehicles_without_squadron = (await cursor.fetchone())[0]
+            
+            embed.add_field(
+                name="📊 Resumen",
+                value=f"• **Escuadrones:** {len(squadrons_data)}\n• **Vehículos en escuadrones:** {total_vehicles}\n• **Vehículos sin escuadrón:** {vehicles_without_squadron}\n• **Total:** {total_vehicles + vehicles_without_squadron}",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Consultado por {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando vehículos por escuadrón: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error consultando los vehículos por escuadrón",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -5829,6 +6047,7 @@ class AdminPanelView(discord.ui.View):
                 value="""
                 `/taxi_admin_stats` - Ver estadísticas
                 `/taxi_admin_tarifa` - Configurar tarifas
+                `/taxi_admin_refresh` - Recrear panel admin
                 """,
                 inline=False
             )
@@ -5961,12 +6180,17 @@ async def setup_admin_panel(channel: discord.TextChannel, bot):
     """Configurar panel administrativo en un canal"""
     try:
         # Limpiar mensajes anteriores del bot en el canal
+        logger.info(f"Limpiando mensajes anteriores en canal de administración {channel.id}...")
+        deleted_count = 0
         async for message in channel.history(limit=50):
             if message.author == bot.user:
                 try:
                     await message.delete()
-                except:
-                    pass
+                    deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Error eliminando mensaje {message.id}: {e}")
+        
+        logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot en canal de administración")
         
         # Crear embed del panel
         embed = discord.Embed(
@@ -6000,6 +6224,7 @@ async def setup_admin_panel(channel: discord.TextChannel, bot):
         view = AdminPanelView()
         message = await channel.send(embed=embed, view=view)
         
+        logger.info(f"✅ Panel administrativo configurado exitosamente en canal {channel.id}")
         return True
         
     except Exception as e:

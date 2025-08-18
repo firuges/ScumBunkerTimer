@@ -215,6 +215,11 @@ class BunkerBotV2(commands.Bot):
             if mechanic_cog:
                 await mechanic_cog.load_channel_configs()
             
+            # Cargar configuraciones de administración
+            admin_cog = self.get_cog('TaxiAdminCommands')
+            if admin_cog:
+                await admin_cog.load_channel_configs()
+            
             # Cargar configuraciones de shop (no tiene cog dedicado)
             await self._load_shop_configs()
             
