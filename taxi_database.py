@@ -1994,5 +1994,347 @@ class TaxiDatabase:
             logger.error(f"❌ Error limpiando caché de alertas: {e}")
             return False
 
+    async def get_active_trips_for_driver(self, driver_id: int) -> list:
+        """Obtener viajes activos para un conductor específico"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT tr.request_id, tr.passenger_id, tr.pickup_zone, tr.destination_zone,
+                           tr.estimated_cost, tr.final_cost, tr.created_at, tr.driver_accepted_at,
+                           tu.discord_id as passenger_discord_id, tu.display_name as passenger_name
+                    FROM taxi_requests tr
+                    JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                    WHERE tr.driver_id = ? AND tr.status = 'accepted'
+                    ORDER BY tr.driver_accepted_at DESC
+                """, (driver_id,))
+                
+                rows = await cursor.fetchall()
+                
+                trips = []
+                for row in rows:
+                    trips.append({
+                        'request_id': row[0],
+                        'passenger_id': row[1],
+                        'pickup_zone': row[2],
+                        'destination_zone': row[3],
+                        'estimated_cost': row[4],
+                        'final_cost': row[5],
+                        'created_at': row[6],
+                        'accepted_at': row[7],
+                        'passenger_discord_id': row[8],
+                        'passenger_name': row[9]
+                    })
+                
+                return trips
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo viajes activos para conductor {driver_id}: {e}")
+            return []
+
+    async def complete_trip(self, request_id: int, driver_id: int, final_cost: float = None) -> tuple[bool, str]:
+        """Completar un viaje y actualizar estadísticas"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Verificar que el viaje existe y está aceptado por este conductor
+                cursor = await db.execute("""
+                    SELECT tr.request_id, tr.passenger_id, tr.estimated_cost, tr.driver_id, tr.status,
+                           td.user_id as driver_user_id, td.total_rides, td.total_earnings
+                    FROM taxi_requests tr
+                    JOIN taxi_drivers td ON tr.driver_id = td.driver_id
+                    WHERE tr.request_id = ? AND tr.driver_id = ? AND tr.status = 'accepted'
+                """, (request_id, driver_id))
+                
+                trip_data = await cursor.fetchone()
+                
+                if not trip_data:
+                    return False, "Viaje no encontrado o no está activo para este conductor"
+                
+                passenger_id = trip_data[1]
+                estimated_cost = trip_data[2]
+                driver_user_id = trip_data[5]
+                current_total_rides = trip_data[6] or 0
+                current_total_earnings = trip_data[7] or 0.0
+                
+                # Usar costo final o estimado
+                cost_to_charge = final_cost if final_cost is not None else estimated_cost
+                
+                # Marcar viaje como completado
+                await db.execute("""
+                    UPDATE taxi_requests 
+                    SET status = 'completed', 
+                        final_cost = ?,
+                        completed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE request_id = ?
+                """, (cost_to_charge, request_id))
+                
+                # Actualizar estadísticas del conductor
+                await db.execute("""
+                    UPDATE taxi_drivers 
+                    SET total_rides = ?,
+                        total_earnings = ?,
+                        earnings_today = earnings_today + ?,
+                        last_activity = CURRENT_TIMESTAMP
+                    WHERE driver_id = ?
+                """, (current_total_rides + 1, current_total_earnings + cost_to_charge, cost_to_charge, driver_id))
+                
+                # Procesar pago si hay sistema bancario
+                try:
+                    # Obtener cuentas bancarias
+                    cursor = await db.execute("""
+                        SELECT ba.account_number FROM bank_accounts ba
+                        JOIN taxi_users tu ON ba.user_id = tu.user_id
+                        WHERE tu.user_id = ? LIMIT 1
+                    """, (passenger_id,))
+                    passenger_account = await cursor.fetchone()
+                    
+                    cursor = await db.execute("""
+                        SELECT ba.account_number FROM bank_accounts ba
+                        WHERE ba.user_id = ? LIMIT 1
+                    """, (driver_user_id,))
+                    driver_account = await cursor.fetchone()
+                    
+                    if passenger_account and driver_account:
+                        passenger_account_num = passenger_account[0]
+                        driver_account_num = driver_account[0]
+                        
+                        # Verificar balance del pasajero
+                        cursor = await db.execute("""
+                            SELECT balance FROM bank_accounts WHERE account_number = ?
+                        """, (passenger_account_num,))
+                        passenger_balance_row = await cursor.fetchone()
+                        
+                        if passenger_balance_row and passenger_balance_row[0] >= cost_to_charge:
+                            # Transferir dinero
+                            await db.execute("""
+                                UPDATE bank_accounts SET balance = balance - ? 
+                                WHERE account_number = ?
+                            """, (cost_to_charge, passenger_account_num))
+                            
+                            await db.execute("""
+                                UPDATE bank_accounts SET balance = balance + ? 
+                                WHERE account_number = ?
+                            """, (cost_to_charge, driver_account_num))
+                            
+                            # Registrar transacciones
+                            from datetime import datetime
+                            transaction_time = datetime.now().isoformat()
+                            
+                            await db.execute("""
+                                INSERT INTO bank_transactions 
+                                (from_account, to_account, amount, transaction_type, description, created_at)
+                                VALUES (?, ?, ?, 'taxi_payment', ?, ?)
+                            """, (passenger_account_num, driver_account_num, cost_to_charge, 
+                                  f"Pago viaje taxi #{request_id}", transaction_time))
+                            
+                            logger.info(f"💰 Pago procesado: ${cost_to_charge:.2f} de {passenger_account_num} a {driver_account_num}")
+                        else:
+                            logger.warning(f"⚠️ Balance insuficiente para viaje #{request_id}")
+                            
+                except Exception as payment_error:
+                    logger.warning(f"Error procesando pago para viaje #{request_id}: {payment_error}")
+                    # No fallar la finalización por error de pago
+                
+                await db.commit()
+                logger.info(f"✅ Viaje #{request_id} completado por conductor {driver_id}")
+                return True, f"Viaje completado exitosamente. Ganancia: ${cost_to_charge:.2f}"
+                
+        except Exception as e:
+            logger.error(f"Error completando viaje {request_id}: {e}")
+            return False, f"Error completando viaje: {str(e)}"
+
+    async def add_trip_rating(self, request_id: int, rater_user_id: int, rated_user_id: int, 
+                             rating: int, comment: str = None, rating_type: str = "passenger_to_driver") -> tuple[bool, str]:
+        """Agregar calificación a un viaje completado"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Verificar que el viaje está completado
+                cursor = await db.execute("""
+                    SELECT status FROM taxi_requests WHERE request_id = ?
+                """, (request_id,))
+                
+                trip_status = await cursor.fetchone()
+                if not trip_status or trip_status[0] != 'completed':
+                    return False, "Solo se pueden calificar viajes completados"
+                
+                # Verificar si ya existe una calificación de este tipo
+                cursor = await db.execute("""
+                    SELECT rating_id FROM taxi_ratings 
+                    WHERE request_id = ? AND rater_id = ? AND rating_type = ?
+                """, (request_id, rater_user_id, rating_type))
+                
+                existing_rating = await cursor.fetchone()
+                if existing_rating:
+                    return False, "Ya has calificado este viaje"
+                
+                # Insertar calificación
+                await db.execute("""
+                    INSERT INTO taxi_ratings (request_id, rater_id, rated_id, rating, comment, rating_type)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (request_id, rater_user_id, rated_user_id, rating, comment, rating_type))
+                
+                # Actualizar rating promedio del conductor si es calificación hacia conductor
+                if rating_type == "passenger_to_driver":
+                    await self._update_driver_rating(rated_user_id)
+                
+                await db.commit()
+                return True, "Calificación agregada exitosamente"
+                
+        except Exception as e:
+            logger.error(f"Error agregando calificación: {e}")
+            return False, f"Error agregando calificación: {str(e)}"
+
+    async def _update_driver_rating(self, driver_user_id: int):
+        """Actualizar rating promedio de un conductor"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Calcular rating promedio
+                cursor = await db.execute("""
+                    SELECT AVG(tr.rating) FROM taxi_ratings tr
+                    JOIN taxi_requests treq ON tr.request_id = treq.request_id
+                    JOIN taxi_drivers td ON treq.driver_id = td.driver_id
+                    WHERE td.user_id = ? AND tr.rating_type = 'passenger_to_driver'
+                """, (driver_user_id,))
+                
+                avg_rating = await cursor.fetchone()
+                if avg_rating and avg_rating[0]:
+                    new_rating = round(avg_rating[0], 2)
+                    
+                    # Actualizar rating del conductor
+                    await db.execute("""
+                        UPDATE taxi_drivers SET rating = ? WHERE user_id = ?
+                    """, (new_rating, driver_user_id))
+                    
+                    logger.info(f"📊 Rating actualizado para conductor {driver_user_id}: {new_rating}")
+                    
+        except Exception as e:
+            logger.error(f"Error actualizando rating del conductor: {e}")
+
+    def get_driver_level_info(self, total_rides: int, rating: float) -> dict:
+        """Obtener información del nivel del conductor basado en viajes y rating"""
+        try:
+            # Definir niveles basados en viajes completados
+            level_thresholds = [
+                {"min_rides": 0, "level": 1, "title": "Novato", "emoji": "🟫", "bonus": 0.0},
+                {"min_rides": 5, "level": 2, "title": "Principiante", "emoji": "⚫", "bonus": 0.05},
+                {"min_rides": 15, "level": 3, "title": "Conductor", "emoji": "🔵", "bonus": 0.10},
+                {"min_rides": 30, "level": 4, "title": "Experimentado", "emoji": "🟢", "bonus": 0.15},
+                {"min_rides": 50, "level": 5, "title": "Veterano", "emoji": "🟡", "bonus": 0.20},
+                {"min_rides": 75, "level": 6, "title": "Experto", "emoji": "🟠", "bonus": 0.25},
+                {"min_rides": 100, "level": 7, "title": "Maestro", "emoji": "🔴", "bonus": 0.30},
+                {"min_rides": 150, "level": 8, "title": "Profesional", "emoji": "🟣", "bonus": 0.35},
+                {"min_rides": 200, "level": 9, "title": "Elite", "emoji": "⚪", "bonus": 0.40},
+                {"min_rides": 300, "level": 10, "title": "Leyenda", "emoji": "🟨", "bonus": 0.50}
+            ]
+            
+            # Encontrar nivel actual
+            current_level = level_thresholds[0]
+            for threshold in level_thresholds:
+                if total_rides >= threshold["min_rides"]:
+                    current_level = threshold
+                else:
+                    break
+            
+            # Calcular progreso hacia el siguiente nivel
+            next_level = None
+            rides_to_next = None
+            
+            for threshold in level_thresholds:
+                if threshold["level"] > current_level["level"]:
+                    next_level = threshold
+                    rides_to_next = threshold["min_rides"] - total_rides
+                    break
+            
+            # Aplicar modificadores por rating
+            rating_modifier = 1.0
+            rating_description = "⭐ Estándar"
+            
+            if rating >= 4.8:
+                rating_modifier = 1.2
+                rating_description = "⭐⭐⭐ Excelencia"
+            elif rating >= 4.5:
+                rating_modifier = 1.15
+                rating_description = "⭐⭐ Sobresaliente"
+            elif rating >= 4.0:
+                rating_modifier = 1.1
+                rating_description = "⭐ Bueno"
+            elif rating < 3.0:
+                rating_modifier = 0.9
+                rating_description = "❌ Necesita Mejorar"
+            
+            # Calcular bonus total
+            base_bonus = current_level["bonus"]
+            total_bonus = base_bonus * rating_modifier
+            
+            return {
+                "level": current_level["level"],
+                "title": current_level["title"],
+                "emoji": current_level["emoji"],
+                "base_bonus": base_bonus,
+                "rating_modifier": rating_modifier,
+                "total_bonus": total_bonus,
+                "rating_description": rating_description,
+                "total_rides": total_rides,
+                "rating": rating,
+                "next_level": next_level,
+                "rides_to_next": rides_to_next,
+                "display_name": f"{current_level['emoji']} {current_level['title']} Nivel {current_level['level']}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculando nivel del conductor: {e}")
+            return {
+                "level": 1, "title": "Novato", "emoji": "🟫", "base_bonus": 0.0,
+                "rating_modifier": 1.0, "total_bonus": 0.0, "rating_description": "⭐ Estándar",
+                "total_rides": total_rides, "rating": rating, "next_level": None, "rides_to_next": None,
+                "display_name": "🟫 Novato Nivel 1"
+            }
+
+    async def get_leaderboard(self, guild_id: str, limit: int = 10) -> list:
+        """Obtener tabla de clasificación de conductores"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT td.driver_id, td.total_rides, td.total_earnings, td.rating,
+                           td.vehicle_type, tu.display_name, td.created_at
+                    FROM taxi_drivers td
+                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    WHERE tu.discord_guild_id = ? AND td.total_rides > 0
+                    ORDER BY td.total_rides DESC, td.rating DESC, td.total_earnings DESC
+                    LIMIT ?
+                """, (guild_id, limit))
+                
+                rows = await cursor.fetchall()
+                
+                leaderboard = []
+                for i, row in enumerate(rows):
+                    driver_id = row[0]
+                    total_rides = row[1] or 0
+                    total_earnings = row[2] or 0.0
+                    rating = row[3] or 5.0
+                    vehicle_type = row[4]
+                    display_name = row[5]
+                    created_at = row[6]
+                    
+                    level_info = self.get_driver_level_info(total_rides, rating)
+                    
+                    leaderboard.append({
+                        "position": i + 1,
+                        "driver_id": driver_id,
+                        "display_name": display_name,
+                        "level_info": level_info,
+                        "total_rides": total_rides,
+                        "total_earnings": total_earnings,
+                        "rating": rating,
+                        "vehicle_type": vehicle_type,
+                        "avg_earnings": total_earnings / max(total_rides, 1)
+                    })
+                
+                return leaderboard
+                
+        except Exception as e:
+            logger.error(f"Error obteniendo leaderboard: {e}")
+            return []
+
 # Instancia global
 taxi_db = TaxiDatabase()

@@ -3703,6 +3703,10 @@ class TaxiAdminCommands(commands.Cog):
     async def cog_load(self):
         """Cargar configuraciones al inicializar el cog"""
         await self.load_channel_configs()
+        
+        # Iniciar task de limpieza de solicitudes expiradas
+        self._cleanup_task = asyncio.create_task(self._start_cleanup_loop())
+        logger.info("Task de limpieza de solicitudes expiradas iniciado en cog_load")
     
     async def load_channel_configs(self):
         """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
@@ -4728,6 +4732,594 @@ class TaxiAdminCommands(commands.Cog):
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="taxi_admin_expiration", description="[ADMIN] Configurar tiempo de expiración de solicitudes")
+    @app_commands.describe(
+        minutes="Tiempo en minutos para que expire una solicitud (1-120, default: 15)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def configure_expiration(self, interaction: discord.Interaction, minutes: int = 15):
+        """Configurar tiempo de expiración de solicitudes de taxi"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Validar rango de minutos
+            if not 1 <= minutes <= 120:
+                embed = discord.Embed(
+                    title="❌ Valor Inválido",
+                    description="El tiempo de expiración debe estar entre 1 y 120 minutos.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            guild_id = str(interaction.guild.id)
+            
+            # Guardar configuración en base de datos
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                # Usar el formato guild_id:config_key para evitar conflictos entre servidores
+                config_key = f"{guild_id}:request_expiration_minutes"
+                
+                await db.execute("""
+                    INSERT OR REPLACE INTO taxi_config (config_key, config_value, updated_at)
+                    VALUES (?, ?, ?)
+                """, (config_key, str(minutes), datetime.now().isoformat()))
+                
+                await db.commit()
+            
+            # Crear embed de confirmación
+            embed = discord.Embed(
+                title="✅ Configuración Actualizada",
+                description=f"Las solicitudes de taxi ahora expirarán automáticamente después de **{minutes} minutos**",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="⏰ Nueva Configuración",
+                value=f"```yaml\nTiempo de expiración: {minutes} minutos\nServidor: {interaction.guild.name}\nActualizado por: {interaction.user.display_name}\n```",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📝 Detalles",
+                value=f"• Las solicitudes pendientes se limpiarán automáticamente\n• Los usuarios serán notificados cuando su solicitud expire\n• Los conductores no verán solicitudes expiradas",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔄 Próxima Limpieza",
+                value="El sistema verificará automáticamente cada 5 minutos",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Configurado por {interaction.user.display_name} • {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+            
+            # Iniciar el task de limpieza si no está corriendo
+            if not hasattr(self, '_cleanup_task') or self._cleanup_task.done():
+                self._cleanup_task = asyncio.create_task(self._start_cleanup_loop())
+                logger.info("Task de limpieza de solicitudes iniciado")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error configurando expiración: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description=f"Error configurando tiempo de expiración: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _start_cleanup_loop(self):
+        """Iniciar loop de limpieza automática de solicitudes expiradas"""
+        while True:
+            try:
+                await asyncio.sleep(300)  # Esperar 5 minutos
+                await self._cleanup_expired_requests()
+            except Exception as e:
+                logger.error(f"Error en loop de limpieza: {e}")
+                await asyncio.sleep(60)  # Esperar 1 minuto en caso de error
+
+    async def _cleanup_expired_requests(self):
+        """Limpiar solicitudes de taxi expiradas"""
+        try:
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                # Obtener todas las configuraciones de expiración por servidor
+                cursor = await db.execute("""
+                    SELECT config_key, config_value FROM taxi_config 
+                    WHERE config_key LIKE '%:request_expiration_minutes'
+                """)
+                
+                expiration_configs = await cursor.fetchall()
+                
+                for config_key, config_value in expiration_configs:
+                    guild_id = config_key.split(':')[0]
+                    expiration_minutes = int(config_value)
+                    
+                    # Buscar solicitudes expiradas para este servidor
+                    expiration_time = datetime.now() - timedelta(minutes=expiration_minutes)
+                    
+                    cursor = await db.execute("""
+                        SELECT tr.request_id, tr.passenger_id, tu.discord_id, tu.display_name
+                        FROM taxi_requests tr
+                        JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                        WHERE tr.status = 'pending' 
+                        AND tu.discord_guild_id = ?
+                        AND datetime(tr.created_at) < ?
+                    """, (guild_id, expiration_time.isoformat()))
+                    
+                    expired_requests = await cursor.fetchall()
+                    
+                    if expired_requests:
+                        logger.info(f"Encontradas {len(expired_requests)} solicitudes expiradas en guild {guild_id}")
+                        
+                        for request_id, passenger_id, discord_id, display_name in expired_requests:
+                            # Marcar como expirada
+                            await db.execute("""
+                                UPDATE taxi_requests 
+                                SET status = 'expired', updated_at = ?
+                                WHERE request_id = ?
+                            """, (datetime.now().isoformat(), request_id))
+                            
+                            # Notificar al pasajero si es posible
+                            try:
+                                guild = self.bot.get_guild(int(guild_id))
+                                if guild:
+                                    member = guild.get_member(int(discord_id))
+                                    if member:
+                                        embed = discord.Embed(
+                                            title="⏰ Solicitud de Taxi Expirada",
+                                            description=f"Tu solicitud #{request_id} ha expirado después de {expiration_minutes} minutos sin respuesta.",
+                                            color=discord.Color.orange()
+                                        )
+                                        embed.add_field(
+                                            name="🔄 ¿Qué hacer ahora?",
+                                            value="Puedes crear una nueva solicitud usando el panel de taxi.",
+                                            inline=False
+                                        )
+                                        
+                                        try:
+                                            await member.send(embed=embed)
+                                            logger.info(f"Notificación de expiración enviada a {display_name}")
+                                        except (discord.Forbidden, discord.HTTPException):
+                                            logger.warning(f"No se pudo notificar expiración a {display_name}")
+                            except Exception as notify_error:
+                                logger.error(f"Error notificando expiración: {notify_error}")
+                        
+                        await db.commit()
+                        logger.info(f"Limpiadas {len(expired_requests)} solicitudes expiradas en guild {guild_id}")
+                
+        except Exception as e:
+            logger.error(f"Error limpiando solicitudes expiradas: {e}")
+
+    @app_commands.command(name="taxi_admin_leaderboard", description="[ADMIN] Ver clasificación de conductores por rendimiento")
+    @app_commands.describe(
+        limit="Número de conductores a mostrar (1-20, default: 10)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def leaderboard_command(self, interaction: discord.Interaction, limit: int = 10):
+        """Ver tabla de clasificación de conductores"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Validar límite
+            if not 1 <= limit <= 20:
+                embed = discord.Embed(
+                    title="❌ Límite Inválido",
+                    description="El límite debe estar entre 1 y 20 conductores.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            guild_id = str(interaction.guild.id)
+            
+            # Obtener clasificación
+            leaderboard = await taxi_db.get_leaderboard(guild_id, limit)
+            
+            if not leaderboard:
+                embed = discord.Embed(
+                    title="🏆 Clasificación de Conductores",
+                    description="No hay conductores con viajes completados en este servidor.",
+                    color=discord.Color.blue()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear embed de clasificación
+            embed = discord.Embed(
+                title="🏆 Clasificación de Conductores",
+                description=f"Top {len(leaderboard)} conductores de **{interaction.guild.name}**",
+                color=0xf1c40f
+            )
+            
+            # Medallas para top 3
+            medal_emojis = ["🥇", "🥈", "🥉"]
+            
+            leaderboard_text = ""
+            for entry in leaderboard:
+                position = entry["position"]
+                level_info = entry["level_info"]
+                display_name = entry["display_name"]
+                total_rides = entry["total_rides"]
+                rating = entry["rating"]
+                total_earnings = entry["total_earnings"]
+                vehicle_type = entry["vehicle_type"]
+                
+                # Emoji de posición
+                position_emoji = medal_emojis[position - 1] if position <= 3 else f"**{position}.**"
+                
+                leaderboard_text += f"{position_emoji} {level_info['display_name']}\n"
+                leaderboard_text += f"    **{display_name}** ({vehicle_type})\n"
+                leaderboard_text += f"    📊 {total_rides} viajes • ⭐ {rating:.2f} • 💰 ${total_earnings:,.2f}\n\n"
+            
+            embed.add_field(
+                name="📈 Ranking por Viajes y Rating",
+                value=leaderboard_text[:1024],  # Discord limit
+                inline=False
+            )
+            
+            # Estadísticas generales
+            total_rides_all = sum(entry["total_rides"] for entry in leaderboard)
+            total_earnings_all = sum(entry["total_earnings"] for entry in leaderboard)
+            avg_rating_all = sum(entry["rating"] for entry in leaderboard) / len(leaderboard)
+            
+            embed.add_field(
+                name="📊 Estadísticas del Top",
+                value=f"**Total Viajes:** {total_rides_all:,}\n"
+                      f"**Ganancias Totales:** ${total_earnings_all:,.2f}\n"
+                      f"**Rating Promedio:** ⭐ {avg_rating_all:.2f}",
+                inline=True
+            )
+            
+            # Información de niveles
+            embed.add_field(
+                name="🎖️ Sistema de Niveles",
+                value="Los conductores ganan niveles por:\n"
+                      "• **Viajes completados** (experiencia)\n"
+                      "• **Rating alto** (multiplicador)\n"
+                      "• **Bonos por nivel** hasta 50%",
+                inline=True
+            )
+            
+            embed.set_footer(text=f"Consultado por {interaction.user.display_name} • Actualizado en tiempo real")
+            embed.timestamp = discord.utils.utcnow()
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando leaderboard: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description=f"Error obteniendo clasificación: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class ActiveTripsView(discord.ui.View):
+    """Vista para gestionar viajes activos"""
+    
+    def __init__(self, active_trips: list, driver_info: dict):
+        super().__init__(timeout=300)
+        self.active_trips = active_trips
+        self.driver_info = driver_info
+        
+        # Crear selector de viajes para completar
+        if active_trips:
+            options = []
+            for trip in active_trips[:25]:  # Discord limit
+                trip_id = trip['request_id']
+                passenger_name = trip['passenger_name']
+                destination = trip['destination_zone']
+                cost = trip['estimated_cost']
+                
+                options.append(discord.SelectOption(
+                    label=f"Viaje #{trip_id} - {passenger_name}",
+                    description=f"Destino: {destination} | ${cost:.2f}",
+                    value=str(trip_id)
+                ))
+            
+            self.add_item(TripCompletionSelect(options, self.active_trips, self.driver_info))
+    
+    @discord.ui.button(
+        label="🔙 Volver al Panel", 
+        style=discord.ButtonStyle.secondary, 
+        custom_id="back_to_driver_panel_from_trips",
+        emoji="🔙"
+    )
+    async def back_to_driver_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Volver al panel de conductor"""
+        # Verificar cooldown
+        if not check_cooldown(interaction.user.id):
+            logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
+            return
+        
+        try:
+            view = DriverPanelView(self.driver_info)
+            embed = await self._create_driver_panel_embed(self.driver_info)
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error volviendo al panel de conductor: {e}")
+    
+    async def _create_driver_panel_embed(self, driver_info: dict) -> discord.Embed:
+        """Crear embed del panel de conductor con información de nivel"""
+        status_emoji = {
+            'available': '🟢',
+            'busy': '🟡',
+            'offline': '🔴'
+        }.get(driver_info.get('status', 'offline'), '❓')
+        
+        # Obtener información de nivel
+        total_rides = driver_info.get('total_rides', 0)
+        rating = driver_info.get('rating', 5.0)
+        level_info = taxi_db.get_driver_level_info(total_rides, rating)
+        
+        embed = discord.Embed(
+            title="🚗 Panel de Conductor",
+            description=f"Bienvenido, **{driver_info.get('display_name', 'Conductor')}**",
+            color=0x00ff00
+        )
+        
+        embed.add_field(
+            name="📋 Licencia",
+            value=driver_info.get('license_number', 'N/A'),
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📊 Estado",
+            value=f"{status_emoji} {driver_info.get('status', 'offline')}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🚗 Vehículo",
+            value=f"{driver_info.get('vehicle_type', 'N/A')}",
+            inline=True
+        )
+        
+        # Información de nivel y progreso
+        embed.add_field(
+            name="🎖️ Nivel",
+            value=level_info['display_name'],
+            inline=True
+        )
+        
+        embed.add_field(
+            name="📈 Estadísticas",
+            value=f"⭐ {rating:.2f} • 🚗 {total_rides} viajes\n💰 ${driver_info.get('total_earnings', 0):.2f}",
+            inline=True
+        )
+        
+        # Progreso hacia siguiente nivel
+        if level_info['next_level']:
+            progress_info = f"**Siguiente:** {level_info['next_level']['emoji']} {level_info['next_level']['title']}\n**Faltan:** {level_info['rides_to_next']} viajes"
+        else:
+            progress_info = "🏆 **¡Nivel Máximo!**"
+            
+        embed.add_field(
+            name="🔄 Progreso",
+            value=progress_info,
+            inline=True
+        )
+        
+        # Bonificaciones por nivel y rating
+        bonus_text = f"**Nivel:** +{level_info['base_bonus']*100:.0f}%"
+        if level_info['rating_modifier'] != 1.0:
+            bonus_text += f"\n**Rating:** x{level_info['rating_modifier']:.2f}"
+        bonus_text += f"\n**Total:** +{level_info['total_bonus']*100:.0f}%"
+        
+        embed.add_field(
+            name="💎 Bonos",
+            value=bonus_text,
+            inline=False
+        )
+        
+        return embed
+
+
+class TripCompletionSelect(discord.ui.Select):
+    """Selector para completar viajes"""
+    
+    def __init__(self, options: list, active_trips: list, driver_info: dict):
+        super().__init__(
+            placeholder="Selecciona un viaje para completar...",
+            options=options
+        )
+        self.active_trips = active_trips
+        self.driver_info = driver_info
+    
+    async def callback(self, interaction: discord.Interaction):
+        try:
+            selected_trip_id = int(self.values[0])
+            
+            # Encontrar el viaje seleccionado
+            selected_trip = None
+            for trip in self.active_trips:
+                if trip['request_id'] == selected_trip_id:
+                    selected_trip = trip
+                    break
+            
+            if not selected_trip:
+                await interaction.response.send_message("❌ Viaje no encontrado", ephemeral=True)
+                return
+            
+            # Crear vista de confirmación
+            view = TripCompletionConfirmView(selected_trip, self.driver_info)
+            
+            embed = discord.Embed(
+                title="🏁 Completar Viaje",
+                description=f"¿Completar el viaje #{selected_trip_id}?",
+                color=0x00ff00
+            )
+            
+            embed.add_field(
+                name="👤 Pasajero",
+                value=selected_trip['passenger_name'],
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📍 Destino",
+                value=selected_trip['destination_zone'],
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Tarifa",
+                value=f"${selected_trip['estimated_cost']:.2f}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="⚠️ Importante",
+                value="• Se procesará el pago automáticamente\n• Ambos podrán calificarse mutuamente\n• Se actualizarán tus estadísticas",
+                inline=False
+            )
+            
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error seleccionando viaje para completar: {e}")
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+
+
+class TripCompletionConfirmView(discord.ui.View):
+    """Vista de confirmación para completar viajes"""
+    
+    def __init__(self, trip_data: dict, driver_info: dict):
+        super().__init__(timeout=300)
+        self.trip_data = trip_data
+        self.driver_info = driver_info
+    
+    @discord.ui.button(
+        label="✅ Completar Viaje", 
+        style=discord.ButtonStyle.success,
+        emoji="✅"
+    )
+    async def complete_trip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Completar el viaje seleccionado"""
+        try:
+            request_id = self.trip_data['request_id']
+            driver_id = self.driver_info['driver_id']
+            
+            # Completar viaje en base de datos
+            success, message = await taxi_db.complete_trip(request_id, driver_id)
+            
+            if success:
+                # Crear embed de éxito
+                embed = discord.Embed(
+                    title="🏁 Viaje Completado",
+                    description=f"¡Viaje #{request_id} completado exitosamente!",
+                    color=discord.Color.green()
+                )
+                
+                embed.add_field(
+                    name="📊 Resultado",
+                    value=message,
+                    inline=False
+                )
+                
+                embed.add_field(
+                    name="⭐ Siguiente Paso",
+                    value=f"El pasajero **{self.trip_data['passenger_name']}** podrá calificarte.\nTambién podrás calificar al pasajero cuando recibas la notificación.",
+                    inline=False
+                )
+                
+                # Notificar al pasajero
+                try:
+                    guild = interaction.guild
+                    passenger_member = guild.get_member(int(self.trip_data['passenger_discord_id']))
+                    
+                    if passenger_member:
+                        passenger_embed = discord.Embed(
+                            title="🏁 Tu Viaje ha Sido Completado",
+                            description=f"El conductor ha completado tu viaje #{request_id}",
+                            color=discord.Color.green()
+                        )
+                        
+                        passenger_embed.add_field(
+                            name="💳 Pago",
+                            value=f"Se ha procesado el cobro de **${self.trip_data['estimated_cost']:.2f}**",
+                            inline=False
+                        )
+                        
+                        passenger_embed.add_field(
+                            name="⭐ Califica al Conductor",
+                            value="Puedes calificar este viaje en el panel de taxi para ayudar a otros usuarios",
+                            inline=False
+                        )
+                        
+                        try:
+                            await passenger_member.send(embed=passenger_embed)
+                            logger.info(f"Notificación de viaje completado enviada a {self.trip_data['passenger_name']}")
+                        except (discord.Forbidden, discord.HTTPException):
+                            logger.warning(f"No se pudo notificar a {self.trip_data['passenger_name']}")
+                            
+                except Exception as notify_error:
+                    logger.error(f"Error notificando al pasajero: {notify_error}")
+                
+                # Volver al panel de conductor
+                view = DriverPanelView(self.driver_info)
+                await interaction.response.edit_message(embed=embed, view=view)
+                
+            else:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description=f"No se pudo completar el viaje: {message}",
+                    color=discord.Color.red()
+                )
+                await interaction.response.edit_message(embed=embed, view=self)
+                
+        except Exception as e:
+            logger.error(f"Error completando viaje: {e}")
+            embed = discord.Embed(
+                title="❌ Error Inesperado",
+                description=f"Error completando el viaje: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(
+        label="❌ Cancelar", 
+        style=discord.ButtonStyle.danger,
+        emoji="❌"
+    )
+    async def cancel_completion(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancelar la finalización del viaje"""
+        try:
+            # Volver a la vista de viajes activos
+            active_trips = await taxi_db.get_active_trips_for_driver(self.driver_info['driver_id'])
+            
+            embed = discord.Embed(
+                title="🚗 Viajes Activos",
+                description="Operación cancelada. Gestiona tus viajes en curso",
+                color=0x00ff00
+            )
+            
+            if active_trips:
+                for i, trip in enumerate(active_trips[:3]):
+                    embed.add_field(
+                        name=f"🚖 Viaje #{trip['request_id']}",
+                        value=f"**👤 Pasajero:** {trip['passenger_name']}\n**📍 Destino:** {trip['destination_zone']}\n**💰 Tarifa:** ${trip['estimated_cost']:.2f}",
+                        inline=True
+                    )
+                
+                view = ActiveTripsView(active_trips, self.driver_info)
+            else:
+                embed.add_field(
+                    name="📭 Sin Viajes Activos",
+                    value="No tienes viajes en curso en este momento.",
+                    inline=False
+                )
+                view = DriverPanelView(self.driver_info)
+            
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error cancelando finalización: {e}")
 
 
 class RequestConfirmedView(discord.ui.View):
@@ -6126,6 +6718,8 @@ class AdminPanelView(discord.ui.View):
                 `/taxi_admin_stats` - Ver estadísticas
                 `/taxi_admin_tarifa` - Configurar tarifas
                 `/taxi_admin_refresh` - Recrear panel admin
+                `/taxi_admin_expiration` - Configurar expiración
+                `/taxi_admin_leaderboard` - Clasificación conductores
                 """,
                 inline=False
             )
