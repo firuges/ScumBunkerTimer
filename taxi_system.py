@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from taxi_database import taxi_db
 from taxi_config import taxi_config
 import math
+import aiosqlite
 
 logger = logging.getLogger(__name__)
 
@@ -823,9 +824,127 @@ class TaxiSystem(commands.Cog):
     async def notify_available_drivers(self, request_id: int, destination_zone: dict, cost: int):
         """Notificar a conductores disponibles sobre nueva solicitud"""
         try:
-            # Esta función se puede implementar más tarde para notificar conductores
-            # Por ahora solo registramos el log
-            logger.info(f"Nueva solicitud de taxi #{request_id} a {destination_zone['name']} por ${cost}")
+            # Obtener la solicitud completa para ver el tipo de vehículo requerido
+            from taxi_database import taxi_db
+            
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT tr.request_id, tr.passenger_id, tr.pickup_zone, tr.destination_zone, 
+                           tr.estimated_cost, tr.vehicle_type, tr.created_at,
+                           tu.discord_id as passenger_discord_id, tu.display_name as passenger_name
+                    FROM taxi_requests tr
+                    JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                    WHERE tr.request_id = ? AND tr.status = 'pending'
+                """, (request_id,))
+                
+                request_data = await cursor.fetchone()
+                if not request_data:
+                    logger.warning(f"No se encontró solicitud {request_id} o ya no está pendiente")
+                    return
+                
+                vehicle_type_requested = request_data[5]
+                pickup_zone = request_data[2]
+                passenger_name = request_data[8]
+                
+                # Buscar conductores disponibles que tengan el tipo de vehículo requerido
+                cursor = await db.execute("""
+                    SELECT td.driver_id, td.user_id, td.vehicle_type, td.rating, td.total_rides,
+                           tu.discord_id, tu.display_name, tu.discord_guild_id
+                    FROM taxi_drivers td
+                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    WHERE td.status = 'available' 
+                    AND (td.vehicle_type = ? OR td.vehicle_type LIKE '%' || ? || '%')
+                    AND tu.discord_guild_id = (
+                        SELECT discord_guild_id FROM taxi_users 
+                        WHERE user_id = ? LIMIT 1
+                    )
+                    ORDER BY td.rating DESC, td.total_rides DESC
+                """, (vehicle_type_requested, vehicle_type_requested, request_data[1]))
+                
+                drivers = await cursor.fetchall()
+                
+                if not drivers:
+                    logger.info(f"No hay conductores disponibles para vehículo tipo '{vehicle_type_requested}'")
+                    return
+                
+                logger.info(f"Notificando a {len(drivers)} conductores sobre nueva solicitud #{request_id}")
+                
+                # Crear embed de notificación
+                embed = discord.Embed(
+                    title="🚖 Nueva Solicitud de Taxi",
+                    description=f"Un pasajero necesita un **{vehicle_type_requested}**",
+                    color=0x00ff00
+                )
+                
+                embed.add_field(
+                    name="📍 Recorrido",
+                    value=f"**Origen:** {pickup_zone}\n**Destino:** {destination_zone['name']}",
+                    inline=False
+                )
+                
+                embed.add_field(
+                    name="💰 Tarifa",
+                    value=f"**${cost:,.2f}**",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="👤 Pasajero",
+                    value=f"{passenger_name}",
+                    inline=True
+                )
+                
+                embed.add_field(
+                    name="🚗 Vehículo Requerido",
+                    value=f"**{vehicle_type_requested}**",
+                    inline=True
+                )
+                
+                embed.set_footer(text=f"Solicitud #{request_id} • Usa el panel de conductor para aceptar")
+                embed.timestamp = discord.utils.utcnow()
+                
+                # Notificar a cada conductor
+                notifications_sent = 0
+                for driver in drivers:
+                    try:
+                        driver_discord_id = driver[5]
+                        driver_name = driver[6]
+                        driver_rating = driver[3]
+                        driver_rides = driver[4]
+                        
+                        # Buscar al usuario en el servidor
+                        guild_id = int(driver[7])
+                        guild = self.bot.get_guild(guild_id)
+                        if not guild:
+                            continue
+                            
+                        member = guild.get_member(int(driver_discord_id))
+                        if not member:
+                            continue
+                        
+                        # Crear embed personalizado para este conductor
+                        driver_embed = embed.copy()
+                        driver_embed.add_field(
+                            name="👨‍✈️ Para ti",
+                            value=f"Rating: ⭐ {driver_rating:.2f}\nViajes: 🚗 {driver_rides}",
+                            inline=False
+                        )
+                        
+                        # Enviar notificación por DM
+                        try:
+                            await member.send(embed=driver_embed)
+                            notifications_sent += 1
+                            logger.info(f"Notificación enviada a conductor {driver_name} (ID: {driver_discord_id})")
+                        except discord.Forbidden:
+                            logger.warning(f"No se pudo enviar DM a conductor {driver_name} - DMs cerrados")
+                        except discord.HTTPException as e:
+                            logger.error(f"Error enviando DM a conductor {driver_name}: {e}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error notificando conductor {driver[6]}: {e}")
+                
+                logger.info(f"Enviadas {notifications_sent}/{len(drivers)} notificaciones para solicitud #{request_id}")
+                
         except Exception as e:
             logger.error(f"Error notificando conductores: {e}")
 

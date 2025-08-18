@@ -2118,6 +2118,84 @@ class DriverPanelView(discord.ui.View):
             logger.error(f"Error gestionando vehículos: {e}")
     
     @discord.ui.button(
+        label="🚗 Viajes Activos", 
+        style=discord.ButtonStyle.success, 
+        custom_id="active_trips",
+        row=1
+    )
+    async def view_active_trips(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver y gestionar viajes activos"""
+        # Verificar cooldown
+        if not check_cooldown(interaction.user.id):
+            logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
+            return
+        
+        # Verificar si la interacción ya fue respondida
+        if interaction.response.is_done():
+            logger.warning("Interacción ya fue procesada - ignorando")
+            return
+            
+        try:
+            # Obtener viajes activos del conductor
+            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            if not user_data:
+                await interaction.response.send_message("❌ No se encontraron datos del usuario", ephemeral=True)
+                return
+                
+            driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
+            if not driver_info:
+                await interaction.response.send_message("❌ No eres un conductor registrado", ephemeral=True)
+                return
+            
+            # Buscar viajes activos (aceptados por este conductor)
+            active_trips = await taxi_db.get_active_trips_for_driver(driver_info['driver_id'])
+            
+            embed = discord.Embed(
+                title="🚗 Viajes Activos",
+                description="Gestiona tus viajes en curso",
+                color=0x00ff00
+            )
+            
+            if not active_trips:
+                embed.add_field(
+                    name="📭 Sin Viajes Activos",
+                    value="No tienes viajes en curso en este momento.\nUsa **'📋 Ver Solicitudes'** para aceptar nuevas solicitudes.",
+                    inline=False
+                )
+                view = DriverPanelView(driver_info)
+                await interaction.response.edit_message(embed=embed, view=view)
+                return
+            
+            # Mostrar viajes activos
+            for i, trip in enumerate(active_trips[:3]):  # Máximo 3 viajes
+                passenger_name = trip.get('passenger_name', 'Pasajero')
+                pickup_zone = trip.get('pickup_zone', 'Origen desconocido')
+                destination_zone = trip.get('destination_zone', 'Destino desconocido')
+                estimated_cost = trip.get('estimated_cost', 0)
+                created_at = trip.get('created_at', '')
+                
+                embed.add_field(
+                    name=f"🚖 Viaje #{trip['request_id']}",
+                    value=f"**👤 Pasajero:** {passenger_name}\n"
+                          f"**📍 Origen:** {pickup_zone}\n"
+                          f"**🎯 Destino:** {destination_zone}\n"
+                          f"**💰 Tarifa:** ${estimated_cost:,.2f}\n"
+                          f"**🕐 Iniciado:** {created_at[:16]}",
+                    inline=True
+                )
+            
+            if len(active_trips) > 3:
+                embed.set_footer(text=f"Mostrando 3 de {len(active_trips)} viajes activos")
+            
+            # Crear vista con opciones para completar viajes
+            view = ActiveTripsView(active_trips, driver_info)
+            await interaction.response.edit_message(embed=embed, view=view)
+            
+        except Exception as e:
+            logger.error(f"Error viendo viajes activos: {e}")
+            await interaction.response.send_message(f"❌ Error: {str(e)}", ephemeral=True)
+    
+    @discord.ui.button(
         label="🔙 Volver al Panel Principal", 
         style=discord.ButtonStyle.danger, 
         custom_id="back_to_main",
