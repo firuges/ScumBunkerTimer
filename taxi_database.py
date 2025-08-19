@@ -493,8 +493,12 @@ class TaxiDatabase:
                 if 'ingame_name' not in column_names:
                     await db.execute("ALTER TABLE taxi_users ADD COLUMN ingame_name TEXT")
                     logger.info("✅ Migración: Columna ingame_name agregada a taxi_users")
+                
+                if 'language' not in column_names:
+                    await db.execute("ALTER TABLE taxi_users ADD COLUMN language TEXT DEFAULT 'es'")
+                    logger.info("✅ Migración: Columna language agregada a taxi_users")
             except Exception as e:
-                logger.error(f"Error en migración ingame_name: {e}")
+                logger.error(f"Error en migraciones de taxi_users: {e}")
             
             await db.commit()
             logger.info("✅ Base de datos del sistema de taxi inicializada")
@@ -2334,6 +2338,69 @@ class TaxiDatabase:
         except Exception as e:
             logger.error(f"Error obteniendo leaderboard: {e}")
             return []
+    
+    # === GESTIÓN DE IDIOMAS ===
+    
+    async def update_user_language(self, user_id: int, language: str) -> bool:
+        """Actualizar idioma preferido del usuario"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute(
+                    "UPDATE taxi_users SET language = ? WHERE user_id = ?",
+                    (language, user_id)
+                )
+                await db.commit()
+                logger.info(f"Idioma de usuario {user_id} actualizado a: {language}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error actualizando idioma de usuario {user_id}: {e}")
+            return False
+    
+    async def get_user_language(self, user_id: int) -> str:
+        """Obtener idioma preferido del usuario"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT language FROM taxi_users WHERE user_id = ?",
+                    (user_id,)
+                )
+                result = await cursor.fetchone()
+                
+                if result and result[0]:
+                    return result[0]
+                else:
+                    return 'es'  # Idioma predeterminado
+                    
+        except Exception as e:
+            logger.error(f"Error obteniendo idioma de usuario {user_id}: {e}")
+            return 'es'  # Idioma predeterminado en caso de error
+    
+    async def get_user_language_by_discord_id(self, discord_id: str, guild_id: str = None) -> str:
+        """Obtener idioma preferido del usuario por Discord ID"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                if guild_id:
+                    cursor = await db.execute(
+                        "SELECT language FROM taxi_users WHERE discord_id = ? AND discord_guild_id = ?",
+                        (discord_id, guild_id)
+                    )
+                else:
+                    cursor = await db.execute(
+                        "SELECT language FROM taxi_users WHERE discord_id = ?",
+                        (discord_id,)
+                    )
+                
+                result = await cursor.fetchone()
+                
+                if result and result[0]:
+                    return result[0]
+                else:
+                    return 'es'  # Idioma predeterminado
+                    
+        except Exception as e:
+            logger.error(f"Error obteniendo idioma de usuario Discord {discord_id}: {e}")
+            return 'es'  # Idioma predeterminado en caso de error
 
 # Instancia global
 taxi_db = TaxiDatabase()

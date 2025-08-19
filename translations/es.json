@@ -1,0 +1,139 @@
+{
+  "common": {
+    "yes": "Sí",
+    "no": "No",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "error": "Error",
+    "success": "Éxito",
+    "loading": "Cargando...",
+    "balance": "Balance",
+    "amount": "Cantidad",
+    "user": "Usuario",
+    "status": "Estado",
+    "active": "Activo",
+    "inactive": "Inactivo"
+  },
+  
+  "welcome": {
+    "title": "🎉 ¡Bienvenido al Sistema SCUM!",
+    "register_title": "🎮 Registro - Nombre InGame",
+    "already_registered": "ℹ️ Ya Registrado",
+    "already_registered_desc": "Ya tienes una cuenta en el sistema SCUM",
+    "current_balance": "💰 Balance Actual",
+    "welcome_pack_received": "🎉 ¡Welcome Pack Recibido!",
+    "welcome_desc": "¡Bienvenido **{name}**! Has sido registrado exitosamente",
+    "ingame_player": "🎮 Jugador SCUM",
+    "money_received": "💰 Dinero Recibido",
+    "taxi_vouchers": "🎫 Vouchers de Taxi",
+    "next_steps": "🚖 Próximos Pasos",
+    "next_steps_desc": "• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles\n• Usa `/bot_presentacion` para conocer todas las funciones",
+    "invalid_name": "❌ Nombre Inválido",
+    "invalid_name_desc": "El nombre debe tener al menos 2 caracteres",
+    "registration_error": "❌ Error de Registro",
+    "registration_error_desc": "No se pudo registrar: {error}",
+    "internal_error": "❌ Error Interno",
+    "internal_error_desc": "Hubo un error procesando tu registro. Intenta nuevamente."
+  },
+  
+  "banking": {
+    "title": "🏦 Sistema Bancario",
+    "transfer_money": "💸 Transferir Dinero",
+    "transfer_title": "💸 Transferir Dinero",
+    "transfer_desc": "Usa el botón de abajo para abrir el formulario de transferencia",
+    "your_balance": "💰 Tu Balance",
+    "important": "⚠️ Importante",
+    "important_desc": "• Verifica bien el destinatario\n• Las transferencias no se pueden revertir\n• Se aplicará una comisión del 2%",
+    "history": "📊 Historial",
+    "deposit": "💰 Depositar",
+    "withdraw": "💳 Retirar",
+    "account_info": "ℹ️ Info de Cuenta",
+    "system_disabled": "❌ Sistema Deshabilitado",
+    "system_disabled_desc": "El sistema bancario está temporalmente deshabilitado",
+    "user_not_found": "❌ Usuario No Encontrado",
+    "user_not_found_desc": "No tienes una cuenta registrada en el sistema"
+  },
+  
+  "vehicles": {
+    "register_vehicle": "🚗 Registrar Nuevo Vehículo",
+    "register_desc": "Selecciona el tipo de vehículo que deseas registrar:",
+    "registration_process": "📝 Proceso",
+    "registration_steps": "1. **Selecciona el tipo** de vehículo\n2. **Completa el formulario** con los datos\n3. **Confirma el registro**",
+    "vehicle_id": "ID del Vehículo",
+    "vehicle_id_placeholder": "Ingresa el ID único de tu vehículo (ej: VEH123456)",
+    "notes": "Notas (Opcional)",
+    "notes_placeholder": "Color, estado, modificaciones, etc.",
+    "vehicle_registered": "✅ Vehículo Registrado",
+    "vehicle_registered_desc": "Tu **{emoji} {type}** ha sido registrado exitosamente",
+    "vehicle_info": "🚗 Información del Vehículo",
+    "vehicle_info_desc": "**ID:** `{id}`\n**Tipo:** {emoji} {type}\n**Propietario:** {owner}",
+    "squadron_limits": "📊 Límites del Escuadrón",
+    "individual_limits": "📊 Límites Individuales",
+    "invalid_id": "❌ ID Inválido",
+    "invalid_id_desc": "El ID del vehículo debe tener al menos 3 caracteres",
+    "user_error": "❌ Error de Usuario",
+    "user_error_desc": "Usuario no registrado o sin nombre InGame",
+    "types": {
+      "moto": "Motocicleta - Ágil y económica",
+      "ranger": "Vehículo todoterreno resistente", 
+      "laika": "Automóvil estándar confiable",
+      "ww": "Vehículo pesado de carga",
+      "avion": "Transporte aéreo rápido",
+      "barca": "Embarcación acuática"
+    }
+  },
+  
+  "squadron": {
+    "title": "🏆 Sistema de Escuadrones",
+    "create_squadron": "🏆 Crear Escuadrón",
+    "explore_squadrons": "🔍 Explorar Escuadrones", 
+    "my_squadron": "📋 Mi Escuadrón",
+    "leave_squadron": "🚪 Salir de Escuadrón",
+    "already_member": "⚠️ Ya Tienes un Escuadrón",
+    "already_member_desc": "Ya eres **{role}** del escuadrón **{name}** ({type})",
+    "what_can_do": "🎯 ¿Qué puedes hacer?",
+    "options_desc": "• **📋 Mi Escuadrón** - Ver detalles y gestionar tu equipo\n• **🚪 Salir del Escuadrón** - Abandonar tu equipo actual\n• **Contactar Admin** - Para cambiar de escuadrón directamente",
+    "as_leader": "👑 Como Líder",
+    "leader_desc": "Puedes transferir el liderazgo a otro miembro desde **'📋 Mi Escuadrón'**",
+    "not_member": "💡 No Perteneces a Ningún Escuadrón",
+    "not_member_desc": "No estás en ningún escuadrón actualmente, por lo que no hay nada de lo que salir.",
+    "join_options": "• **🏆 Crear Escuadrón** - Forma tu propio equipo\n• **🔍 Explorar Escuadrones** - Únete a uno existente"
+  },
+  
+  "taxi": {
+    "title": "🚖 Sistema de Taxi",
+    "request_taxi": "🚖 Solicitar Taxi",
+    "driver_register": "👨‍✈️ Registro de Conductor", 
+    "zones": "🗺️ Ver Zonas",
+    "my_trips": "📋 Mis Viajes",
+    "system_disabled": "❌ Sistema Deshabilitado",
+    "system_disabled_desc": "El sistema de taxi está temporalmente deshabilitado",
+    "trip_completed": "✅ Viaje Completado",
+    "rate_trip": "⭐ Calificar Viaje",
+    "driver_info": "👨‍✈️ Conductor",
+    "vehicle_info": "🚗 Vehículo",
+    "distance": "📏 Distancia",
+    "cost": "💰 Costo",
+    "origin": "📍 Origen",
+    "destination": "🎯 Destino"
+  },
+  
+  "admin": {
+    "access_denied": "❌ Acceso Denegado",
+    "admin_only": "Solo administradores pueden ejecutar este comando",
+    "config_updated": "✅ Configuración Actualizada",
+    "setup_complete": "🎉 Configuración Completada",
+    "cleanup_complete": "✅ Limpieza Completada",
+    "no_changes": "💡 Sin Cambios"
+  },
+  
+  "errors": {
+    "generic": "❌ Ha ocurrido un error inesperado",
+    "database": "❌ Error de base de datos",
+    "permission": "❌ Sin permisos suficientes",
+    "not_found": "❌ No encontrado",
+    "invalid_input": "❌ Entrada inválida",
+    "timeout": "⏰ Tiempo agotado",
+    "maintenance": "🔧 Sistema en mantenimiento"
+  }
+}

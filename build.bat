@@ -97,6 +97,7 @@ copy "taxi_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "taxi_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "banking_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "welcome_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "translation_manager.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "migrate_taxi_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "migrate_mechanic_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
@@ -152,8 +153,9 @@ copy "test_database_fix.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "debug_user.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "check_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
-:: Script de migración crítico
+:: Scripts de migración críticos
 copy "migrate_system_tables.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "migrate_user_languages.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 :: Archivos esenciales
 copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -172,6 +174,20 @@ copy "scripts\install_windows_debug.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
 copy "scripts\cleanup.bat" "%BUILD_FULL_DIR%\scripts\" >nul 2>&1
 
 echo ✅ Scripts de instalación copiados
+
+:: ===========================================
+::   SISTEMA DE TRADUCCIONES
+:: ===========================================
+echo.
+echo 🌍 Copiando archivos de traducciones...
+
+:: Crear carpeta de traducciones
+if not exist "%BUILD_FULL_DIR%\translations" mkdir "%BUILD_FULL_DIR%\translations" >nul 2>&1
+
+:: Copiar archivos de traducciones
+copy "translations\*.json" "%BUILD_FULL_DIR%\translations\" >nul 2>&1
+
+echo ✅ Sistema de traducciones copiado
 
 :: ===========================================
 ::   DOCUMENTACION COMPLETA
@@ -200,6 +216,7 @@ copy "docs\MULTIPLE_SERVERS_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
 :: Archivos HTML
 copy "guide.html" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_presentation.html" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "bot_presentation_multilang.html" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "bot_presentation.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 echo ✅ Documentación copiada

@@ -18,6 +18,7 @@ import aiohttp
 from subscription_manager import subscription_manager
 from premium_utils import check_limits, premium_required
 from premium_commands import setup_premium_commands
+from translation_manager import t, get_user_language_by_discord_id
 from premium_exclusive_commands import setup_premium_exclusive_commands
 from bot_status_system import setup_bot_status
 from server_database import server_db
@@ -240,6 +241,14 @@ class BunkerBotV2(commands.Bot):
             except Exception as e:
                 logger.error(f"Error agregando vista de mecánico: {e}")
             
+            # Agregar vistas persistentes para bunkers
+            try:
+                from taxi_admin import BunkerPanelView
+                self.add_view(BunkerPanelView())
+                logger.info("✅ Vista de bunkers agregada para persistencia")
+            except Exception as e:
+                logger.error(f"Error agregando vista de bunkers: {e}")
+            
             # Enviar notificación de startup a canales de estado
             if hasattr(self, 'status_system') and self.status_system:
                 try:
@@ -302,6 +311,11 @@ class BunkerBotV2(commands.Bot):
                 if "shop_claimer" in channels:
                     channel_id = channels["shop_claimer"]
                     await self._recreate_shop_claimer_panel(guild_id_int, channel_id)
+                
+                # Recrear panel de bunkers
+                if "bunker" in channels:
+                    channel_id = channels["bunker"]
+                    await self._recreate_bunker_panel(guild_id_int, channel_id)
                 
                 # Cargar configuraciones de status channels
                 if "status" in channels:
@@ -433,6 +447,43 @@ class BunkerBotV2(commands.Bot):
             
         except Exception as e:
             logger.error(f"Error recreando panel de shop_claimer para canal {channel_id}: {e}")
+
+    async def _recreate_bunker_panel(self, guild_id: int, channel_id: int):
+        """Recrear panel de bunkers en un canal específico"""
+        try:
+            channel = self.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Canal de bunkers {channel_id} no encontrado para guild {guild_id}")
+                return
+            
+            # Limpiar mensajes anteriores del bot
+            try:
+                deleted_count = 0
+                async for message in channel.history(limit=10):
+                    if message.author == self.user and message.embeds:
+                        for embed in message.embeds:
+                            if embed.title and ("Bunker" in embed.title or "Panel de Control" in embed.title):
+                                await message.delete()
+                                deleted_count += 1
+                                break
+                if deleted_count > 0:
+                    logger.info(f"Eliminados {deleted_count} paneles de bunkers anteriores del canal {channel_id}")
+            except Exception as cleanup_e:
+                logger.warning(f"Error limpiando mensajes de bunkers anteriores: {cleanup_e}")
+            
+            # Importar y usar la función setup_bunker_panel
+            try:
+                from taxi_admin import setup_bunker_panel
+                success = await setup_bunker_panel(channel, self)
+                if success:
+                    logger.info(f"Panel de bunkers recreado exitosamente en canal {channel_id}")
+                else:
+                    logger.warning(f"Error recreando panel de bunkers en canal {channel_id}")
+            except ImportError as ie:
+                logger.error(f"Error importando setup_bunker_panel: {ie}")
+            
+        except Exception as e:
+            logger.error(f"Error recreando panel de bunkers para canal {channel_id}: {e}")
 
     @tasks.loop(minutes=5)
     async def notification_task(self):
@@ -989,10 +1040,10 @@ async def register_bunker(interaction: discord.Interaction,
             return
 
         # Validar rango de tiempo
-        if hours < 0 or hours > 200 or minutes < 0 or minutes >= 60:
+        if hours < 0 or hours > 300 or minutes < 0 or minutes >= 60:
             embed = discord.Embed(
                 title="❌ Tiempo inválido",
-                description="Las horas deben estar entre 0-200 y los minutos entre 0-59",
+                description="Las horas deben estar entre 0-300 y los minutos entre 0-59",
                 color=0xff0000
             )
             if not interaction.response.is_done():
@@ -1261,7 +1312,7 @@ async def help_command(interaction: discord.Interaction):
         
         embed.add_field(
             name="📖 Guía Completa",
-            value="[Ver guía detallada](https://scum-bunker-timer.onrender.com/guide.html) 📚",
+            value="[Ver guía detallada](http://scumbottimer.duckdns.org:8085/guide.html) 📚",
             inline=True
         )
         
@@ -1958,9 +2009,9 @@ async def admin_guide(interaction: discord.Interaction):
             
             embed.add_field(
                 name="🔗 URLs Disponibles",
-                value=f"• **Principal:** http://localhost:{web_port}\n"
-                      f"• **Alternativa:** http://localhost:{web_port}/guide\n"
-                      f"• **IP Local:** http://127.0.0.1:{web_port}",
+                value=f"• **Principal:** http://scumbottimer.duckdns.org:8085\n"
+                      f"• **Alternativa:** http://scumbottimer.duckdns.org:8085/guide\n"
+                      f"• **IP Local:** http://127.0.0.1:8085",
                 inline=False
             )
             
@@ -2213,31 +2264,42 @@ async def guide_handler(request):
     except FileNotFoundError:
         return web.Response(text="Guía no encontrada", status=404)
 
+async def presentation_handler(request):
+    """Servir la presentación multiidioma HTML"""
+    try:
+        with open('bot_presentation_multilang.html', 'r', encoding='utf-8') as f:
+            content = f.read()
+        return web.Response(text=content, content_type='text/html')
+    except FileNotFoundError:
+        return web.Response(text="Presentación no encontrada", status=404)
+
 async def create_web_server():
     """Crear servidor web para la guía"""
     app = web.Application()
     app.router.add_get('/', guide_handler)
     app.router.add_get('/guide', guide_handler)
+    app.router.add_get('/bot_presentation_multilang.html', presentation_handler)
+    app.router.add_get('/presentation', presentation_handler)
     
-    # Encontrar un puerto disponible
-    for port in range(8080, 8090):
-        try:
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, 'localhost', port)
-            await site.start()
-            logger.info(f"📚 Guía HTML disponible en: http://localhost:{port}")
-            logger.info(f"📚 También disponible en: http://localhost:{port}/guide")
+    # Usar puerto específico 8085 (funciona con tu dominio)
+    port = 8085
+    try:
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+        logger.info(f"📚 Guía HTML disponible en: http://scumbottimer.duckdns.org:{port}")
+        logger.info(f"📚 También disponible en: http://scumbottimer.duckdns.org:{port}/guide")
+        logger.info(f"📱 Presentación disponible en: http://scumbottimer.duckdns.org:{port}/bot_presentation_multilang.html")
             
-            # Guardar puerto en el bot para uso posterior
-            bot._web_port = port
-            
-            return runner, port
-        except OSError:
-            continue
-    
-    logger.warning("No se pudo encontrar un puerto disponible para el servidor web")
-    return None, None
+        # Guardar puerto en el bot para uso posterior
+        bot._web_port = port
+        
+        return runner, port
+    except OSError as e:
+        logger.error(f"❌ No se pudo iniciar servidor web en puerto {port}: {e}")
+        logger.warning("💡 Verifica que el puerto 8085 esté disponible y configurado en el router")
+        return None, None
 
 # === COMANDO DE SHUTDOWN SEGURO ===
 
@@ -2352,19 +2414,40 @@ async def show_bot_presentation(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
         
-        # Crear la vista de presentación
-        view = BotPresentationView()
+        # Obtener idioma del usuario
+        user_language = await get_user_language_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        
+        # Crear la vista de presentación con idioma del usuario
+        view = BotPresentationView(user_language)
         embed = view.create_overview_embed()
         
-        # Mensaje de introducción
-        intro_text = """
+        # Mensaje de introducción según idioma
+        if user_language == 'en':
+            intro_text = """
+🎉 **Discover everything our bot can do!**
+
+This is the most complete bot for SCUM servers. Navigate through the **7 pages** using the buttons below to learn about all functionalities.
+
+✨ **What you'll find:**
+• 🤖 **Overview** - Statistics and features
+• 🚖 **Taxi System** - 5 vehicles and 20+ zones
+• 🏦 **Banking System** - Optimized economy
+• 🏠 **Bunkers** - Automatic monitoring of 4 bunkers
+• ⚙️ **Administration** - Advanced control panel
+• 💎 **Economy** - Recent improvements (+58% faster)
+• 📊 **Statistics** - Numbers and technologies
+
+⬇️ **Use the buttons to navigate**
+            """
+        else:
+            intro_text = """
 🎉 **¡Descubre todo lo que puede hacer nuestro bot!**
 
 Este es el bot más completo para servidores de SCUM. Navega por las **7 páginas** usando los botones de abajo para conocer todas las funcionalidades.
 
 ✨ **Lo que encontrarás:**
 • 🤖 **Vista General** - Estadísticas y características
-• 🚖 **Sistema de Taxi** - 5 vehículos y 20+ zonas  
+• 🚖 **Sistema de Taxi** - 5 vehículos y 20+ zonas
 • 🏦 **Sistema Bancario** - Economía optimizada
 • 🏠 **Bunkers** - Monitoreo automático de 4 bunkers
 • ⚙️ **Administración** - Panel de control avanzado
@@ -2372,7 +2455,7 @@ Este es el bot más completo para servidores de SCUM. Navega por las **7 página
 • 📊 **Estadísticas** - Números y tecnologías
 
 ⬇️ **Usa los botones para navegar**
-        """
+            """
         
         await interaction.followup.send(content=intro_text, embed=embed, view=view)
         
@@ -2389,9 +2472,10 @@ Este es el bot más completo para servidores de SCUM. Navega por las **7 página
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class BotPresentationView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, user_language: str = 'es'):
         super().__init__(timeout=None)
         self.current_page = 0
+        self.user_language = user_language
         self.pages = [
             self.create_overview_embed,
             self.create_taxi_embed,
@@ -2402,6 +2486,14 @@ class BotPresentationView(discord.ui.View):
             self.create_economy_embed,
             self.create_stats_embed
         ]
+        
+        # Actualizar etiquetas de botones según idioma
+        self._update_button_labels()
+    
+    def _update_button_labels(self):
+        """Actualizar etiquetas de botones según el idioma del usuario"""
+        # Los botones se actualizarán dinámicamente cuando se creen
+        pass
     
     @discord.ui.button(label="◀️ Anterior", style=discord.ButtonStyle.secondary, custom_id="presentation_prev")
     async def previous_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2429,6 +2521,58 @@ class BotPresentationView(discord.ui.View):
         """Mostrar ayuda rápida"""
         embed = self.create_help_embed()
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label="🌍 Presentación Completa", style=discord.ButtonStyle.primary, custom_id="presentation_html")
+    async def html_presentation(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Abrir presentación HTML completa multiidioma"""
+        # Obtener idioma del usuario
+        user_language = await get_user_language_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        
+        embed = discord.Embed(
+            title=t("🌍 Presentación Interactiva", user_language) if user_language == 'es' else "🌍 Interactive Presentation",
+            description=t("Accede a la presentación completa con todas las funcionalidades del bot", user_language) if user_language == 'es' else "Access the complete presentation with all bot functionalities",
+            color=0x00ff88
+        )
+        
+        embed.add_field(
+            name="🎯 Características" if user_language == 'es' else "🎯 Features",
+            value="• Navegación interactiva\n• Soporte multiidioma 🇪🇸🇺🇸\n• Comparaciones detalladas\n• Guías de instalación" if user_language == 'es' else "• Interactive navigation\n• Multi-language support 🇪🇸🇺🇸\n• Detailed comparisons\n• Installation guides",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🌍 Idiomas Disponibles" if user_language == 'es' else "🌍 Available Languages",
+            value="🇪🇸 **Español**\n🇺🇸 **English**\n\n*Se detecta automáticamente tu idioma preferido*" if user_language == 'es' else "🇪🇸 **Spanish**\n🇺🇸 **English**\n\n*Automatically detects your preferred language*",
+            inline=True
+        )
+        
+        # Crear enlace directo al archivo HTML
+        presentation_url = "http://scumbottimer.duckdns.org:8085/bot_presentation_multilang.html"
+        
+        embed.add_field(
+            name="🔗 Enlaces" if user_language == 'es' else "🔗 Links", 
+            value=f"[📱 Abrir Presentación]({presentation_url})\n[📁 Descargar HTML](attachment://bot_presentation_multilang.html)" if user_language == 'es' else f"[📱 Open Presentation]({presentation_url})\n[📁 Download HTML](attachment://bot_presentation_multilang.html)",
+            inline=False
+        )
+        
+        embed.set_footer(
+            text="💡 La presentación se abre en tu navegador con tu idioma preferido" if user_language == 'es' else "💡 The presentation opens in your browser with your preferred language"
+        )
+        
+        # Intentar enviar el archivo HTML
+        try:
+            import os
+            html_path = os.path.join(os.path.dirname(__file__), "bot_presentation_multilang.html")
+            
+            if os.path.exists(html_path):
+                file = discord.File(html_path, filename="bot_presentation_multilang.html")
+                await interaction.response.send_message(embed=embed, file=file, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error enviando presentación HTML: {e}")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     
     def create_overview_embed(self):
         """Página 1: Vista general del bot"""
@@ -2868,6 +3012,305 @@ async def shutdown_handler():
         logger.info("✅ Bot cerrado correctamente")
     except Exception as e:
         logger.error(f"Error cerrando bot: {e}")
+
+# === FUNCIONES INTERNAS PARA BOTONES DE BUNKERS ===
+
+async def register_bunker_internal(interaction: discord.Interaction, sector: str, hours: float, server: str):
+    """Función interna para registrar bunker desde botones"""
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        # Usar la misma lógica que el comando slash
+        guild_id = str(interaction.guild.id)
+        user_id = str(interaction.user.id)
+        username = interaction.user.display_name
+        
+        # Validaciones
+        if not sector or sector.strip() == "":
+            await interaction.followup.send("❌ Debes especificar un sector válido (D1, C4, A1, A3)", ephemeral=True)
+            return
+        
+        sector = sector.upper()
+        valid_sectors = ["D1", "C4", "A1", "A3"]
+        if sector not in valid_sectors:
+            await interaction.followup.send(f"❌ Sector inválido. Usa uno de estos: {', '.join(valid_sectors)}", ephemeral=True)
+            return
+        
+        if hours <= 0 or hours > 300:
+            await interaction.followup.send("❌ Las horas deben estar entre 0.1 y 300.0", ephemeral=True)
+            return
+        
+        # Convertir horas decimales a horas y minutos
+        hours_int = int(hours)
+        minutes_int = int((hours - hours_int) * 60)
+        
+        # Verificar si el usuario ya tiene un bunker registrado en las últimas 72 horas
+        last_registration = await bot.db.get_last_user_registration(guild_id, user_id)
+        
+        if last_registration:
+            from datetime import datetime, timedelta
+            last_time = datetime.fromisoformat(last_registration["registered_at"])
+            time_since = datetime.now() - last_time
+            
+            if time_since < timedelta(hours=72):
+                remaining = timedelta(hours=72) - time_since
+                hours_left = int(remaining.total_seconds() // 3600)
+                minutes_left = int((remaining.total_seconds() % 3600) // 60)
+                
+                embed = discord.Embed(
+                    title="⏳ Límite de 72 horas",
+                    description=f"Debes esperar **{hours_left}h {minutes_left}m** antes de registrar otro bunker.\n\n🔓 **Última registro:** {last_registration['sector']} en {last_registration['server_name']}",
+                    color=0xff9900
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+        
+        # Registrar el bunker
+        success = await bot.db.register_bunker(guild_id, user_id, username, sector, hours_int, minutes_int, server)
+        
+        if success:
+            # Calcular tiempo de apertura
+            from datetime import datetime, timedelta
+            open_time = datetime.now() + timedelta(hours=hours_int, minutes=minutes_int)
+            timestamp = int(open_time.timestamp())
+            
+            embed = discord.Embed(
+                title="✅ Bunker Registrado",
+                description=f"**Sector:** {sector}\n**Servidor:** {server}\n**Se abre:** <t:{timestamp}:R>\n**Fecha exacta:** <t:{timestamp}:F>",
+                color=0x00ff00
+            )
+            embed.set_footer(text=f"Registrado por {username}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Error registrando el bunker. Inténtalo de nuevo.", ephemeral=True)
+            
+    except Exception as e:
+        logger.error(f"Error en register_bunker_internal: {e}")
+        await interaction.followup.send("❌ Error inesperado registrando bunker", ephemeral=True)
+
+async def check_bunker_internal(interaction: discord.Interaction, sector: str, server: str):
+    """Función interna para verificar bunker desde botones"""
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        guild_id = str(interaction.guild.id)
+        sector = sector.upper()
+        
+        # Buscar el bunker
+        bunker = await bot.db.get_bunker_status(guild_id, sector, server)
+        
+        if not bunker:
+            embed = discord.Embed(
+                title="❌ Bunker no encontrado",
+                description=f"No hay información registrada para el sector **{sector}** en el servidor **{server}**.",
+                color=0xff0000
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Calcular estado del bunker
+        from datetime import datetime
+        
+        registered_at = datetime.fromisoformat(bunker["registered_at"])
+        opens_at = datetime.fromisoformat(bunker["opens_at"])
+        closes_at = datetime.fromisoformat(bunker["closes_at"])
+        now = datetime.now()
+        
+        if now < opens_at:
+            # Bunker cerrado
+            time_to_open = opens_at - now
+            hours = int(time_to_open.total_seconds() // 3600)
+            minutes = int((time_to_open.total_seconds() % 3600) // 60)
+            
+            color = 0xff0000
+            status_text = f"🔒 **CERRADO**\nSe abre en **{hours}h {minutes}m**"
+            
+        elif now < closes_at:
+            # Bunker abierto
+            time_to_close = closes_at - now
+            hours = int(time_to_close.total_seconds() // 3600)
+            minutes = int((time_to_close.total_seconds() % 3600) // 60)
+            
+            color = 0x00ff00
+            status_text = f"🟢 **ACTIVO**\nSe cierra en **{hours}h {minutes}m**"
+            
+        else:
+            # Bunker expirado
+            color = 0xffaa00
+            status_text = "🟡 **EXPIRADO**\nNecesita nuevo registro"
+        
+        # Crear embed de respuesta
+        embed = discord.Embed(
+            title=f"📊 Estado del Bunker {sector}",
+            description=status_text,
+            color=color
+        )
+        
+        embed.add_field(
+            name="🏷️ Información",
+            value=f"**Servidor:** {bunker['server_name']}\n**Registrado por:** {bunker['username']}\n**Registro:** <t:{int(registered_at.timestamp())}:R>",
+            inline=False
+        )
+        
+        if now < closes_at:
+            open_timestamp = int(opens_at.timestamp())
+            close_timestamp = int(closes_at.timestamp())
+            embed.add_field(
+                name="⏰ Horarios",
+                value=f"**Abre:** <t:{open_timestamp}:F>\n**Cierra:** <t:{close_timestamp}:F>",
+                inline=False
+            )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error en check_bunker_internal: {e}")
+        await interaction.followup.send("❌ Error verificando bunker", ephemeral=True)
+
+async def list_bunkers(interaction: discord.Interaction):
+    """Función interna para listar bunkers desde botones"""
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        guild_id = str(interaction.guild.id)
+        bunkers = await bot.db.get_all_bunkers_status(guild_id)
+        
+        if not bunkers:
+            embed = discord.Embed(
+                title="📋 Lista de Bunkers",
+                description="No hay bunkers registrados en este servidor.",
+                color=0x999999
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Organizar bunkers por servidor
+        servers = {}
+        for bunker in bunkers:
+            server_name = bunker["server_name"]
+            if server_name not in servers:
+                servers[server_name] = []
+            servers[server_name].append(bunker)
+        
+        # Crear embed
+        embed = discord.Embed(
+            title="📋 Lista de Bunkers Activos",
+            description=f"**{len(bunkers)} bunkers** registrados en **{len(servers)} servidores**",
+            color=0x0099ff
+        )
+        
+        from datetime import datetime
+        now = datetime.now()
+        
+        for server_name, server_bunkers in servers.items():
+            bunker_info = []
+            
+            for bunker in server_bunkers:
+                opens_at = datetime.fromisoformat(bunker["opens_at"])
+                closes_at = datetime.fromisoformat(bunker["closes_at"])
+                
+                if now < opens_at:
+                    # Cerrado
+                    time_to_open = opens_at - now
+                    hours = int(time_to_open.total_seconds() // 3600)
+                    minutes = int((time_to_open.total_seconds() % 3600) // 60)
+                    status = f"🔒 Abre en {hours}h {minutes}m"
+                elif now < closes_at:
+                    # Abierto
+                    time_to_close = closes_at - now
+                    hours = int(time_to_close.total_seconds() // 3600)
+                    minutes = int((time_to_close.total_seconds() % 3600) // 60)
+                    status = f"🟢 Activo {hours}h {minutes}m"
+                else:
+                    # Expirado
+                    status = "🟡 Expirado"
+                
+                bunker_info.append(f"**{bunker['sector']}** - {status}")
+            
+            embed.add_field(
+                name=f"🏷️ {server_name}",
+                value="\n".join(bunker_info),
+                inline=True
+            )
+        
+        embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error en list_bunkers: {e}")
+        await interaction.followup.send("❌ Error obteniendo lista de bunkers", ephemeral=True)
+
+async def my_usage(interaction: discord.Interaction):
+    """Función interna para ver uso personal desde botones"""
+    await interaction.response.defer(ephemeral=True)
+    
+    try:
+        guild_id = str(interaction.guild.id)
+        user_id = str(interaction.user.id)
+        
+        # Obtener última registro del usuario
+        last_registration = await bot.db.get_last_user_registration(guild_id, user_id)
+        
+        embed = discord.Embed(
+            title="⚡ Mi Uso del Sistema",
+            description=f"**Usuario:** {interaction.user.display_name}",
+            color=0x0099ff
+        )
+        
+        if not last_registration:
+            embed.add_field(
+                name="📊 Estado",
+                value="✅ **Disponible para registrar**\n\nNo tienes registros previos.",
+                inline=False
+            )
+        else:
+            from datetime import datetime, timedelta
+            last_time = datetime.fromisoformat(last_registration["registered_at"])
+            time_since = datetime.now() - last_time
+            
+            if time_since < timedelta(hours=72):
+                # En cooldown
+                remaining = timedelta(hours=72) - time_since
+                hours_left = int(remaining.total_seconds() // 3600)
+                minutes_left = int((remaining.total_seconds() % 3600) // 60)
+                
+                embed.add_field(
+                    name="⏳ Estado",
+                    value=f"🔒 **En cooldown**\n\nDebes esperar **{hours_left}h {minutes_left}m** antes de registrar otro bunker.",
+                    inline=False
+                )
+            else:
+                # Disponible
+                embed.add_field(
+                    name="📊 Estado",
+                    value="✅ **Disponible para registrar**\n\nYa pasaron las 72 horas desde tu último registro.",
+                    inline=False
+                )
+            
+            embed.add_field(
+                name="📝 Último Registro",
+                value=f"**Sector:** {last_registration['sector']}\n**Servidor:** {last_registration['server_name']}\n**Fecha:** <t:{int(last_time.timestamp())}:R>",
+                inline=False
+            )
+        
+        # Obtener estadísticas del usuario
+        user_stats = await bot.db.get_user_bunker_stats(guild_id, user_id)
+        if user_stats:
+            embed.add_field(
+                name="📊 Estadísticas",
+                value=f"**Total registrados:** {user_stats.get('total_registered', 0)}\n**Este mes:** {user_stats.get('this_month', 0)}",
+                inline=True
+            )
+        
+        embed.set_footer(text="Límite: 1 bunker cada 72 horas")
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+    except Exception as e:
+        logger.error(f"Error en my_usage: {e}")
+        await interaction.followup.send("❌ Error obteniendo información de uso", ephemeral=True)
 
 async def main():
     """Función principal con manejo de señales"""

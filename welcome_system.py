@@ -12,19 +12,129 @@ import logging
 from datetime import datetime
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from translation_manager import translation_manager, t, get_user_language_by_discord_id, set_user_language
 
 logger = logging.getLogger(__name__)
 
-class InGameNameModal(discord.ui.Modal, title="🎮 Registro - Nombre InGame"):
+class LanguageSelectionView(discord.ui.View):
+    """Vista para seleccionar idioma antes del registro"""
     def __init__(self):
-        super().__init__()
+        super().__init__(timeout=300)
+        self.selected_language = None
     
-    ingame_name = discord.ui.TextInput(
-        label="Nombre del Jugador en SCUM",
-        placeholder="Escribe tu nombre de jugador tal como aparece en el juego...",
-        required=True,
-        max_length=50
+    @discord.ui.select(
+        placeholder="🌍 Select your preferred language / Selecciona tu idioma...",
+        options=[
+            discord.SelectOption(
+                label="🇪🇸 Español",
+                value="es",
+                description="Usar el sistema en español",
+                emoji="🇪🇸"
+            ),
+            discord.SelectOption(
+                label="🇺🇸 English", 
+                value="en",
+                description="Use the system in English",
+                emoji="🇺🇸"
+            )
+        ]
     )
+    async def select_language(self, interaction: discord.Interaction, select: discord.ui.Select):
+        self.selected_language = select.values[0]
+        
+        # Mostrar modal con el idioma seleccionado
+        modal = InGameNameModal(self.selected_language)
+        await interaction.response.send_modal(modal)
+
+class LanguageChangeView(discord.ui.View):
+    """Vista para cambiar idioma de usuarios registrados"""
+    def __init__(self, current_language: str):
+        super().__init__(timeout=300)
+        self.current_language = current_language
+    
+    @discord.ui.select(
+        placeholder="🌍 Seleccionar idioma / Select language...",
+        options=[
+            discord.SelectOption(
+                label="🇪🇸 Español",
+                value="es",
+                description="Cambiar a español / Change to Spanish",
+                emoji="🇪🇸"
+            ),
+            discord.SelectOption(
+                label="🇺🇸 English",
+                value="en", 
+                description="Change to English / Cambiar a inglés",
+                emoji="🇺🇸"
+            )
+        ]
+    )
+    async def change_language(self, interaction: discord.Interaction, select: discord.ui.Select):
+        new_language = select.values[0]
+        
+        if new_language == self.current_language:
+            embed = discord.Embed(
+                title="ℹ️ Sin Cambios / No Changes",
+                description=f"Ya tienes configurado **{'🇪🇸 Español' if new_language == 'es' else '🇺🇸 English'}**\nYou already have **{'🇪🇸 Español' if new_language == 'es' else '🇺🇸 English'}** configured",
+                color=discord.Color.blue()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Actualizar idioma en la base de datos
+        success = await taxi_db.update_user_language(interaction.user.id, new_language)
+        
+        if success:
+            embed = discord.Embed(
+                title=t("admin.config_updated", new_language),
+                description=t("welcome.welcome_desc", new_language, name=interaction.user.display_name),
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="🌍 Nuevo Idioma / New Language",
+                value=f"{'🇪🇸 Español' if new_language == 'es' else '🇺🇸 English'}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="✨ Efecto Inmediato / Immediate Effect",
+                value="Todos los comandos y mensajes ahora aparecerán en tu idioma preferido.\nAll commands and messages will now appear in your preferred language." if new_language == 'es' else "All commands and messages will now appear in your preferred language.\nTodos los comandos y mensajes ahora aparecerán en tu idioma preferido.",
+                inline=False
+            )
+            
+        else:
+            embed = discord.Embed(
+                title="❌ Error / Error",
+                description="No se pudo actualizar el idioma. Intenta nuevamente.\nCould not update language. Please try again.",
+                color=discord.Color.red()
+            )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class InGameNameModal(discord.ui.Modal):
+    def __init__(self, language: str = 'es'):
+        self.language = language
+        
+        # Configurar título y campos según el idioma
+        if language == 'en':
+            title = "🎮 Registration - InGame Name"
+            label = "Player Name in SCUM"
+            placeholder = "Enter your player name as it appears in the game..."
+        else:
+            title = "🎮 Registro - Nombre InGame"
+            label = "Nombre del Jugador en SCUM"
+            placeholder = "Escribe tu nombre de jugador tal como aparece en el juego..."
+        
+        super().__init__(title=title)
+        
+        self.ingame_name = discord.ui.TextInput(
+            label=label,
+            placeholder=placeholder,
+            required=True,
+            max_length=50
+        )
+        self.add_item(self.ingame_name)
     
     async def on_submit(self, interaction: discord.Interaction):
         """Procesar el registro con el nombre InGame"""
@@ -35,8 +145,8 @@ class InGameNameModal(discord.ui.Modal, title="🎮 Registro - Nombre InGame"):
         # Validaciones básicas
         if len(ingame_name) < 2:
             embed = discord.Embed(
-                title="❌ Nombre Inválido",
-                description="El nombre debe tener al menos 2 caracteres",
+                title=t("welcome.invalid_name", self.language),
+                description=t("welcome.invalid_name_desc", self.language),
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -56,33 +166,36 @@ class InGameNameModal(discord.ui.Modal, title="🎮 Registro - Nombre InGame"):
                 # Dar dinero inicial
                 await taxi_db.add_money(interaction.user.id, taxi_config.WELCOME_BONUS)
                 
+                # Guardar idioma preferido del usuario
+                await taxi_db.update_user_language(interaction.user.id, self.language)
+                
                 embed = discord.Embed(
-                    title="🎉 ¡Welcome Pack Recibido!",
-                    description=f"¡Bienvenido **{ingame_name}**! Has sido registrado exitosamente",
+                    title=t("welcome.welcome_pack_received", self.language),
+                    description=t("welcome.welcome_desc", self.language, name=ingame_name),
                     color=discord.Color.green()
                 )
                 
                 embed.add_field(
-                    name="🎮 Jugador SCUM",
+                    name=t("welcome.ingame_player", self.language),
                     value=f"`{ingame_name}`",
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="💰 Dinero Recibido",
+                    name=t("welcome.money_received", self.language),
                     value=f"${taxi_config.WELCOME_BONUS:,.0f}",
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="🎫 Vouchers de Taxi",
-                    value="3 viajes gratis",
+                    name=t("welcome.taxi_vouchers", self.language),
+                    value="3 viajes gratis" if self.language == 'es' else "3 free rides",
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="🚖 Próximos Pasos",
-                    value="• Usa `/taxi_solicitar` para pedir un taxi\n• Usa `/banco_balance` para ver tu dinero\n• Usa `/taxi_zonas` para ver zonas disponibles\n• Usa `/bot_presentacion` para conocer todas las funciones",
+                    name=t("welcome.next_steps", self.language),
+                    value=t("welcome.next_steps_desc", self.language),
                     inline=False
                 )
                 
@@ -119,19 +232,22 @@ Como eres nuevo en nuestro sistema, aquí tienes la presentación completa del b
                     
             else:
                 embed = discord.Embed(
-                    title="❌ Error de Registro",
-                    description=f"No se pudo registrar: {result}",
+                    title=t("welcome.registration_error", self.language),
+                    description=t("welcome.registration_error_desc", self.language, error=result),
                     color=discord.Color.red()
                 )
                 
-            embed.set_footer(text="Sistema de Taxi SCUM • Gracias por registrarte")
+            embed.set_footer(
+                text="Sistema de Taxi SCUM • Gracias por registrarte" if self.language == 'es' 
+                else "SCUM Taxi System • Thank you for registering"
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error en registro con nombre InGame: {e}")
             embed = discord.Embed(
-                title="❌ Error Interno",
-                description="Hubo un error procesando tu registro. Intenta nuevamente.",
+                title=t("welcome.internal_error", self.language),
+                description=t("welcome.internal_error_desc", self.language),
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -302,27 +418,57 @@ class WelcomePackSystem(commands.Cog):
         # Verificar si ya está registrado
         user_exists = await taxi_db.user_exists(interaction.user.id)
         if user_exists:
+            # Obtener idioma del usuario para mostrar mensaje apropiado
+            user_language = await get_user_language_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            
             embed = discord.Embed(
-                title="ℹ️ Ya Registrado",
-                description="Ya tienes una cuenta en el sistema SCUM",
+                title=t("welcome.already_registered", user_language),
+                description=t("welcome.already_registered_desc", user_language),
                 color=discord.Color.blue()
             )
             
             # Mostrar balance actual
             balance = await taxi_db.get_user_balance(interaction.user.id)
             embed.add_field(
-                name="💰 Balance Actual",
+                name=t("welcome.current_balance", user_language),
                 value=f"${balance:,.0f}",
                 inline=True
             )
             
-            embed.set_footer(text="Sistema de Taxi SCUM • Ya registrado")
+            embed.set_footer(
+                text="Sistema de Taxi SCUM • Ya registrado" if user_language == 'es' 
+                else "SCUM Taxi System • Already registered"
+            )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Mostrar modal para pedir nombre InGame
-        modal = InGameNameModal()
-        await interaction.response.send_modal(modal)
+        # Mostrar selector de idioma primero
+        embed = discord.Embed(
+            title="🌍 Language Selection / Selección de Idioma",
+            description="Please select your preferred language for the system.\nPor favor selecciona tu idioma preferido para el sistema.",
+            color=discord.Color.blue()
+        )
+        
+        embed.add_field(
+            name="🇪🇸 Español",
+            value="• Interfaz completamente en español\n• Soporte y ayuda en español\n• Comandos y mensajes traducidos",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🇺🇸 English", 
+            value="• Fully English interface\n• Support and help in English\n• Translated commands and messages",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="ℹ️ Important / Importante",
+            value="You can change your language later using `/language_change`\nPuedes cambiar tu idioma más tarde usando `/idioma_cambiar`",
+            inline=False
+        )
+        
+        view = LanguageSelectionView()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @app_commands.command(name="welcome_status", description="📊 Ver tu estado de registro")
     async def welcome_status(self, interaction: discord.Interaction):
@@ -652,6 +798,40 @@ class WelcomePackView(discord.ui.View):
         embed.set_footer(text="Para soporte adicional, contacta a los administradores del servidor")
         
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="idioma_cambiar", description="🌍 Cambiar tu idioma preferido del sistema")
+    async def change_language(self, interaction: discord.Interaction):
+        """Cambiar idioma preferido del usuario"""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Verificar si el usuario está registrado
+        user_exists = await taxi_db.user_exists(interaction.user.id)
+        if not user_exists:
+            embed = discord.Embed(
+                title="❌ Usuario No Registrado / User Not Registered",
+                description="Debes registrarte primero usando `/welcome_registro`\nYou must register first using `/welcome_registro`",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        # Obtener idioma actual
+        current_language = await get_user_language_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        
+        embed = discord.Embed(
+            title="🌍 Cambiar Idioma / Change Language",
+            description=f"Idioma actual: **{'🇪🇸 Español' if current_language == 'es' else '🇺🇸 English'}**\nCurrent language: **{'🇪🇸 Español' if current_language == 'es' else '🇺🇸 English'}**",
+            color=discord.Color.blue()
+        )
+        
+        embed.add_field(
+            name="🔄 Seleccionar Nuevo Idioma / Select New Language",
+            value="Usa el selector de abajo para cambiar tu idioma.\nUse the selector below to change your language.",
+            inline=False
+        )
+        
+        view = LanguageChangeView(current_language)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
     # === COMANDO DE ADMINISTRACIÓN ===
     

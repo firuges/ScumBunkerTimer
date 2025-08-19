@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SCUM Bunker Timer - Guía Completa</title>
+    <title>SCUM Bot - Guía Completa</title>
     <style>
         * {
             margin: 0;
@@ -20,7 +20,7 @@
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -36,14 +36,43 @@
         
         .header h1 {
             color: #2c3e50;
-            font-size: 2.5em;
+            font-size: 3em;
             margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
         }
         
         .header p {
             color: #7f8c8d;
-            font-size: 1.2em;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+        }
+
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 15px;
+            text-align: center;
+            min-width: 120px;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
         }
         
         .section {
@@ -61,15 +90,30 @@
         
         .section h2 {
             color: #2c3e50;
-            font-size: 1.8em;
+            font-size: 2.2em;
             margin-bottom: 20px;
             border-bottom: 3px solid #667eea;
             padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-section {
+            border-left: 5px solid #28a745;
+        }
+
+        .admin-section {
+            border-left: 5px solid #dc3545;
+        }
+
+        .premium-section {
+            border-left: 5px solid #ffc107;
         }
         
         .commands-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 20px;
             margin-top: 20px;
         }
@@ -91,6 +135,9 @@
             color: #495057;
             font-size: 1.3em;
             margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .command {
@@ -102,45 +149,63 @@
             margin: 5px 0;
             display: inline-block;
             font-size: 0.9em;
+            word-break: break-all;
         }
-        
-        .status-grid {
+
+        .system-overview {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minospace(250px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
         }
-        
-        .status-card {
-            background: linear-gradient(145deg, #ffffff, #f1f3f4);
-            border-radius: 8px;
-            padding: 15px;
+
+        .system-card {
+            background: linear-gradient(145deg, #ffffff, #f8f9fa);
+            border-radius: 15px;
+            padding: 25px;
             text-align: center;
             border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
         }
-        
-        .status-icon {
-            font-size: 2em;
+
+        .system-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+
+        .system-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .system-card h3 {
+            color: #2c3e50;
             margin-bottom: 10px;
         }
         
-        .example-flow {
-            background: linear-gradient(145deg, #e8f5e8, #d4edda);
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
-            border-left: 5px solid #28a745;
+        .access-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-left: 10px;
         }
-        
-        .step {
-            margin: 15px 0;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.7);
-            border-radius: 5px;
-        }
-        
-        .step strong {
+
+        .public-badge {
+            background: #d4edda;
             color: #155724;
+        }
+
+        .admin-badge {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .premium-badge {
+            background: #fff3cd;
+            color: #856404;
         }
         
         .tips {
@@ -160,20 +225,15 @@
             color: #856404;
             margin-left: 20px;
         }
-        
-        .premium-section {
-            background: linear-gradient(145deg, #f8d7da, #f5c6cb);
+
+        .feature-highlight {
+            background: linear-gradient(145deg, #e8f5e8, #d4edda);
             border-radius: 10px;
             padding: 20px;
             margin: 20px 0;
-            border-left: 5px solid #dc3545;
+            border-left: 5px solid #28a745;
         }
-        
-        .premium-section h4 {
-            color: #721c24;
-            margin-bottom: 15px;
-        }
-        
+
         .table {
             width: 100%;
             border-collapse: collapse;
@@ -216,7 +276,7 @@
             }
             
             .header h1 {
-                font-size: 2em;
+                font-size: 2.2em;
             }
             
             .commands-grid {
@@ -226,6 +286,15 @@
             .section {
                 padding: 20px;
             }
+
+            .stats-bar {
+                gap: 15px;
+            }
+
+            .stat-item {
+                padding: 10px 15px;
+                min-width: 100px;
+            }
         }
     </style>
 </head>
@@ -233,368 +302,473 @@
     <div class="container">
         <!-- Header -->
         <div class="header">
-            <h1>🤖 SCUM Bunker Timer V2</h1>
-            <p>Guía Completa del Bot para Gestión de Bunkers</p>
-        </div>
-
-        <!-- Inicio Rápido -->
-        <div class="section">
-            <h2>🚀 Inicio Rápido - 3 Pasos</h2>
-            <div class="example-flow">
-                <div class="step">
-                    <strong>1. Agregar Servidor:</strong>
-                    <div class="command">/ba_add_server name:Mi-Servidor</div>
-                </div>
-                <div class="step">
-                    <strong>2. Registrar Bunker:</strong>
-                    <div class="command">/ba_register_bunker sector:D1 hours:5</div>
-                </div>
-                <div class="step">
-                    <strong>3. Verificar Estado:</strong>
-                    <div class="command">/ba_check_bunker sector:D1</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Comandos Públicos -->
-        <div class="section">
-            <h2>🌟 Comandos Públicos (14 comandos)</h2>
-            <div class="premium-section">
-                <h4>✅ Disponibles para todos los usuarios</h4>
-                <p>Estos comandos pueden ser usados por cualquier usuario en cualquier servidor.</p>
-            </div>
+            <h1>🤖 SCUM Bot Completo</h1>
+            <p>Sistema integral para servidores de SCUM con 9 módulos especializados</p>
+            <p><strong>Bunkers • Taxi • Banking • Escuadrones • Welcome • Shop • Administración</strong></p>
             
-            <h3>🏰 Comandos Principales de Bunkers</h3>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <span class="stat-number">55+</span>
+                    <span class="stat-label">Comandos</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">9</span>
+                    <span class="stat-label">Sistemas</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">2</span>
+                    <span class="stat-label">Idiomas</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number">24/7</span>
+                    <span class="stat-label">Activo</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sistemas Disponibles -->
+        <div class="section">
+            <h2>🎯 Sistemas Integrados</h2>
+            <div class="system-overview">
+                <div class="system-card">
+                    <div class="system-icon">⏰</div>
+                    <h3>Bunker Timer</h3>
+                    <p>Control completo de bunkers con timers precisos, notificaciones automáticas y estadísticas detalladas.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🚖</div>
+                    <h3>Sistema de Taxi</h3>
+                    <p>Transporte inteligente con 5 tipos de vehículos, zonas PVP/PVE y sistema de calificaciones.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🏦</div>
+                    <h3>Banking System</h3>
+                    <p>Banco completo con transferencias, historial, cuentas automáticas y economía realista.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🏆</div>
+                    <h3>Escuadrones</h3>
+                    <p>Gestión de equipos con roles, límites de vehículos y sistema de membresías.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🎁</div>
+                    <h3>Welcome System</h3>
+                    <p>Registro automático con pack de bienvenida y configuración de cuenta inicial.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🛒</div>
+                    <h3>Shop System</h3>
+                    <p>Tienda InGame con paquetes personalizables y entrega automática de items.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🚗</div>
+                    <h3>Sistema Mecánico</h3>
+                    <p>Seguros de vehículos, reparaciones y servicios técnicos con precios dinámicos.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">📢</div>
+                    <h3>Alertas de Servidor</h3>
+                    <p>Notificaciones automáticas de reinicio y mantenimiento programado.</p>
+                </div>
+                <div class="system-card">
+                    <div class="system-icon">🌍</div>
+                    <h3>Multiidioma</h3>
+                    <p>Soporte completo en Español e Inglés con cambio instantáneo.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comandos para Usuarios -->
+        <div class="section user-section">
+            <h2>👥 Comandos para Usuarios</h2>
+            <p><strong>Estos comandos pueden ser usados por cualquier miembro del servidor</strong></p>
+
+            <h3>⏰ Sistema de Bunkers</h3>
             <div class="commands-grid">
                 <div class="command-card">
-                    <h3>Registrar Bunker</h3>
+                    <h3>🔒 Registrar Bunker <span class="access-badge public-badge">PÚBLICO</span></h3>
                     <div class="command">/ba_register_bunker sector:D1 hours:5</div>
-                    <p><strong>Función principal:</strong> Registra cuando encontraste un bunker cerrado. El bot calculará automáticamente cuándo se abrirá.</p>
-                    <p><strong>Limitación gratuita:</strong> 1 bunker cada 72 horas por servidor</p>
+                    <p><strong>Función:</strong> Registra cuando encontraste un bunker cerrado</p>
+                    <p><strong>Cálculo automático:</strong> El bot calcula cuándo se abrirá</p>
                 </div>
                 <div class="command-card">
-                    <h3>Verificar Bunker</h3>
+                    <h3>📊 Ver Estado de Bunker <span class="access-badge public-badge">PÚBLICO</span></h3>
                     <div class="command">/ba_check_bunker sector:D1</div>
-                    <p><strong>Consulta:</strong> Ver el estado actual de un bunker específico con tiempo restante exacto.</p>
-                    <p><strong>Acceso:</strong> Sin límites</p>
+                    <p><strong>Consulta:</strong> Estado actual con tiempo restante exacto</p>
+                    <p><strong>Sin límites:</strong> Úsalo las veces que necesites</p>
                 </div>
                 <div class="command-card">
-                    <h3>Lista de Bunkers</h3>
+                    <h3>📋 Lista de Bunkers <span class="access-badge public-badge">PÚBLICO</span></h3>
                     <div class="command">/ba_list_bunkers</div>
-                    <p><strong>Vista general:</strong> Muestra todos los bunkers del servidor con sus estados actuales.</p>
-                    <p><strong>Incluye:</strong> Detalles de registro y estadísticas</p>
+                    <p><strong>Vista general:</strong> Todos los bunkers del servidor</p>
+                    <p><strong>Incluye:</strong> Estados, tiempos y estadísticas</p>
                 </div>
                 <div class="command-card">
-                    <h3>Actualizar Bunker</h3>
+                    <h3>✏️ Actualizar Bunker <span class="access-badge public-badge">PÚBLICO</span></h3>
                     <div class="command">/ba_update_bunker sector:D1 hours:3</div>
-                    <p><strong>Corrección:</strong> Actualiza el tiempo de un bunker que registraste previamente.</p>
-                    <p><strong>Restricción:</strong> Solo quien lo registró</p>
-                </div>
-                <div class="command-card">
-                    <h3>Eliminar Bunker</h3>
-                    <div class="command">/ba_delete_bunker sector:D1</div>
-                    <p><strong>Borrar:</strong> Elimina un bunker que registraste por error o duplicado.</p>
-                    <p><strong>Restricción:</strong> Solo quien lo registró</p>
+                    <p><strong>Corrección:</strong> Actualiza bunkers que registraste</p>
+                    <p><strong>Restricción:</strong> Solo el que lo registró</p>
                 </div>
             </div>
 
-            <h3>🖥️ Comandos de Servidores SCUM</h3>
+            <h3>🚖 Sistema de Taxi</h3>
             <div class="commands-grid">
                 <div class="command-card">
-                    <h3>Agregar Servidor</h3>
-                    <div class="command">/ba_add_server name:MiServidor-PVP</div>
-                    <p><strong>Configuración:</strong> Registra un nuevo servidor SCUM en el bot.</p>
-                    <p><strong>Beneficio:</strong> Cada servidor mantiene bunkers separados</p>
+                    <h3>🚕 Solicitar Taxi <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/taxi_solicitar origen:A1 destino:D4 vehiculo:auto</div>
+                    <p><strong>Transporte:</strong> Solicita viaje entre zonas del mapa</p>
+                    <p><strong>Vehículos:</strong> Auto, moto, avión, barco, helicóptero</p>
                 </div>
                 <div class="command-card">
-                    <h3>Listar Servidores</h3>
-                    <div class="command">/ba_list_servers</div>
-                    <p><strong>Vista:</strong> Muestra todos los servidores SCUM registrados en tu Discord.</p>
-                    <p><strong>Incluye:</strong> Estadísticas básicas de cada servidor</p>
+                    <h3>🚗 Registrarse como Conductor <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/taxi_driver_registrar</div>
+                    <p><strong>Trabajo:</strong> Conviértete en conductor del servidor</p>
+                    <p><strong>Ganancias:</strong> Comisiones por cada viaje completado</p>
+                </div>
+                <div class="command-card">
+                    <h3>📊 Ver Estado de Solicitud <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/taxi_status</div>
+                    <p><strong>Seguimiento:</strong> Estado de tu solicitud activa</p>
+                    <p><strong>Info:</strong> Conductor, tiempo estimado, precio</p>
+                </div>
+                <div class="command-card">
+                    <h3>⭐ Calificar Conductor <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/taxi_calificar rating:5 comentario:Excelente</div>
+                    <p><strong>Rating:</strong> Califica de 1 a 5 estrellas</p>
+                    <p><strong>Mejora:</strong> Ayuda a otros usuarios a elegir</p>
                 </div>
             </div>
 
-            <h3>📊 Comandos de Información Personal</h3>
+            <h3>🏦 Sistema Bancario</h3>
             <div class="commands-grid">
                 <div class="command-card">
-                    <h3>Estado del Bot</h3>
-                    <div class="command">/ba_bot_status</div>
-                    <p><strong>Información:</strong> Estado del bot específico para tu servidor Discord.</p>
-                    <p><strong>Incluye:</strong> Plan de suscripción, uptime, estadísticas</p>
+                    <h3>💰 Ver Balance <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/bank_balance</div>
+                    <p><strong>Consulta:</strong> Tu saldo actual y número de cuenta</p>
+                    <p><strong>Automático:</strong> Cuenta creada al registrarse</p>
                 </div>
                 <div class="command-card">
-                    <h3>Mi Uso del Sistema</h3>
-                    <div class="command">/ba_my_usage</div>
-                    <p><strong>Control personal:</strong> Verifica tu uso del sistema de 72 horas.</p>
-                    <p><strong>Útil para:</strong> Saber cuándo puedes registrar otro bunker</p>
+                    <h3>💸 Transferir Dinero <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/bank_transfer usuario:@Player cantidad:1000</div>
+                    <p><strong>Envío:</strong> Transfiere dinero a otros jugadores</p>
+                    <p><strong>Seguro:</strong> Con confirmación y comisiones</p>
                 </div>
                 <div class="command-card">
-                    <h3>Planes de Suscripción</h3>
-                    <div class="command">/ba_suscripcion</div>
-                    <p><strong>Información:</strong> Ver planes de suscripción disponibles y beneficios.</p>
-                    <p><strong>Compara:</strong> Plan gratuito vs Premium</p>
+                    <h3>📋 Historial de Transacciones <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/bank_history</div>
+                    <p><strong>Registro:</strong> Todas tus transacciones con detalles</p>
+                    <p><strong>Completo:</strong> Fecha, hora, tipo, cantidad</p>
+                </div>
+            </div>
+
+            <h3>🏆 Sistema de Escuadrones</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>⚔️ Crear Escuadrón <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/squadron_create nombre:TeamAlpha tipo:PVP</div>
+                    <p><strong>Liderazgo:</strong> Forma tu propio equipo</p>
+                    <p><strong>Tipos:</strong> PVP, PVE, Mixto</p>
                 </div>
                 <div class="command-card">
-                    <h3>Ayuda Básica</h3>
+                    <h3>👥 Unirse a Escuadrón <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/squadron_join nombre:TeamAlpha</div>
+                    <p><strong>Membresía:</strong> Únete a equipos existentes</p>
+                    <p><strong>Beneficios:</strong> Registro de vehículos, cooperación</p>
+                </div>
+                <div class="command-card">
+                    <h3>🚗 Registrar Vehículo <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/vehicle_register id:VH001 tipo:auto</div>
+                    <p><strong>Control:</strong> Registra vehículos del escuadrón</p>
+                    <p><strong>Límites:</strong> Según configuración del servidor</p>
+                </div>
+            </div>
+
+            <h3>🛒 Sistema de Tienda</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>🛍️ Ver Tienda <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/shop_list tier:basico</div>
+                    <p><strong>Catálogo:</strong> Productos disponibles por tiers</p>
+                    <p><strong>Tiers:</strong> Básico, Intermedio, Avanzado</p>
+                </div>
+                <div class="command-card">
+                    <h3>💵 Comprar Producto <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/shop_buy producto:Kit_Supervivencia</div>
+                    <p><strong>Compra:</strong> Adquiere items con dinero del banco</p>
+                    <p><strong>Entrega:</strong> Automática al personaje</p>
+                </div>
+            </div>
+
+            <h3>🌍 Sistema Multiidioma</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>🔄 Cambiar Idioma <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/idioma_cambiar idioma:en</div>
+                    <p><strong>Switch:</strong> Cambia entre Español e Inglés</p>
+                    <p><strong>Instantáneo:</strong> Todos los mensajes se adaptan</p>
+                </div>
+            </div>
+
+            <h3>📊 Información General</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>ℹ️ Ayuda del Bot <span class="access-badge public-badge">PÚBLICO</span></h3>
                     <div class="command">/ba_help</div>
-                    <p><strong>Guía rápida:</strong> Muestra los comandos esenciales para empezar.</p>
-                    <p><strong>Perfecto para:</strong> Nuevos usuarios del bot</p>
+                    <p><strong>Guía:</strong> Comandos esenciales y ejemplos</p>
+                    <p><strong>Rápido:</strong> Para nuevos usuarios</p>
+                </div>
+                <div class="command-card">
+                    <h3>📱 Presentación del Bot <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/ba_presentacion</div>
+                    <p><strong>Demo:</strong> Presentación HTML interactiva</p>
+                    <p><strong>Multiidioma:</strong> Se adapta a tu idioma</p>
+                </div>
+                <div class="command-card">
+                    <h3>📈 Mi Estadísticas <span class="access-badge public-badge">PÚBLICO</span></h3>
+                    <div class="command">/ba_my_usage</div>
+                    <p><strong>Personal:</strong> Tu uso del sistema</p>
+                    <p><strong>Límites:</strong> Cooldowns y restricciones</p>
                 </div>
             </div>
+        </div>
 
-            <h3>🔧 Comandos de Administración Discord</h3>
+        <!-- Comandos para Administradores -->
+        <div class="section admin-section">
+            <h2>👑 Comandos para Administradores</h2>
+            <p><strong>Estos comandos requieren permisos de administrador del Discord o rol de Bot Admin</strong></p>
+
+            <h3>⚙️ Administración General</h3>
             <div class="commands-grid">
                 <div class="command-card">
-                    <h3>Limpiar Expirados</h3>
+                    <h3>🔧 Configurar Bot Admin <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/ba_admin_setup usuario:@Admin</div>
+                    <p><strong>Permisos:</strong> Asigna administradores del bot</p>
+                    <p><strong>Control:</strong> Acceso a comandos administrativos</p>
+                </div>
+                <div class="command-card">
+                    <h3>⚠️ Shutdown Seguro <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/ba_admin_shutdown</div>
+                    <p><strong>Apagado:</strong> Cierra el bot de forma segura</p>
+                    <p><strong>Notifica:</strong> Avisa a usuarios activos</p>
+                </div>
+                <div class="command-card">
+                    <h3>🧹 Limpiar Expirados <span class="access-badge admin-badge">ADMIN</span></h3>
                     <div class="command">/ba_clear_expired</div>
-                    <p><strong>Mantenimiento:</strong> Elimina bunkers expirados del servidor Discord.</p>
-                    <p><strong>Restricción:</strong> Solo administradores del Discord</p>
+                    <p><strong>Limpieza:</strong> Elimina bunkers expirados</p>
+                    <p><strong>Mantenimiento:</strong> Optimiza la base de datos</p>
                 </div>
             </div>
-        </div>
 
-        <!-- Comandos Premium -->
-        <div class="section">
-            <h2>� Comandos Premium (2 comandos)</h2>
-            <div class="premium-section">
-                <h4>🔒 Requiere Plan Premium</h4>
-                <p>Estos comandos están disponibles solo para servidores con suscripción Premium activa.</p>
-            </div>
+            <h3>🚖 Administración de Taxi</h3>
             <div class="commands-grid">
                 <div class="command-card">
-                    <h3>Estadísticas Avanzadas</h3>
-                    <div class="command">/ba_premium_stats</div>
-                    <p><strong>Análisis profundo:</strong> Estadísticas detalladas de uso, bunkers más activos, análisis temporal y tendencias.</p>
-                    <p><strong>Incluye:</strong> Gráficos, patrones de uso, optimización</p>
+                    <h3>💰 Configurar Precios <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/taxi_admin_precios vehiculo:auto precio:500</div>
+                    <p><strong>Economía:</strong> Establece tarifas por vehículo</p>
+                    <p><strong>Dinámico:</strong> Precios por distancia y zona</p>
                 </div>
                 <div class="command-card">
-                    <h3>Exportar Datos</h3>
-                    <div class="command">/ba_export_data</div>
-                    <p><strong>Respaldo:</strong> Exporta todos los datos de bunkers en formato CSV para análisis externo.</p>
-                    <p><strong>Útil para:</strong> Backup, análisis en Excel, reportes</p>
+                    <h3>🗺️ Configurar Zonas <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/taxi_admin_zonas zona:A1 tipo:PVE</div>
+                    <p><strong>Mapa:</strong> Define zonas PVP/PVE</p>
+                    <p><strong>Restricciones:</strong> Control de acceso por vehículo</p>
+                </div>
+                <div class="command-card">
+                    <h3>📊 Estadísticas de Taxi <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/taxi_admin_stats</div>
+                    <p><strong>Análisis:</strong> Uso del sistema, conductores activos</p>
+                    <p><strong>Métricas:</strong> Ingresos, viajes, calificaciones</p>
+                </div>
+            </div>
+
+            <h3>🏦 Administración Bancaria</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>💸 Añadir Dinero <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/bank_admin_add usuario:@Player cantidad:5000</div>
+                    <p><strong>Inyección:</strong> Agrega dinero a cuentas</p>
+                    <p><strong>Eventos:</strong> Para promociones o compensaciones</p>
+                </div>
+                <div class="command-card">
+                    <h3>🔍 Ver Cuenta <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/bank_admin_view usuario:@Player</div>
+                    <p><strong>Inspección:</strong> Ver balance de cualquier usuario</p>
+                    <p><strong>Auditoría:</strong> Control de transacciones sospechosas</p>
+                </div>
+                <div class="command-card">
+                    <h3>📈 Estadísticas Bancarias <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/bank_admin_stats</div>
+                    <p><strong>Economía:</strong> Estado financiero del servidor</p>
+                    <p><strong>Métricas:</strong> Dinero total, transacciones, usuarios activos</p>
+                </div>
+            </div>
+
+            <h3>🏆 Administración de Escuadrones</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>⚙️ Configurar Límites <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/squadron_admin_limits vehiculo:auto limite:3</div>
+                    <p><strong>Control:</strong> Límites de vehículos por miembro</p>
+                    <p><strong>Balance:</strong> Evita acumulación excesiva</p>
+                </div>
+                <div class="command-card">
+                    <h3>🔧 Gestionar Escuadrón <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/squadron_admin_manage squadron:TeamAlpha accion:disolver</div>
+                    <p><strong>Moderación:</strong> Disolver o modificar escuadrones</p>
+                    <p><strong>Acciones:</strong> Transferir liderazgo, expulsar miembros</p>
+                </div>
+            </div>
+
+            <h3>🛒 Administración de Tienda</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>📦 Configurar Producto <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/shop_admin_add nombre:Kit_PVP precio:2000 tier:avanzado</div>
+                    <p><strong>Catálogo:</strong> Agrega o modifica productos</p>
+                    <p><strong>Items:</strong> Define contenido y precios</p>
+                </div>
+                <div class="command-card">
+                    <h3>📊 Estadísticas de Ventas <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/shop_admin_stats</div>
+                    <p><strong>Comercio:</strong> Productos más vendidos</p>
+                    <p><strong>Ingresos:</strong> Ganancias por tier y período</p>
+                </div>
+            </div>
+
+            <h3>📢 Sistema de Alertas</h3>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <h3>🚨 Configurar Alerta <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/alert_admin_setup tipo:reinicio tiempo:30min</div>
+                    <p><strong>Programación:</strong> Alertas automáticas de reinicio</p>
+                    <p><strong>Anticipación:</strong> Avisos con tiempo configurable</p>
+                </div>
+                <div class="command-card">
+                    <h3>📣 Anuncio Manual <span class="access-badge admin-badge">ADMIN</span></h3>
+                    <div class="command">/alert_admin_announce mensaje:Evento especial hoy</div>
+                    <p><strong>Comunicación:</strong> Anuncios inmediatos</p>
+                    <p><strong>Alcance:</strong> Todos los usuarios registrados</p>
                 </div>
             </div>
         </div>
 
-        <!-- Diferencias entre Planes -->
+        <!-- Características Destacadas -->
         <div class="section">
-            <h2>📋 Comparación de Planes</h2>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Característica</th>
-                        <th>🆓 Plan Gratuito</th>
-                        <th>👑 Plan Premium</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>Comandos disponibles</strong></td>
-                        <td>14 comandos públicos</td>
-                        <td>16 comandos (públicos + premium)</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Registro de bunkers</strong></td>
-                        <td>1 bunker cada 72 horas por servidor</td>
-                        <td>Bunkers ilimitados sin cooldown</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Gestión de servidores</strong></td>
-                        <td>✅ Completa</td>
-                        <td>✅ Completa</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Consulta de bunkers</strong></td>
-                        <td>✅ Sin límites</td>
-                        <td>✅ Sin límites</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Estadísticas avanzadas</strong></td>
-                        <td>❌ No disponible</td>
-                        <td>✅ Análisis completo</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Exportación de datos</strong></td>
-                        <td>❌ No disponible</td>
-                        <td>✅ Formato CSV</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Soporte prioritario</strong></td>
-                        <td>Estándar</td>
-                        <td>✅ Prioritario</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Estados de Bunkers -->
-        <div class="section">
-            <h2>📊 Estados de Bunkers</h2>
-            <div class="status-grid">
-                <div class="status-card">
-                    <div class="status-icon">🔴</div>
-                    <h4>REGISTRADO</h4>
-                    <p>Bunker cerrado esperando a abrirse. Muestra tiempo restante exacto.</p>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon">🟢</div>
-                    <h4>ACTIVO</h4>
-                    <p>Bunker abierto con acceso por 24 horas. ¡Ve rápido a saquearlo!</p>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon">🟡</div>
-                    <h4>EXPIRADO</h4>
-                    <p>Bunker cerrado después de estar activo. Necesita nuevo registro.</p>
-                </div>
-                <div class="status-card">
-                    <div class="status-icon">⚫</div>
-                    <h4>SIN REGISTRO</h4>
-                    <p>No hay información sobre este bunker en el sector.</p>
-                </div>
+            <h2>🌟 Características Destacadas</h2>
+            
+            <div class="feature-highlight">
+                <h4>🌍 Sistema Multiidioma Completo</h4>
+                <p>El bot detecta automáticamente el idioma del navegador del usuario al registrarse y permite cambiar entre <strong>Español</strong> e <strong>Inglés</strong> en cualquier momento. Todos los mensajes, embeds y la presentación HTML se adaptan instantáneamente.</p>
+                <p><strong>Comando:</strong> <code>/idioma_cambiar idioma:en</code> o <code>/language_change language:es</code></p>
             </div>
-        </div>
 
-        <!-- Sectores Disponibles -->
-        <div class="section">
-            <h2>📍 Sectores y Ubicaciones</h2>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Sector</th>
-                        <th>Coordenadas Aproximadas</th>
-                        <th>Descripción</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>D1</strong></td>
-                        <td>Zona Norte-Este</td>
-                        <td>Sector popular con varios bunkers near zona militar</td>
-                    </tr>
-                    <tr>
-                        <td><strong>C4</strong></td>
-                        <td>Zona Central</td>
-                        <td>Área central del mapa con bunkers de acceso medio</td>
-                    </tr>
-                    <tr>
-                        <td><strong>A1</strong></td>
-                        <td>Zona Sur-Oeste</td>
-                        <td>Sector menos poblado pero con bunkers valiosos</td>
-                    </tr>
-                    <tr>
-                        <td><strong>A3</strong></td>
-                        <td>Zona Sur-Este</td>
-                        <td>Área costera con bunkers cerca de puertos</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+            <div class="feature-highlight">
+                <h4>💼 Economía Realista Integrada</h4>
+                <p>Sistema bancario completo que conecta todos los módulos. Los usuarios ganan dinero como conductores de taxi, lo gastan en la tienda, pagan seguros de vehículos y reciben dinero de bienvenida automáticamente.</p>
+            </div>
 
-        <!-- Comparación de Planes -->
-        <div class="section">
-            <h2>🆓 vs 💎 Comparación de Planes</h2>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Característica</th>
-                        <th>Plan Gratuito</th>
-                        <th>Plan Premium</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Bunkers por día</td>
-                        <td>1 bunker</td>
-                        <td>Ilimitado</td>
-                    </tr>
-                    <tr>
-                        <td>Comandos básicos</td>
-                        <td>✅ Incluidos</td>
-                        <td>✅ Incluidos</td>
-                    </tr>
-                    <tr>
-                        <td>Notificaciones DM</td>
-                        <td>❌ No disponible</td>
-                        <td>✅ Automáticas</td>
-                    </tr>
-                    <tr>
-                        <td>Estadísticas avanzadas</td>
-                        <td>❌ No disponible</td>
-                        <td>✅ Completas</td>
-                    </tr>
-                    <tr>
-                        <td>Exportar datos</td>
-                        <td>❌ No disponible</td>
-                        <td>✅ Formato JSON</td>
-                    </tr>
-                    <tr>
-                        <td>Soporte prioritario</td>
-                        <td>❌ Estándar</td>
-                        <td>✅ Prioritario</td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="feature-highlight">
+                <h4>🚖 Sistema de Taxi Inteligente</h4>
+                <p>Soporte para 5 tipos de vehículos (auto, moto, avión, barco, helicóptero) con detección automática de zonas PVP/PVE. Los precios se calculan dinámicamente según distancia, tipo de vehículo y zona de destino.</p>
+            </div>
+
+            <div class="feature-highlight">
+                <h4>🎁 Registro Automático con Welcome Pack</h4>
+                <p>Los nuevos usuarios se registran automáticamente al usar cualquier comando, reciben un pack de bienvenida con dinero inicial y pueden elegir su idioma preferido durante el proceso.</p>
+            </div>
         </div>
 
         <!-- Tips y Consejos -->
         <div class="section">
             <h2>💡 Tips y Consejos</h2>
             <div class="tips">
-                <h4>🎯 Consejos para Usuarios Eficientes</h4>
+                <h4>🎯 Para Usuarios</h4>
                 <ul>
-                    <li><strong>Autocompletado:</strong> Escribe las primeras letras del servidor/sector para filtrar opciones</li>
-                    <li><strong>Servidor Default:</strong> Si no especificas servidor, se usa "Default" automáticamente</li>
-                    <li><strong>Ventana de 24h:</strong> Los bunkers tienen exactamente 24 horas de acceso cuando se abren</li>
-                    <li><strong>Registro de tiempo:</strong> Especifica las horas desde que encontraste el bunker cerrado</li>
-                    <li><strong>Verificación frecuente:</strong> Usa /ba_status_all para ver todos los bunkers de un vistazo</li>
-                    <li><strong>Notificaciones automáticas:</strong> Con Premium, recibes DM cuando los bunkers están por abrirse</li>
+                    <li><strong>Autocompletado:</strong> Escribe las primeras letras para filtrar opciones</li>
+                    <li><strong>Registro automático:</strong> Al usar cualquier comando te registras automáticamente</li>
+                    <li><strong>Cambio de idioma:</strong> Usa <code>/idioma_cambiar</code> para español o <code>/language_change</code> para inglés</li>
+                    <li><strong>Taxi inteligente:</strong> El sistema calcula automáticamente la mejor ruta y precio</li>
+                    <li><strong>Banking seguro:</strong> Todas las transferencias requieren confirmación</li>
+                </ul>
+            </div>
+            
+            <div class="tips">
+                <h4>👑 Para Administradores</h4>
+                <ul>
+                    <li><strong>Configuración inicial:</strong> Usa <code>/ba_admin_setup</code> para asignar administradores</li>
+                    <li><strong>Economía balanceada:</strong> Configura precios de taxi y productos de tienda apropiadamente</li>
+                    <li><strong>Alertas programadas:</strong> Configura avisos de reinicio para mejorar la experiencia</li>
+                    <li><strong>Límites de vehículos:</strong> Ajusta límites según el tipo de servidor (PVP/PVE)</li>
+                    <li><strong>Monitoreo regular:</strong> Usa los comandos de estadísticas para supervisar el uso</li>
                 </ul>
             </div>
         </div>
 
-        <!-- Ejemplo de Flujo Completo -->
+        <!-- Tabla de Comandos por Categoría -->
         <div class="section">
-            <h2>📝 Ejemplo de Uso Completo</h2>
-            <div class="example-flow">
-                <h4>Escenario: Configurar y usar el bot por primera vez</h4>
-                
-                <div class="step">
-                    <strong>Paso 1 - Configuración inicial:</strong><br>
-                    <div class="command">/ba_add_server name:MiServidor-PVP</div>
-                    <p>Agregas tu servidor SCUM favorito al bot</p>
-                </div>
-                
-                <div class="step">
-                    <strong>Paso 2 - Encontrar bunker cerrado:</strong><br>
-                    <div class="command">/ba_register_bunker sector:D1 hours:3 server:MiServidor-PVP</div>
-                    <p>Registras que encontraste un bunker cerrado en D1 hace 3 horas</p>
-                </div>
-                
-                <div class="step">
-                    <strong>Paso 3 - Verificar estado:</strong><br>
-                    <div class="command">/ba_check_bunker sector:D1 server:MiServidor-PVP</div>
-                    <p>El bot te dice: "🔒 CERRADO - Se abre en 5 horas y 23 minutos"</p>
-                </div>
-                
-                <div class="step">
-                    <strong>Paso 4 - Verificar más tarde:</strong><br>
-                    <div class="command">/ba_check_bunker sector:D1 server:MiServidor-PVP</div>
-                    <p>El bot te dice: "🟢 ACTIVO - Abierto por 18 horas más"</p>
-                </div>
-                
-                <div class="step">
-                    <strong>Paso 5 - Confirmar estado:</strong><br>
-                    <div class="command">/ba_close_bunker sector:D1 server:MiServidor-PVP</div>
-                    <p>Después de saquear, marcas el bunker como cerrado permanentemente</p>
-                </div>
-            </div>
+            <h2>📊 Resumen de Comandos por Sistema</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Sistema</th>
+                        <th>Comandos Usuario</th>
+                        <th>Comandos Admin</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>🏰 Bunker Timer</strong></td>
+                        <td>8 comandos</td>
+                        <td>3 comandos</td>
+                        <td>11 comandos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🚖 Sistema de Taxi</strong></td>
+                        <td>12 comandos</td>
+                        <td>5 comandos</td>
+                        <td>17 comandos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🏦 Banking System</strong></td>
+                        <td>5 comandos</td>
+                        <td>4 comandos</td>
+                        <td>9 comandos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🏆 Escuadrones</strong></td>
+                        <td>8 comandos</td>
+                        <td>3 comandos</td>
+                        <td>11 comandos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🛒 Shop System</strong></td>
+                        <td>3 comandos</td>
+                        <td>3 comandos</td>
+                        <td>6 comandos</td>
+                    </tr>
+                    <tr>
+                        <td><strong>🔧 Otros Sistemas</strong></td>
+                        <td>4 comandos</td>
+                        <td>2 comandos</td>
+                        <td>6 comandos</td>
+                    </tr>
+                    <tr style="background: #f8f9fa; font-weight: bold;">
+                        <td><strong>📊 Total General</strong></td>
+                        <td><strong>40 comandos</strong></td>
+                        <td><strong>20 comandos</strong></td>
+                        <td><strong>60+ comandos</strong></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
         <!-- Footer -->
         <div class="footer">
-            <p>🤖 <strong>SCUM Bunker Timer V2.0.0</strong></p>
-            <p>Bot desarrollado para la comunidad SCUM | 20 comandos disponibles (14 públicos + 2 premium + 4 admin)</p>
-            <p>Para soporte técnico, contacta al administrador del servidor Discord</p>
+            <p>🤖 <strong>SCUM Bot Completo v2.5.0</strong></p>
+            <p>Sistema integral desarrollado para la comunidad SCUM | 60+ comandos en 9 sistemas especializados</p>
+            <p>🌍 <strong>Soporte multiidioma:</strong> Español e Inglés | 🔧 <strong>Para soporte:</strong> Contacta a los administradores del Discord</p>
+            <p><strong>🌐 Presentación online:</strong> <a href="http://scumbottimer.duckdns.org:8080/bot_presentation_multilang.html">Ver presentación interactiva</a></p>
         </div>
     </div>
 </body>

@@ -1,0 +1,139 @@
+{
+  "common": {
+    "yes": "Yes",
+    "no": "No", 
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "error": "Error",
+    "success": "Success",
+    "loading": "Loading...",
+    "balance": "Balance",
+    "amount": "Amount",
+    "user": "User",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  
+  "welcome": {
+    "title": "🎉 Welcome to SCUM System!",
+    "register_title": "🎮 Registration - InGame Name",
+    "already_registered": "ℹ️ Already Registered",
+    "already_registered_desc": "You already have an account in the SCUM system",
+    "current_balance": "💰 Current Balance",
+    "welcome_pack_received": "🎉 Welcome Pack Received!",
+    "welcome_desc": "Welcome **{name}**! You have been registered successfully",
+    "ingame_player": "🎮 SCUM Player",
+    "money_received": "💰 Money Received",
+    "taxi_vouchers": "🎫 Taxi Vouchers",
+    "next_steps": "🚖 Next Steps",
+    "next_steps_desc": "• Use `/taxi_request` to request a taxi\n• Use `/bank_balance` to check your money\n• Use `/taxi_zones` to see available zones\n• Use `/bot_presentation` to learn all functions",
+    "invalid_name": "❌ Invalid Name",
+    "invalid_name_desc": "Name must be at least 2 characters long",
+    "registration_error": "❌ Registration Error",
+    "registration_error_desc": "Could not register: {error}",
+    "internal_error": "❌ Internal Error",
+    "internal_error_desc": "There was an error processing your registration. Please try again."
+  },
+  
+  "banking": {
+    "title": "🏦 Banking System",
+    "transfer_money": "💸 Transfer Money",
+    "transfer_title": "💸 Transfer Money",
+    "transfer_desc": "Use the button below to open the transfer form",
+    "your_balance": "💰 Your Balance",
+    "important": "⚠️ Important",
+    "important_desc": "• Verify recipient carefully\n• Transfers cannot be reversed\n• A 2% commission will be applied",
+    "history": "📊 History",
+    "deposit": "💰 Deposit",
+    "withdraw": "💳 Withdraw",
+    "account_info": "ℹ️ Account Info",
+    "system_disabled": "❌ System Disabled",
+    "system_disabled_desc": "Banking system is temporarily disabled",
+    "user_not_found": "❌ User Not Found",
+    "user_not_found_desc": "You don't have a registered account in the system"
+  },
+  
+  "vehicles": {
+    "register_vehicle": "🚗 Register New Vehicle",
+    "register_desc": "Select the type of vehicle you want to register:",
+    "registration_process": "📝 Process",
+    "registration_steps": "1. **Select the type** of vehicle\n2. **Complete the form** with data\n3. **Confirm registration**",
+    "vehicle_id": "Vehicle ID",
+    "vehicle_id_placeholder": "Enter your vehicle's unique ID (e.g.: VEH123456)",
+    "notes": "Notes (Optional)",
+    "notes_placeholder": "Color, condition, modifications, etc.",
+    "vehicle_registered": "✅ Vehicle Registered",
+    "vehicle_registered_desc": "Your **{emoji} {type}** has been registered successfully",
+    "vehicle_info": "🚗 Vehicle Information",
+    "vehicle_info_desc": "**ID:** `{id}`\n**Type:** {emoji} {type}\n**Owner:** {owner}",
+    "squadron_limits": "📊 Squadron Limits",
+    "individual_limits": "📊 Individual Limits", 
+    "invalid_id": "❌ Invalid ID",
+    "invalid_id_desc": "Vehicle ID must be at least 3 characters long",
+    "user_error": "❌ User Error",
+    "user_error_desc": "User not registered or without InGame name",
+    "types": {
+      "moto": "Motorcycle - Agile and economical",
+      "ranger": "Rugged off-road vehicle",
+      "laika": "Reliable standard automobile",
+      "ww": "Heavy cargo vehicle",
+      "avion": "Fast air transport",
+      "barca": "Water vessel"
+    }
+  },
+  
+  "squadron": {
+    "title": "🏆 Squadron System",
+    "create_squadron": "🏆 Create Squadron",
+    "explore_squadrons": "🔍 Explore Squadrons",
+    "my_squadron": "📋 My Squadron", 
+    "leave_squadron": "🚪 Leave Squadron",
+    "already_member": "⚠️ You Already Have a Squadron",
+    "already_member_desc": "You are already **{role}** of squadron **{name}** ({type})",
+    "what_can_do": "🎯 What can you do?",
+    "options_desc": "• **📋 My Squadron** - View details and manage your team\n• **🚪 Leave Squadron** - Leave your current team\n• **Contact Admin** - To change squadron directly",
+    "as_leader": "👑 As Leader",
+    "leader_desc": "You can transfer leadership to another member from **'📋 My Squadron'**",
+    "not_member": "💡 You Don't Belong to Any Squadron",
+    "not_member_desc": "You are currently not in any squadron, so there's nothing to leave.",
+    "join_options": "• **🏆 Create Squadron** - Form your own team\n• **🔍 Explore Squadrons** - Join an existing one"
+  },
+  
+  "taxi": {
+    "title": "🚖 Taxi System",
+    "request_taxi": "🚖 Request Taxi",
+    "driver_register": "👨‍✈️ Driver Registration",
+    "zones": "🗺️ View Zones", 
+    "my_trips": "📋 My Trips",
+    "system_disabled": "❌ System Disabled",
+    "system_disabled_desc": "Taxi system is temporarily disabled",
+    "trip_completed": "✅ Trip Completed",
+    "rate_trip": "⭐ Rate Trip",
+    "driver_info": "👨‍✈️ Driver",
+    "vehicle_info": "🚗 Vehicle",
+    "distance": "📏 Distance",
+    "cost": "💰 Cost",
+    "origin": "📍 Origin",
+    "destination": "🎯 Destination"
+  },
+  
+  "admin": {
+    "access_denied": "❌ Access Denied",
+    "admin_only": "Only administrators can execute this command",
+    "config_updated": "✅ Configuration Updated",
+    "setup_complete": "🎉 Setup Complete",
+    "cleanup_complete": "✅ Cleanup Complete",
+    "no_changes": "💡 No Changes"
+  },
+  
+  "errors": {
+    "generic": "❌ An unexpected error occurred",
+    "database": "❌ Database error", 
+    "permission": "❌ Insufficient permissions",
+    "not_found": "❌ Not found",
+    "invalid_input": "❌ Invalid input",
+    "timeout": "⏰ Timeout",
+    "maintenance": "🔧 System under maintenance"
+  }
+}
