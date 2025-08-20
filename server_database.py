@@ -90,31 +90,69 @@ class ServerDatabase:
             return False
     
     async def remove_monitored_server(self, guild_id: str, server_name: str) -> bool:
-        """Remover servidor del monitoreo"""
+        """Remover servidor del monitoreo y limpiar todas las suscripciones relacionadas"""
         try:
+            server_id = f"{guild_id}_{server_name.lower().replace(' ', '_')}"
+            
+            # === LIMPIEZA COMPLETA DE DATOS RELACIONADOS ===
+            
+            # Limpiar datos del sistema de monitoreo (server_database)
             async with aiosqlite.connect(self.db_path) as db:
-                server_id = f"{guild_id}_{server_name.lower().replace(' ', '_')}"
-                
-                # Eliminar historial primero
+                # 1. Eliminar historial de estado del servidor
                 await db.execute(
                     'DELETE FROM server_status_history WHERE server_id = ?',
                     (server_id,)
                 )
+                logger.info(f"Eliminado historial de estado para servidor '{server_name}' en guild {guild_id}")
                 
-                # Eliminar servidor
+                # 2. Eliminar servidor de la tabla principal
                 cursor = await db.execute(
                     'DELETE FROM monitored_servers WHERE server_id = ?',
                     (server_id,)
                 )
                 
                 await db.commit()
+                server_deleted = cursor.rowcount > 0
+            
+            # Limpiar datos del sistema de alertas de reinicio (taxi_database)
+            try:
+                from taxi_database import taxi_db
                 
-                if cursor.rowcount > 0:
-                    logger.info(f"Servidor {server_name} eliminado del guild {guild_id}")
-                    return True
-                else:
-                    logger.warning(f"Servidor {server_name} no encontrado en guild {guild_id}")
-                    return False
+                # 3. Eliminar suscripciones de alertas de reinicio de usuarios
+                async with aiosqlite.connect(taxi_db.db_path) as taxi_conn:
+                    await taxi_conn.execute(
+                        'DELETE FROM user_reset_alerts WHERE server_name = ? AND guild_id = ?',
+                        (server_name, guild_id)
+                    )
+                    logger.info(f"Eliminadas suscripciones de alertas de reinicio para servidor '{server_name}' en guild {guild_id}")
+                    
+                    # 4. Eliminar historial de alertas enviadas (tabla correcta: reset_alert_cache)
+                    await taxi_conn.execute(
+                        'DELETE FROM reset_alert_cache WHERE server_name = ? AND guild_id = ?',
+                        (server_name, guild_id)
+                    )
+                    logger.info(f"Eliminado caché de alertas enviadas para servidor '{server_name}' en guild {guild_id}")
+                    
+                    # 5. Eliminar horarios de reinicio programados
+                    await taxi_conn.execute(
+                        'DELETE FROM reset_schedules WHERE server_name = ?',
+                        (server_name,)
+                    )
+                    logger.info(f"Eliminados horarios de reinicio para servidor '{server_name}'")
+                    
+                    await taxi_conn.commit()
+                    
+            except ImportError:
+                logger.warning("taxi_database no disponible para limpieza de alertas de reinicio")
+            except Exception as taxi_error:
+                logger.error(f"Error limpiando datos de alertas de reinicio: {taxi_error}")
+                
+            if server_deleted:
+                logger.info(f"Servidor '{server_name}' eliminado completamente del guild {guild_id} con limpieza de suscripciones")
+                return True
+            else:
+                logger.warning(f"Servidor {server_name} no encontrado en guild {guild_id}")
+                return False
                 
         except Exception as e:
             logger.error(f"Error eliminando servidor {server_name}: {e}")

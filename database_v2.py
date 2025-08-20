@@ -189,17 +189,25 @@ class BunkerDatabaseV2:
                 if not await cursor.fetchone():
                     return False
                 
-                # Eliminar notificaciones del servidor en este guild
+                # === LIMPIEZA COMPLETA DE DATOS RELACIONADOS ===
+                
+                # 1. Eliminar configuraciones de notificación específicas del servidor
+                await db.execute("DELETE FROM notification_configs WHERE server_name = ? AND discord_guild_id = ?", (name, guild_id))
+                logger.info(f"Eliminadas configuraciones de notificación para servidor '{name}' en guild {guild_id}")
+                
+                # 2. Eliminar notificaciones pendientes del servidor
                 await db.execute("DELETE FROM notifications WHERE server_name = ? AND discord_guild_id = ?", (name, guild_id))
+                logger.info(f"Eliminadas notificaciones pendientes para servidor '{name}' en guild {guild_id}")
                 
-                # Eliminar bunkers del servidor en este guild
+                # 3. Eliminar bunkers del servidor en este guild
                 await db.execute("DELETE FROM bunkers WHERE server_name = ? AND discord_guild_id = ?", (name, guild_id))
+                logger.info(f"Eliminados bunkers para servidor '{name}' en guild {guild_id}")
                 
-                # Eliminar el servidor de este guild
+                # 4. Eliminar el servidor de este guild
                 await db.execute("DELETE FROM servers WHERE name = ? AND discord_guild_id = ?", (name, guild_id))
                 
                 await db.commit()
-                logger.info(f"Servidor '{name}' eliminado correctamente")
+                logger.info(f"Servidor '{name}' eliminado correctamente con limpieza completa de datos")
                 return True
                 
         except Exception as e:

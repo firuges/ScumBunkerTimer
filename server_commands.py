@@ -5,6 +5,7 @@ Comandos de Discord para sistema de monitoreo de servidores SCUM
 
 import discord
 from discord.ext import commands
+from discord import app_commands
 import asyncio
 import logging
 from datetime import datetime, timedelta
@@ -224,7 +225,46 @@ class ServerCommands(commands.Cog):
             )
             await self._safe_send(ctx, embed=embed)
     
+    async def monitored_server_autocomplete(self, interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+        """Autocompletado dinámico para servidores monitoreados"""
+        try:
+            # Verificar que la interacción sea válida
+            if not interaction.guild:
+                return [app_commands.Choice(name="❌ Ejecutar en servidor", value="no_guild")]
+            
+            guild_id = str(interaction.guild.id)
+            servers = await server_db.get_monitored_servers(guild_id)
+            
+            if not servers:
+                return [app_commands.Choice(name="⚠️ No hay servidores monitoreados", value="no_servers")]
+            
+            # Filtrar servidores por texto actual
+            current_lower = current.lower()
+            choices = []
+            
+            for server in servers:
+                server_name = server['server_name']
+                if current_lower in server_name.lower():
+                    # Agregar emoji de estado
+                    status_emoji = "🟢" if server.get('last_status') == 'online' else "🔴"
+                    display_name = f"{status_emoji} {server_name}"
+                    
+                    # Limitar longitud del nombre mostrado
+                    if len(display_name) > 100:
+                        display_name = display_name[:97] + "..."
+                    
+                    choices.append(app_commands.Choice(name=display_name, value=server_name))
+            
+            # Limitar a 25 opciones (límite de Discord)
+            return choices[:25]
+            
+        except Exception as e:
+            logger.error(f"Error en monitored_server_autocomplete: {e}")
+            return [app_commands.Choice(name="❌ Error cargando servidores", value="error")]
+
     @commands.hybrid_command(name='ba_monitor_server_remove')
+    @app_commands.autocomplete(server_name=monitored_server_autocomplete)
+    @app_commands.describe(server_name="Nombre del servidor SCUM a eliminar del monitoreo")
     async def remove_monitored_server(self, ctx, *, server_name: str):
         """
         [ADMIN] Remover servidor del monitoreo
@@ -465,6 +505,11 @@ class ServerCommands(commands.Cog):
             await self._safe_send(ctx, embed=embed)
     
     @commands.hybrid_command(name='ba_monitor_alerts')
+    @app_commands.autocomplete(server_name=monitored_server_autocomplete)
+    @app_commands.describe(
+        server_name="Nombre del servidor SCUM",
+        enabled="Activar (True) o desactivar (False) las alertas"
+    )
     async def toggle_server_alerts(self, ctx, server_name: str, enabled: bool):
         """
         [ADMIN] Activar/desactivar alertas para un servidor

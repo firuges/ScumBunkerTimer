@@ -1692,7 +1692,7 @@ class MechanicSystemView(discord.ui.View):
             
             embed.add_field(
                 name="💡 Información Adicional",
-                value="• El seguro cubre **pérdida total** del vehículo\n• **ID único** requerido para cada vehículo\n• **Nombre InGame** debe estar configurado\n• Pago único por vehículo asegurado",
+                value="• El seguro cubre **pérdida parcial** del vehículo\n• **ID único** requerido para cada vehículo\n• **Nombre InGame** debe estar configurado\n• Pago único por vehículo asegurado",
                 inline=False
             )
             
@@ -1907,7 +1907,7 @@ class MechanicSystemView(discord.ui.View):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
-    @discord.ui.button(label="🚗 Gestionar Vehículos", style=discord.ButtonStyle.primary, custom_id="manage_vehicles")
+    @discord.ui.button(label="🚗 Gestionar Mis Vehículos", style=discord.ButtonStyle.primary, custom_id="manage_vehicles")
     async def manage_vehicles(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Panel para gestionar vehículos registrados"""
         await interaction.response.defer(ephemeral=True)
