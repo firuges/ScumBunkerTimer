@@ -10,6 +10,7 @@ from database_v2 import BunkerDatabaseV2
 import logging
 from datetime import datetime, timedelta
 import json
+from rate_limiter import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +61,15 @@ async def server_autocomplete(interaction: discord.Interaction, current: str) ->
         logger.error(f"Error en server_autocomplete: {e}")
         return [app_commands.Choice(name="Default", value="Default")]
 
+@rate_limit("ba_stats")
 @app_commands.command(name="ba_stats", description="[PREMIUM] Estadísticas avanzadas de bunkers")
 @premium_required("estadísticas avanzadas")
 async def premium_stats(interaction: discord.Interaction, server: str = "Default"):
     """Estadísticas detalladas solo para premium"""
-    # NO DEFER - Responder directamente
+    # Manual rate limiting check
+    from rate_limiter import rate_limiter
+    if not await rate_limiter.check_and_record(interaction, "ba_stats"):
+        return
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -132,6 +137,7 @@ async def premium_stats(interaction: discord.Interaction, server: str = "Default
         )
         await interaction.response.send_message(embed=embed)
 
+@rate_limit("ba_notifications")
 @app_commands.command(name="ba_notifications", description="[PREMIUM] Configurar notificaciones avanzadas")
 @app_commands.autocomplete(server=server_autocomplete)
 @app_commands.describe(
@@ -165,7 +171,10 @@ async def premium_notifications(interaction: discord.Interaction,
                               role_mention: discord.Role = None,
                               enabled: bool = True):
     """Configurar notificaciones avanzadas (premium)"""
-    # NO DEFER - Responder directamente
+    # Manual rate limiting check
+    from rate_limiter import rate_limiter
+    if not await rate_limiter.check_and_record(interaction, "ba_notifications"):
+        return
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -275,10 +284,16 @@ async def premium_notifications(interaction: discord.Interaction,
         )
         await interaction.response.send_message(embed=embed)
 
+@rate_limit("ba_check_notifications")
 @app_commands.command(name="ba_check_notifications", description="[PREMIUM] Verificar estado del sistema de notificaciones")
 @premium_required("verificación de notificaciones")
 async def check_notifications(interaction: discord.Interaction):
     """Verificar el estado de las notificaciones pendientes y configuraciones"""
+    # Manual rate limiting check
+    from rate_limiter import rate_limiter
+    if not await rate_limiter.check_and_record(interaction, "ba_check_notifications"):
+        return
+    
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         db = BunkerDatabaseV2()
@@ -350,12 +365,18 @@ async def check_notifications(interaction: discord.Interaction):
         )
         await interaction.response.send_message(embed=embed)
 
+@rate_limit("ba_export")
 @app_commands.command(name="ba_export", description="[PREMIUM] Exportar datos de bunkers")
 @premium_required("exportación de datos")
 async def premium_export(interaction: discord.Interaction, 
                         format_type: str = "json",
                         server: str = "Default"):
     """Exportar datos en varios formatos (premium)"""
+    # Manual rate limiting check
+    from rate_limiter import rate_limiter
+    if not await rate_limiter.check_and_record(interaction, "ba_export"):
+        return
+    
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         db = BunkerDatabaseV2()

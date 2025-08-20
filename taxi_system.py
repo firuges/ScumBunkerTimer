@@ -14,6 +14,7 @@ from taxi_database import taxi_db
 from taxi_config import taxi_config
 import math
 import aiosqlite
+from rate_limiter import rate_limit, rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,7 @@ class TaxiSystem(commands.Cog):
 
     # === COMANDOS DE TAXI ===
     
+    @rate_limit("taxi_solicitar")
     @app_commands.command(name="taxi_solicitar", description="🚖 Solicitar un taxi")
     @app_commands.describe(
         destino="Zona de destino",
@@ -188,6 +190,10 @@ class TaxiSystem(commands.Cog):
     ])
     async def taxi_solicitar(self, interaction: discord.Interaction, destino: str, vehiculo: str = "sedan"):
         """Solicitar un taxi"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_solicitar"):
+            return
+        
         await interaction.response.defer()
         
         # Verificar si el sistema está habilitado
@@ -310,9 +316,14 @@ class TaxiSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_status")
     @app_commands.command(name="taxi_status", description="📊 Ver estado de tu solicitud de taxi")
     async def taxi_status(self, interaction: discord.Interaction):
         """Ver estado de solicitud activa"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_status"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         # Buscar solicitud activa  
@@ -377,9 +388,14 @@ class TaxiSystem(commands.Cog):
         embed.set_footer(text="Usa /taxi_cancelar para cancelar la solicitud")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_cancelar")
     @app_commands.command(name="taxi_cancelar", description="❌ Cancelar tu solicitud de taxi")
     async def taxi_cancelar(self, interaction: discord.Interaction):
         """Cancelar solicitud de taxi activa"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_cancelar"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         # Buscar solicitud activa
@@ -423,9 +439,14 @@ class TaxiSystem(commands.Cog):
         
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_zonas")
     @app_commands.command(name="taxi_zonas", description="🗺️ Ver zonas disponibles para taxi")
     async def taxi_zonas(self, interaction: discord.Interaction):
         """Mostrar zonas disponibles"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_zonas"):
+            return
+        
         await interaction.response.defer()
         
         embed = discord.Embed(
@@ -482,9 +503,14 @@ class TaxiSystem(commands.Cog):
         embed.set_footer(text="Usa /taxi_solicitar [zona] para pedir un taxi")
         await interaction.followup.send(embed=embed)
 
+    @rate_limit("taxi_tarifas")
     @app_commands.command(name="taxi_tarifas", description="💰 Ver tarifas del servicio de taxi")
     async def taxi_tarifas(self, interaction: discord.Interaction):
         """Mostrar tarifas del taxi"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_tarifas"):
+            return
+        
         await interaction.response.defer()
         
         embed = discord.Embed(
@@ -586,6 +612,7 @@ class TaxiSystem(commands.Cog):
             logger.error(f"Error en autocompletado de servidores: {e}")
             return []
 
+    @rate_limit("ba_reset_alerts")
     @app_commands.command(name="ba_reset_alerts", description="🔔 Gestionar alertas de reinicio de servidores")
     @app_commands.describe(
         action="Acción a realizar",
@@ -603,6 +630,10 @@ class TaxiSystem(commands.Cog):
                                 server_name: str = None, 
                                 minutes_before: int = 15):
         """Gestionar suscripciones a alertas de reinicio"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "ba_reset_alerts"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:

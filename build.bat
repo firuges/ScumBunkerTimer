@@ -128,6 +128,18 @@ copy "shop_config.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 echo ✅ Sistema premium copiado
 
 :: ===========================================
+::   SISTEMA DE RATE LIMITING Y ESCALABILIDAD
+:: ===========================================
+echo.
+echo ⚡ Copiando sistema de rate limiting y escalabilidad...
+
+copy "rate_limiter.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "rate_limit_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "database_pool.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Sistema de rate limiting copiado
+
+:: ===========================================
 ::   SISTEMA DE ALERTAS
 :: ===========================================
 echo.
@@ -152,6 +164,10 @@ copy "test_taxi_system.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "test_database_fix.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "debug_user.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "check_db.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: Scripts de prueba para rate limiting y escalabilidad
+copy "test_rate_limiting.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "test_bot_integration.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 :: Scripts de migración críticos
 copy "migrate_system_tables.py" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -324,6 +340,8 @@ echo TAXI_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
 echo PREMIUM_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
 echo MECHANIC_SYSTEM_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
 echo SERVER_MONITOR_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
+echo RATE_LIMITING_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
+echo DATABASE_POOL_ENABLED = True >> "%BUILD_FULL_DIR%\config.py"
 
 echo ✅ config.py creado con configuración completa
 
@@ -344,9 +362,9 @@ echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.
 echo echo   SCUM Bot V2 - Instalador Completo >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo   Sistema completo con 9 subsistemas: >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   Sistema completo con 10 subsistemas: >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo   ^🏠 Bunkers ^🚖 Taxi ^🏦 Bancario ^🔧 Mecánico ^🏆 Escuadrones >> "%BUILD_FULL_DIR%\INSTALL.bat"
-echo echo   ^📊 Monitoreo ^💎 Premium ^🔔 Alertas ^⚙️ Admin >> "%BUILD_FULL_DIR%\INSTALL.bat"
+echo echo   ^📊 Monitoreo ^💎 Premium ^🔔 Alertas ^⚙️ Admin ^⚡ Rate Limiting >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo ======================================== >> "%BUILD_FULL_DIR%\INSTALL.bat"
 echo echo. >> "%BUILD_FULL_DIR%\INSTALL.bat"
@@ -440,7 +458,7 @@ echo echo ✅ Sistema verificado - Iniciando bot... >> "%BUILD_FULL_DIR%\start_b
 echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo echo 🤖 Sistemas activos: >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo echo    ^🏠 Bunkers   ^🚖 Taxi      ^🏦 Bancario  ^🔧 Mecánico  ^🏆 Escuadrones >> "%BUILD_FULL_DIR%\start_bot.bat"
-echo echo    ^📊 Monitor   ^💎 Premium   ^🔔 Alertas   ^⚙️ Admin >> "%BUILD_FULL_DIR%\start_bot.bat"
+echo echo    ^📊 Monitor   ^💎 Premium   ^🔔 Alertas   ^⚙️ Admin    ^⚡ RateLimit >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo echo ========================================== >> "%BUILD_FULL_DIR%\start_bot.bat"
 echo echo. >> "%BUILD_FULL_DIR%\start_bot.bat"
@@ -546,11 +564,19 @@ echo - Panel de control completo >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo - Configuración por servidor >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo - Herramientas de diagnóstico >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### ⚡ Sistema de Rate Limiting ^(NUEVO^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Control de uso por usuario y servidor >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Cooldowns configurables por comando >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Prevención de spam y sobrecarga >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Estadísticas de uso en tiempo real >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Comandos administrativos para gestión >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Pool de conexiones de base de datos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ## 📊 Estadísticas del Sistema >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ```yaml >> "%BUILD_FULL_DIR%\README_BUILD.md"
-echo Comandos Totales: 55+ >> "%BUILD_FULL_DIR%\README_BUILD.md"
-echo Sistemas Integrados: 9 >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Comandos Totales: 60+ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo Sistemas Integrados: 10 >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo Tipos de Vehículos: 6 ^(Moto, Ranger, Laika, WW, Avion, Barca^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo Zonas del Mapa: 20+ >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo Canales Configurables: 8 ^(incluye Canal de Escuadrones^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
@@ -590,6 +616,13 @@ echo │   ├── premium_exclusive_commands.py >> "%BUILD_FULL_DIR%\README_B
 echo │   ├── subscription_manager.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo │   └── shop_config.py >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ├── Sistema Rate Limiting: >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── rate_limiter.py               # Core rate limiting >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── rate_limit_admin.py           # Comandos administrativos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── database_pool.py              # Pool de conexiones DB >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   ├── test_rate_limiting.py         # Pruebas unitarias >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │   └── test_bot_integration.py       # Pruebas de integración >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo │ >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ├── docs/                       # Documentación completa >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ├── scripts/                    # Scripts de instalación >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ├── databases/                  # Bases de datos existentes >> "%BUILD_FULL_DIR%\README_BUILD.md"
@@ -614,6 +647,8 @@ echo ```python >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo python check_db.py              # Verificar base de datos >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo python migrate_taxi_db.py       # Migrar datos de taxi >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo python migrate_mechanic_db.py   # Migrar sistema de mecánico >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python test_rate_limiting.py    # Probar sistema de rate limiting >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python test_bot_integration.py  # Verificar integración completa >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 
@@ -660,12 +695,12 @@ echo.
 echo 🎮 SISTEMA COMPLETO INCLUIDO:
 echo    🏠 Bunkers         📊 Monitor      💎 Premium     🔔 Alertas
 echo    🚖 Taxi           🏦 Bancario     🔧 Mecánico    🏆 Escuadrones
-echo    ⚙️ Admin
+echo    ⚙️ Admin          ⚡ RateLimit
 echo.
 echo 📊 ESTADÍSTICAS DEL BUILD:
-echo    ✅ 55+ comandos de Discord funcionales
-echo    ✅ 9 sistemas completamente integrados
-echo    ✅ 22+ archivos Python principales
+echo    ✅ 60+ comandos de Discord funcionales
+echo    ✅ 10 sistemas completamente integrados
+echo    ✅ 25+ archivos Python principales
 echo    ✅ Documentación completa incluida
 echo    ✅ Scripts de instalación automática
 echo    ✅ Compatible con Python 3.13
@@ -722,6 +757,11 @@ echo    ✅ 6 tipos de vehículos soportados ^(eliminado hydroavion^)
 echo    ✅ Paneles que se limpian y recrean automáticamente
 echo    ✅ Monitoreo en tiempo real de servidores SCUM
 echo    ✅ Sistema premium con tienda virtual integrada
+echo    ✅ Rate limiting avanzado con cooldowns configurables
+echo    ✅ Pool de conexiones de base de datos para mejor rendimiento
+echo    ✅ Comandos administrativos para gestión de límites
+echo    ✅ Estadísticas de uso en tiempo real
+echo    ✅ Prevención automática de spam y sobrecarga
 echo.
 echo ===============================================
 echo.

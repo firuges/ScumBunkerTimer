@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(cp:*)",
+      "Bash(timeout 25 python BunkerAdvice_V2.py)",
+      "Bash(timeout 30 python BunkerAdvice_V2.py)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

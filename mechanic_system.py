@@ -14,8 +14,17 @@ import typing
 from datetime import datetime, timedelta
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from rate_limiter import rate_limit, rate_limiter
 
 logger = logging.getLogger(__name__)
+
+class BaseView(discord.ui.View):
+    """Clase base para todas las vistas con manejo correcto de timeout"""
+    
+    async def on_timeout(self):
+        """Manejar timeout de la vista de forma asíncrona"""
+        for item in self.children:
+            item.disabled = True
 
 class VehicleInsuranceModal(discord.ui.Modal, title="🔧 Solicitar Seguro de Vehículo"):
     def __init__(self):
@@ -49,6 +58,64 @@ class VehicleInsuranceModal(discord.ui.Modal, title="🔧 Solicitar Seguro de Ve
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
+        
+        # NUEVO: Verificar si el vehículo ya tiene seguro o está pendiente
+        try:
+            guild_id = str(interaction.guild.id)
+            existing_insurance = await check_vehicle_insurance_status(vehicle_id, guild_id)
+            
+            if existing_insurance:
+                status = existing_insurance['status']
+                if status == 'active':
+                    embed = discord.Embed(
+                        title="⚠️ Vehículo Ya Asegurado",
+                        description=f"El vehículo `{vehicle_id}` ya tiene un seguro activo.",
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(
+                        name="📋 Información del Seguro",
+                        value=f"**ID Seguro:** `{existing_insurance['insurance_id']}`\n**Costo:** ${existing_insurance['cost']:,.0f}\n**Método:** {existing_insurance['payment_method'].title()}",
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="💡 ¿Qué puedo hacer?",
+                        value="• Usa `/seguro_consultar` para ver todos tus seguros\n• Si perdiste el vehículo, contacta a un mecánico para el reclamo",
+                        inline=False
+                    )
+                elif status == 'pending_confirmation':
+                    embed = discord.Embed(
+                        title="⏳ Seguro Pendiente de Confirmación",
+                        description=f"El vehículo `{vehicle_id}` ya tiene una solicitud de seguro pendiente.",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(
+                        name="🔍 Estado Actual",
+                        value="Tu solicitud está esperando confirmación de un mecánico. **No se ha realizado ningún cobro aún.**",
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="💡 ¿Qué puedo hacer?",
+                        value="• Espera a que un mecánico confirme tu solicitud\n• Los mecánicos reciben notificaciones automáticamente\n• Contacta a un mecánico en el servidor si es urgente",
+                        inline=False
+                    )
+                else:
+                    # Otro estado (por ejemplo, rejected, expired, etc.)
+                    embed = discord.Embed(
+                        title="⚠️ Seguro en Estado Especial",
+                        description=f"El vehículo `{vehicle_id}` tiene un seguro en estado: **{status}**",
+                        color=discord.Color.orange()
+                    )
+                    embed.add_field(
+                        name="💡 Recomendación",
+                        value="Contacta a un administrador o mecánico para revisar el estado de este seguro.",
+                        inline=False
+                    )
+                
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+        except Exception as e:
+            logger.error(f"Error verificando estado del seguro para {vehicle_id}: {e}")
+            # Si hay error en la verificación, permitir continuar pero logear el error
         
         # Mostrar vista con selectores
         view = VehicleInsuranceSelectView(vehicle_id, description)
@@ -86,7 +153,7 @@ class VehicleInsuranceModal(discord.ui.Modal, title="🔧 Solicitar Seguro de Ve
         
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-class VehicleInsuranceSelectView(discord.ui.View):
+class VehicleInsuranceSelectView(BaseView):
     """Vista con selectores para configurar seguro de vehículo"""
     def __init__(self, vehicle_id: str, description: str, vehicle_type: str = None, auto_zone_detection: bool = True):
         super().__init__(timeout=300)  # 5 minutos
@@ -490,6 +557,8 @@ class VehicleInsuranceSelectView(discord.ui.View):
                         'description': self.description,
                         'client_display_name': interaction.user.display_name,
                         'ingame_name': ingame_name,
+                        'owner_ingame_name': ingame_name,  # Agregar campo faltante
+                        'owner_discord_id': str(interaction.user.id),  # También agregar este
                         'cost': insurance_cost,
                         'payment_method': self.payment_method,
                         'status': payment_status.split(' ')[0]  # Extraer solo el emoji/estado
@@ -526,10 +595,6 @@ class VehicleInsuranceSelectView(discord.ui.View):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
-    def on_timeout(self):
-        """Manejar timeout de la vista"""
-        for item in self.children:
-            item.disabled = True
 
 def calculate_vehicle_insurance_cost(vehicle_type: str) -> int:
     """Calcular costo del seguro basado en el tipo de vehículo"""
@@ -686,7 +751,8 @@ async def create_vehicle_insurance(vehicle_id: str, vehicle_type: str, vehicle_l
     """Crear un nuevo seguro de vehículo en la base de datos"""
     try:
         async with aiosqlite.connect(taxi_db.db_path) as db:
-            status = 'active' if payment_method == 'discord' else 'pending_payment'
+            # Todos los seguros empiezan en estado 'pending_confirmation' hasta que el mecánico confirme
+            status = 'pending_confirmation'
             cursor = await db.execute("""
                 INSERT INTO vehicle_insurance (
                     vehicle_id, vehicle_type, vehicle_location, description,
@@ -712,6 +778,46 @@ async def create_vehicle_insurance(vehicle_id: str, vehicle_type: str, vehicle_l
             
     except Exception as e:
         logger.error(f"Error creando seguro de vehículo: {e}")
+        return None
+
+async def check_vehicle_insurance_status(vehicle_id: str, guild_id: str) -> dict:
+    """Verificar si un vehículo ya tiene seguro (activo o pendiente)"""
+    try:
+        async with aiosqlite.connect(taxi_db.db_path) as db:
+            cursor = await db.execute("""
+                SELECT insurance_id, vehicle_id, vehicle_type, vehicle_location, 
+                       description, owner_discord_id, owner_ingame_name, guild_id, 
+                       cost, payment_method, status, created_at, confirmed_by, confirmed_at
+                FROM vehicle_insurance 
+                WHERE vehicle_id = ? AND guild_id = ? 
+                AND status IN ('active', 'pending_confirmation')
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (vehicle_id, guild_id))
+            
+            result = await cursor.fetchone()
+            
+            if result:
+                return {
+                    'insurance_id': result[0],
+                    'vehicle_id': result[1], 
+                    'vehicle_type': result[2],
+                    'vehicle_location': result[3],
+                    'description': result[4],
+                    'owner_discord_id': result[5],
+                    'owner_ingame_name': result[6],
+                    'guild_id': result[7],
+                    'cost': result[8],
+                    'payment_method': result[9],
+                    'status': result[10],
+                    'created_at': result[11],
+                    'confirmed_by': result[12],
+                    'confirmed_at': result[13]
+                }
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error verificando estado del seguro para vehículo {vehicle_id}: {e}")
         return None
 
 async def get_vehicle_insurance(vehicle_id: str, guild_id: str) -> dict:
@@ -910,6 +1016,9 @@ async def send_mechanic_notifications(bot, guild, insurance_data: dict):
         
         logger.info(f"Notificaciones de seguro enviadas: {notifications_sent}/{len(mechanics)} mecánicos en {guild.name}")
         
+        # NUEVO: Enviar también al canal de notificaciones con botones
+        await send_channel_notification(bot, guild, insurance_data)
+        
         # Si hay múltiples mecánicos, agregar información sobre competencia
         if len(mechanics) > 1:
             try:
@@ -938,6 +1047,76 @@ async def send_mechanic_notifications(bot, guild, insurance_data: dict):
         
     except Exception as e:
         logger.error(f"Error enviando notificaciones a mecánicos: {e}")
+
+async def send_channel_notification(bot, guild, insurance_data: dict):
+    """Enviar notificación al canal configurado con botones de confirmación/rechazo"""
+    try:
+        # Obtener el canal de notificaciones configurado
+        mechanic_cog = bot.get_cog('MechanicSystem')
+        if not mechanic_cog:
+            logger.error("MechanicSystem cog no encontrado")
+            return
+        
+        notification_channel_id = mechanic_cog.mechanic_notification_channels.get(guild.id)
+        if not notification_channel_id:
+            logger.info(f"No hay canal de notificaciones configurado para {guild.name}")
+            return
+        
+        channel = bot.get_channel(notification_channel_id)
+        if not channel:
+            logger.error(f"Canal de notificaciones {notification_channel_id} no encontrado")
+            return
+        
+        # Crear embed para el canal
+        embed = discord.Embed(
+            title="🔔 Nueva Solicitud de Seguro",
+            description="**Acción requerida por mecánicos**",
+            color=0xff8800,
+            timestamp=datetime.now()
+        )
+        
+        embed.add_field(
+            name="🚗 Vehículo",
+            value=f"**Tipo:** {insurance_data['vehicle_type'].title()}\n**ID:** `{insurance_data['vehicle_id']}`\n**Ubicación:** {insurance_data['vehicle_location']}",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="👤 Cliente",
+            value=f"**Discord:** {insurance_data['client_display_name']}\n**InGame:** `{insurance_data['ingame_name']}`",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💰 Seguro",
+            value=f"**Costo:** ${insurance_data['cost']:,.0f}\n**Pago:** {insurance_data['payment_method'].title()}\n**ID:** `{insurance_data['insurance_id']}`",
+            inline=True
+        )
+        
+        if insurance_data.get('description'):
+            embed.add_field(
+                name="📝 Descripción",
+                value=insurance_data['description'],
+                inline=False
+            )
+        
+        embed.add_field(
+            name="⚠️ Importante",
+            value="• **Confirmar:** Procesa el pago y activa el seguro\n• **Rechazar:** Cancela la solicitud sin cobrar\n• El débito de Discord se hará solo tras confirmación",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Servidor: {guild.name} • {datetime.now().strftime('%H:%M:%S')}")
+        
+        # Crear vista con botones
+        view = InsuranceConfirmationView(insurance_data, bot)
+        
+        # Enviar mensaje al canal
+        await channel.send(embed=embed, view=view)
+        logger.info(f"Notificación enviada al canal {channel.name} en {guild.name}")
+        
+    except Exception as e:
+        logger.error(f"Error enviando notificación al canal: {e}")
 
 class ManualZoneSelectView(discord.ui.View):
     """Vista para selección manual de zona cuando se quiere sobrescribir la auto-detección"""
@@ -1900,7 +2079,9 @@ class VehicleManagementView(discord.ui.View):
         if len(self.user_vehicles) > 10:
             embed.set_footer(text=f"Mostrando 10 de {len(self.user_vehicles)} vehículos")
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Crear vista con botón de editar
+        edit_view = VehicleEditView(self.user_vehicles)
+        await interaction.followup.send(embed=embed, view=edit_view, ephemeral=True)
     
     @discord.ui.button(label="❌ Dar de Baja", style=discord.ButtonStyle.danger)
     async def unregister_vehicle_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2183,6 +2364,166 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error registrando el vehículo",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+class VehicleEditView(BaseView):
+    """Vista para editar vehículos"""
+    def __init__(self, user_vehicles: list):
+        super().__init__(timeout=300)
+        self.user_vehicles = user_vehicles
+    
+    @discord.ui.button(label="✏️ Editar ID", style=discord.ButtonStyle.secondary, emoji="🔧")
+    async def edit_vehicle_id(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Abrir selector para editar ID de vehículo"""
+        if not self.user_vehicles:
+            embed = discord.Embed(
+                title="❌ Sin Vehículos",
+                description="No tienes vehículos para editar",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        # Crear opciones para el selector
+        options = []
+        for vehicle in self.user_vehicles[:25]:  # Límite Discord
+            vehicle_id = vehicle[1]
+            vehicle_type = vehicle[2]
+            status = "🟢" if vehicle[9] == 'active' else "🔴"
+            
+            options.append(discord.SelectOption(
+                label=f"{vehicle_type.title()} - {vehicle_id}",
+                description=f"ID actual: {vehicle_id} {status}",
+                value=vehicle_id
+            ))
+        
+        view = VehicleEditSelectView(options)
+        embed = discord.Embed(
+            title="✏️ Editar ID de Vehículo",
+            description="Selecciona el vehículo cuyo ID quieres corregir:",
+            color=discord.Color.blue()
+        )
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+class VehicleEditSelectView(BaseView):
+    """Vista con selector para elegir qué vehículo editar"""
+    def __init__(self, options: list):
+        super().__init__(timeout=300)
+        self.add_item(VehicleEditSelect(options))
+
+class VehicleEditSelect(discord.ui.Select):
+    def __init__(self, options: list):
+        super().__init__(
+            placeholder="Selecciona el vehículo a editar...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        old_vehicle_id = self.values[0]
+        modal = VehicleEditModal(old_vehicle_id)
+        await interaction.response.send_modal(modal)
+
+class VehicleEditModal(discord.ui.Modal, title="✏️ Editar ID de Vehículo"):
+    def __init__(self, old_vehicle_id: str):
+        super().__init__()
+        self.old_vehicle_id = old_vehicle_id
+        
+        self.new_id = discord.ui.TextInput(
+            label="Nuevo ID del Vehículo",
+            placeholder=f"ID actual: {old_vehicle_id}",
+            default=old_vehicle_id,
+            max_length=50,
+            required=True
+        )
+        self.add_item(self.new_id)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        new_vehicle_id = self.new_id.value.strip()
+        guild_id = str(interaction.guild.id)
+        
+        # Validaciones
+        if new_vehicle_id == self.old_vehicle_id:
+            embed = discord.Embed(
+                title="⚠️ Sin Cambios",
+                description="El nuevo ID es igual al actual.",
+                color=discord.Color.orange()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        if len(new_vehicle_id) < 3:
+            embed = discord.Embed(
+                title="❌ ID Inválido",
+                description="El ID debe tener al menos 3 caracteres.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        
+        try:
+            # Verificar si el nuevo ID ya existe
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT vehicle_id FROM registered_vehicles 
+                    WHERE vehicle_id = ? AND guild_id = ?
+                """, (new_vehicle_id, guild_id))
+                existing = await cursor.fetchone()
+                
+                if existing:
+                    embed = discord.Embed(
+                        title="❌ ID Ya Existe",
+                        description=f"El ID `{new_vehicle_id}` ya está en uso por otro vehículo.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                
+                # Actualizar el ID del vehículo
+                await db.execute("""
+                    UPDATE registered_vehicles 
+                    SET vehicle_id = ? 
+                    WHERE vehicle_id = ? AND guild_id = ?
+                """, (new_vehicle_id, self.old_vehicle_id, guild_id))
+                
+                # Actualizar seguros relacionados
+                await db.execute("""
+                    UPDATE vehicle_insurance 
+                    SET vehicle_id = ? 
+                    WHERE vehicle_id = ? AND guild_id = ?
+                """, (new_vehicle_id, self.old_vehicle_id, guild_id))
+                
+                await db.commit()
+                
+                embed = discord.Embed(
+                    title="✅ ID Actualizado",
+                    description=f"ID del vehículo cambiado exitosamente:",
+                    color=discord.Color.green()
+                )
+                embed.add_field(
+                    name="Cambio Realizado",
+                    value=f"**Anterior:** `{self.old_vehicle_id}`\n**Nuevo:** `{new_vehicle_id}`",
+                    inline=False
+                )
+                embed.add_field(
+                    name="🔄 Actualizaciones",
+                    value="• ID en registro de vehículos\n• ID en seguros relacionados",
+                    inline=False
+                )
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                logger.info(f"ID de vehículo actualizado: {self.old_vehicle_id} -> {new_vehicle_id} por {interaction.user.display_name}")
+                
+        except Exception as e:
+            logger.error(f"Error actualizando ID de vehículo: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error actualizando el ID del vehículo",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -3173,7 +3514,7 @@ class SquadronTypeSelectView(discord.ui.View):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-class VehicleInsuranceSelectionView(discord.ui.View):
+class VehicleInsuranceSelectionView(BaseView):
     """Vista para seleccionar vehículo registrado para asegurar"""
     def __init__(self, user_vehicles: list):
         super().__init__(timeout=300)
@@ -3260,11 +3601,313 @@ class VehicleInsuranceSelect(discord.ui.Select):
         
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
+class InsuranceConfirmationView(BaseView):
+    """Vista para confirmar o rechazar solicitudes de seguro en el canal de notificaciones"""
+    
+    def __init__(self, insurance_data: dict, bot):
+        super().__init__(timeout=3600)  # 1 hora para responder
+        self.insurance_data = insurance_data
+        self.bot = bot
+    
+    @discord.ui.button(label="✅ Confirmar Seguro", style=discord.ButtonStyle.success, emoji="✅")
+    async def confirm_insurance(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Confirmar solicitud de seguro"""
+        await interaction.response.defer()
+        
+        try:
+            # Verificar si el usuario es mecánico
+            is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
+            if not is_mechanic and not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo mecánicos registrados o administradores pueden confirmar seguros",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar si el seguro aún existe y está pendiente
+            insurance_id = self.insurance_data['insurance_id']
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT status, confirmed_by FROM vehicle_insurance 
+                    WHERE insurance_id = ?
+                """, (insurance_id,))
+                result = await cursor.fetchone()
+                
+                if not result:
+                    embed = discord.Embed(
+                        title="ℹ️ Seguro Ya Procesado",
+                        description="Este seguro ya fue procesado o eliminado por otro mecánico/administrador.",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(
+                        name="🔄 Estado Actual",
+                        value="La solicitud ya no está disponible para procesar.",
+                        inline=False
+                    )
+                    # Deshabilitar botones
+                    for item in self.children:
+                        item.disabled = True
+                    await interaction.edit_original_response(embed=embed, view=self)
+                    return
+                
+                current_status, confirmed_by = result
+                if current_status != 'pending_confirmation':
+                    # El seguro ya fue procesado
+                    status_text = {
+                        'active': '✅ Confirmado',
+                        'cancelled': '❌ Rechazado',
+                        'expired': '⏱️ Expirado'
+                    }.get(current_status, current_status)
+                    
+                    embed = discord.Embed(
+                        title="ℹ️ Seguro Ya Procesado",
+                        description=f"Este seguro ya fue **{status_text}** por otro mecánico/administrador.",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(
+                        name="👤 Procesado Por",
+                        value=f"<@{confirmed_by}>" if confirmed_by else "Sistema/Administrador",
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="📋 Estado Actual",
+                        value=status_text,
+                        inline=True
+                    )
+                    # Deshabilitar botones
+                    for item in self.children:
+                        item.disabled = True
+                    await interaction.edit_original_response(embed=embed, view=self)
+                    return
+            
+            # Procesar el pago si es método Discord
+            payment_success = True
+            if self.insurance_data['payment_method'] == 'discord':
+                # Aquí debería ir la lógica de débito de Discord
+                # Por ahora simulamos el éxito
+                payment_success = True
+            
+            if payment_success:
+                # Actualizar estado del seguro a activo
+                insurance_id = self.insurance_data['insurance_id']
+                
+                # Actualizar en base de datos
+                async with aiosqlite.connect(taxi_db.db_path) as db:
+                    await db.execute("""
+                        UPDATE vehicle_insurance 
+                        SET status = 'active', confirmed_by = ?, confirmed_at = ?
+                        WHERE insurance_id = ?
+                    """, (str(interaction.user.id), datetime.now().isoformat(), insurance_id))
+                    await db.commit()
+                
+                # Crear embed de confirmación
+                embed = discord.Embed(
+                    title="✅ Seguro Confirmado",
+                    description=f"Seguro confirmado por {interaction.user.mention}",
+                    color=discord.Color.green()
+                )
+                
+                # Fallback para owner_ingame_name en caso de datos migrados
+                client_name = self.insurance_data.get('owner_ingame_name') or self.insurance_data.get('ingame_name') or 'Cliente'
+                
+                embed.add_field(
+                    name="📋 Detalles",
+                    value=f"**ID:** `{insurance_id}`\n**Cliente:** {client_name}\n**Vehículo:** {self.insurance_data['vehicle_type'].title()}\n**Costo:** ${self.insurance_data['cost']:,.0f}",
+                    inline=False
+                )
+                
+                # Deshabilitar botones
+                for item in self.children:
+                    item.disabled = True
+                
+                await interaction.edit_original_response(embed=embed, view=self)
+                
+                # Notificar al cliente por DM
+                try:
+                    user = self.bot.get_user(int(self.insurance_data['owner_discord_id']))
+                    if user:
+                        client_embed = discord.Embed(
+                            title="✅ Seguro Confirmado",
+                            description="Tu solicitud de seguro ha sido confirmada por un mecánico",
+                            color=discord.Color.green()
+                        )
+                        client_embed.add_field(
+                            name="📋 Detalles",
+                            value=f"**ID Seguro:** `{insurance_id}`\n**Vehículo:** {self.insurance_data['vehicle_type'].title()}\n**Estado:** Activo",
+                            inline=False
+                        )
+                        await user.send(embed=client_embed)
+                except Exception as e:
+                    logger.error(f"Error notificando cliente: {e}")
+                
+            else:
+                # Error en el pago
+                embed = discord.Embed(
+                    title="❌ Error en el Pago",
+                    description="No se pudo procesar el pago del seguro",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error confirmando seguro: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error procesando la confirmación",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label="❌ Rechazar Seguro", style=discord.ButtonStyle.danger, emoji="❌")
+    async def reject_insurance(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Rechazar solicitud de seguro"""
+        await interaction.response.defer()
+        
+        try:
+            # Verificar si el usuario es mecánico
+            is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
+            if not is_mechanic and not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo mecánicos registrados o administradores pueden rechazar seguros",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Verificar si el seguro aún existe y está pendiente
+            insurance_id = self.insurance_data['insurance_id']
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT status, confirmed_by FROM vehicle_insurance 
+                    WHERE insurance_id = ?
+                """, (insurance_id,))
+                result = await cursor.fetchone()
+                
+                if not result:
+                    embed = discord.Embed(
+                        title="ℹ️ Seguro Ya Procesado",
+                        description="Este seguro ya fue procesado o eliminado por otro mecánico/administrador.",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(
+                        name="🔄 Estado Actual",
+                        value="La solicitud ya no está disponible para procesar.",
+                        inline=False
+                    )
+                    # Deshabilitar botones
+                    for item in self.children:
+                        item.disabled = True
+                    await interaction.edit_original_response(embed=embed, view=self)
+                    return
+                
+                current_status, confirmed_by = result
+                if current_status != 'pending_confirmation':
+                    # El seguro ya fue procesado
+                    status_text = {
+                        'active': '✅ Confirmado',
+                        'cancelled': '❌ Rechazado',
+                        'expired': '⏱️ Expirado'
+                    }.get(current_status, current_status)
+                    
+                    embed = discord.Embed(
+                        title="ℹ️ Seguro Ya Procesado",
+                        description=f"Este seguro ya fue **{status_text}** por otro mecánico/administrador.",
+                        color=discord.Color.blue()
+                    )
+                    embed.add_field(
+                        name="👤 Procesado Por",
+                        value=f"<@{confirmed_by}>" if confirmed_by else "Sistema/Administrador",
+                        inline=True
+                    )
+                    embed.add_field(
+                        name="📋 Estado Actual",
+                        value=status_text,
+                        inline=True
+                    )
+                    # Deshabilitar botones
+                    for item in self.children:
+                        item.disabled = True
+                    await interaction.edit_original_response(embed=embed, view=self)
+                    return
+            
+            # Eliminar el seguro de la base de datos
+            insurance_id = self.insurance_data['insurance_id']
+            
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                await db.execute("""
+                    DELETE FROM vehicle_insurance WHERE insurance_id = ?
+                """, (insurance_id,))
+                await db.commit()
+            
+            # Crear embed de rechazo
+            embed = discord.Embed(
+                title="❌ Seguro Rechazado",
+                description=f"Seguro rechazado por {interaction.user.mention}",
+                color=discord.Color.red()
+            )
+            
+            # Fallback para owner_ingame_name en caso de datos migrados
+            client_name = self.insurance_data.get('owner_ingame_name') or self.insurance_data.get('ingame_name') or 'Cliente'
+            
+            embed.add_field(
+                name="📋 Detalles",
+                value=f"**ID:** `{insurance_id}`\n**Cliente:** {client_name}\n**Vehículo:** {self.insurance_data['vehicle_type'].title()}",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="💰 Reembolso",
+                value="No se realizó ningún cargo. El cliente no fue debitado.",
+                inline=False
+            )
+            
+            # Deshabilitar botones
+            for item in self.children:
+                item.disabled = True
+            
+            await interaction.edit_original_response(embed=embed, view=self)
+            
+            # Notificar al cliente por DM
+            try:
+                user = self.bot.get_user(int(self.insurance_data['owner_discord_id']))
+                if user:
+                    client_embed = discord.Embed(
+                        title="❌ Seguro Rechazado",
+                        description="Tu solicitud de seguro ha sido rechazada por un mecánico",
+                        color=discord.Color.red()
+                    )
+                    client_embed.add_field(
+                        name="💰 Tranquilo",
+                        value="No se realizó ningún cargo a tu cuenta de Discord.",
+                        inline=False
+                    )
+                    client_embed.add_field(
+                        name="🔄 Próximos pasos",
+                        value="Puedes intentar crear un nuevo seguro cuando resuelvas cualquier problema con el vehículo.",
+                        inline=False
+                    )
+                    await user.send(embed=client_embed)
+            except Exception as e:
+                logger.error(f"Error notificando cliente: {e}")
+                
+        except Exception as e:
+            logger.error(f"Error rechazando seguro: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error procesando el rechazo",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
 class MechanicSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.mechanic_channels = {}  # {guild_id: channel_id}
         self.squadron_channels = {}  # {guild_id: channel_id}
+        self.mechanic_notification_channels = {}  # {guild_id: channel_id} - Canal para notificaciones de mecánico
     
     async def cog_load(self):
         """Cargar configuraciones al inicializar el cog"""
@@ -3467,6 +4110,44 @@ class MechanicSystem(commands.Cog):
                     )
                 """)
                 
+                # Migración: Agregar columna payment_method si no existe
+                try:
+                    # Verificar si la columna payment_method existe
+                    cursor = await db.execute("PRAGMA table_info(vehicle_insurance)")
+                    columns = await cursor.fetchall()
+                    column_names = [column[1] for column in columns]
+                    
+                    if 'payment_method' not in column_names:
+                        logger.info("🔄 Ejecutando migración: agregando columna payment_method")
+                        await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN payment_method TEXT DEFAULT 'discord'")
+                        logger.info("✅ Migración completada: payment_method agregado")
+                    
+                    if 'confirmed_by' not in column_names:
+                        logger.info("🔄 Ejecutando migración: agregando columna confirmed_by")
+                        await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN confirmed_by TEXT")
+                        logger.info("✅ Migración completada: confirmed_by agregado")
+                    
+                    if 'confirmed_at' not in column_names:
+                        logger.info("🔄 Ejecutando migración: agregando columna confirmed_at")
+                        await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN confirmed_at TEXT")
+                        logger.info("✅ Migración completada: confirmed_at agregado")
+                    
+                    if 'owner_ingame_name' not in column_names:
+                        logger.info("🔄 Ejecutando migración: agregando columna owner_ingame_name")
+                        await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN owner_ingame_name TEXT")
+                        logger.info("✅ Migración completada: owner_ingame_name agregado")
+                        
+                        # Actualizar registros existentes que no tengan owner_ingame_name
+                        logger.info("🔄 Actualizando registros existentes sin owner_ingame_name")
+                        await db.execute("""
+                            UPDATE vehicle_insurance 
+                            SET owner_ingame_name = 'Usuario-' || substr(owner_discord_id, -4)
+                            WHERE owner_ingame_name IS NULL OR owner_ingame_name = ''
+                        """)
+                        logger.info("✅ Registros existentes actualizados con nombres temporales")
+                except Exception as e:
+                    logger.error(f"Error en migración de columnas: {e}")
+                
                 await db.commit()
                 logger.info("✅ Tablas de sistema de mecánico inicializadas")
                 
@@ -3499,6 +4180,12 @@ class MechanicSystem(commands.Cog):
                     
                     # Recrear panel de escuadrones
                     await self._recreate_squadron_panel(guild_id_int, channel_id)
+                
+                # Cargar canal de notificaciones de mecánico
+                if "mechanic_notifications" in channels:
+                    channel_id = channels["mechanic_notifications"]
+                    self.mechanic_notification_channels[guild_id_int] = channel_id
+                    logger.info(f"Canal de notificaciones de mecánico cargado para guild {guild_id}: {channel_id}")
                     
         except Exception as e:
             logger.error(f"Error cargando configuraciones de mecánico: {e}")
@@ -3821,9 +4508,14 @@ class MechanicSystem(commands.Cog):
     
     # === COMANDOS DE USUARIO ===
     
+    @rate_limit("seguro_solicitar")
     @app_commands.command(name="seguro_solicitar", description="🔧 Solicitar seguro para tu vehículo")
     async def request_insurance(self, interaction: discord.Interaction):
         """Solicitar seguro de vehículo"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "seguro_solicitar"):
+            return
+        
         # Verificar si el sistema está habilitado
         if not taxi_config.FEATURE_ENABLED:
             embed = discord.Embed(
@@ -3882,9 +4574,14 @@ class MechanicSystem(commands.Cog):
         modal = VehicleInsuranceModal()
         await interaction.response.send_modal(modal)
     
+    @rate_limit("seguro_consultar")
     @app_commands.command(name="seguro_consultar", description="📋 Consultar seguros de tus vehículos")
     async def check_insurance(self, interaction: discord.Interaction):
         """Consultar seguros activos del usuario"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "seguro_consultar"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -3917,7 +4614,10 @@ class MechanicSystem(commands.Cog):
             
             async with aiosqlite.connect(taxi_db.db_path) as db:
                 cursor = await db.execute("""
-                    SELECT * FROM vehicle_insurance 
+                    SELECT insurance_id, vehicle_id, vehicle_type, vehicle_location, 
+                           description, owner_discord_id, owner_ingame_name, guild_id, 
+                           cost, payment_method, status, created_at, confirmed_by, confirmed_at
+                    FROM vehicle_insurance 
                     WHERE owner_discord_id = ? AND guild_id = ? AND status = 'active'
                     ORDER BY created_at DESC
                 """, (str(interaction.user.id), str(interaction.guild.id)))
@@ -3967,11 +4667,16 @@ class MechanicSystem(commands.Cog):
     
     # === COMANDOS DE ADMINISTRACIÓN ===
     
+    @rate_limit("mechanic_admin_register")
     @app_commands.command(name="mechanic_admin_register", description="[ADMIN] Registrar un usuario como mecánico")
     @app_commands.describe(user="Usuario a registrar como mecánico")
     @app_commands.default_permissions(administrator=True)
     async def register_mechanic(self, interaction: discord.Interaction, user: discord.Member):
         """Registrar un usuario como mecánico"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_register"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4061,11 +4766,16 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_remove")
     @app_commands.command(name="mechanic_admin_remove", description="[ADMIN] Eliminar un mecánico registrado")
     @app_commands.describe(user="Mecánico a eliminar del registro")
     @app_commands.default_permissions(administrator=True)
     async def remove_mechanic(self, interaction: discord.Interaction, user: discord.Member):
         """Eliminar un mecánico del registro"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_remove"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4128,10 +4838,15 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_list")
     @app_commands.command(name="mechanic_admin_list", description="[ADMIN] Listar todos los mecánicos registrados")
     @app_commands.default_permissions(administrator=True)
     async def list_mechanics(self, interaction: discord.Interaction):
         """Listar todos los mecánicos registrados"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_list"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4210,10 +4925,15 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_notifications")
     @app_commands.command(name="mechanic_notifications", description="🔔 Configurar notificaciones de mecánico")
     @app_commands.describe(enabled="Recibir notificaciones por DM cuando hay nuevos seguros")
     async def configure_notifications(self, interaction: discord.Interaction, enabled: bool):
         """Configurar preferencias de notificaciones para mecánicos"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_notifications"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4285,11 +5005,16 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_config_pvp")
     @app_commands.command(name="mechanic_admin_config_pvp", description="[ADMIN] Configurar recargo PVP para seguros")
     @app_commands.describe(percentage="Porcentaje de recargo para zonas PVP (ej: 25 para 25% más caro)")
     @app_commands.default_permissions(administrator=True)
     async def config_pvp_markup(self, interaction: discord.Interaction, percentage: float):
         """Configurar porcentaje de recargo PVP para seguros"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_config_pvp"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4348,6 +5073,7 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_set_price")
     @app_commands.command(name="mechanic_admin_set_price", description="[ADMIN] Establecer precio personalizado para un tipo de vehículo")
     @app_commands.describe(
         vehicle_type="Tipo de vehículo (ranger, laika, ww, avion, moto)",
@@ -4356,6 +5082,10 @@ class MechanicSystem(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def set_vehicle_price_command(self, interaction: discord.Interaction, vehicle_type: str, price: int):
         """Establecer precio personalizado para un tipo de vehículo"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_set_price"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4456,9 +5186,14 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_list_prices")
     @app_commands.command(name="mechanic_admin_list_prices", description="[ADMIN] Ver todos los precios personalizados")
     async def list_vehicle_prices(self, interaction: discord.Interaction):
         """Listar todos los precios personalizados de vehículos"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_list_prices"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4541,6 +5276,7 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_set_limit")
     @app_commands.command(name="mechanic_admin_set_limit", description="[ADMIN] Establecer límite de vehículos por miembro")
     @app_commands.describe(
         vehicle_type="Tipo de vehículo (moto, ranger, laika, ww, avion, etc.)",
@@ -4549,6 +5285,10 @@ class MechanicSystem(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def set_vehicle_limit_command(self, interaction: discord.Interaction, vehicle_type: str, limit_per_member: int):
         """Establecer límite de vehículos por miembro"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_set_limit"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4654,9 +5394,14 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
     
+    @rate_limit("mechanic_admin_list_limits")
     @app_commands.command(name="mechanic_admin_list_limits", description="[ADMIN] Ver todos los límites de vehículos")
     async def list_vehicle_limits(self, interaction: discord.Interaction):
         """Listar todos los límites de vehículos configurados"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "mechanic_admin_list_limits"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4761,6 +5506,7 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("squadron_admin_config_limits")
     @app_commands.command(name="squadron_admin_config_limits", description="[ADMIN] Configurar límites globales de vehículos por escuadrón")
     @app_commands.describe(
         vehicles_per_member="Vehículos permitidos por miembro del escuadrón (default: 2)",
@@ -4768,6 +5514,10 @@ class MechanicSystem(commands.Cog):
     )
     async def squadron_admin_config_limits(self, interaction: discord.Interaction, vehicles_per_member: int, max_total_vehicles: int):
         """Configurar límites globales de vehículos por escuadrón"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "squadron_admin_config_limits"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4833,9 +5583,14 @@ class MechanicSystem(commands.Cog):
             logger.error(f"Error configurando límites de escuadrón: {e}")
             await interaction.followup.send("❌ Error interno del sistema", ephemeral=True)
 
+    @rate_limit("squadron_admin_view_config")
     @app_commands.command(name="squadron_admin_view_config", description="[ADMIN] Ver configuración actual de límites de escuadrones")
     async def squadron_admin_view_config(self, interaction: discord.Interaction):
         """Ver configuración actual de límites de escuadrones"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "squadron_admin_view_config"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4923,6 +5678,7 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("squadron_admin_remove_member")
     @app_commands.command(name="squadron_admin_remove_member", description="[ADMIN] Remover un miembro de su escuadrón")
     @app_commands.describe(
         user="Usuario a remover del escuadrón",
@@ -4930,6 +5686,10 @@ class MechanicSystem(commands.Cog):
     )
     async def squadron_admin_remove_member(self, interaction: discord.Interaction, user: discord.Member, reason: str = "Removido por administrador"):
         """Comando admin para remover un miembro de su escuadrón"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "squadron_admin_remove_member"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -5027,10 +5787,15 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("squadron_admin_view_member")
     @app_commands.command(name="squadron_admin_view_member", description="[ADMIN] Ver información detallada de un miembro de escuadrón")
     @app_commands.describe(user="Usuario a consultar")
     async def squadron_admin_view_member(self, interaction: discord.Interaction, user: discord.Member):
         """Ver información detallada de un miembro de escuadrón"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "squadron_admin_view_member"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -5140,6 +5905,7 @@ class MechanicSystem(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("squadron_admin_cleanup")
     @app_commands.command(name="squadron_admin_cleanup", description="[ADMIN] Limpiar mensajes del bot en canales de escuadrones y mecánico")
     @app_commands.describe(
         channel_type="Tipo de canal a limpiar (ambos por defecto)",
@@ -5149,6 +5915,10 @@ class MechanicSystem(commands.Cog):
                                    channel_type: typing.Literal["squadron", "mechanic", "both"] = "both",
                                    limit: int = 50):
         """Limpiar mensajes del bot en canales del sistema"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "squadron_admin_cleanup"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:

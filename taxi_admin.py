@@ -18,10 +18,19 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from rate_limiter import rate_limit, rate_limiter
 
 # Obtener VEHICLE_TYPES desde la instancia de configuración
 VEHICLE_TYPES = taxi_config.VEHICLE_TYPES
 PICKUP_ZONES = taxi_config.PVP_ZONES  # Usar PVP_ZONES como pickup zones
+
+class BaseView(discord.ui.View):
+    """Clase base para todas las vistas con manejo correcto de timeout"""
+    
+    async def on_timeout(self):
+        """Manejar timeout de la vista de forma asíncrona"""
+        for item in self.children:
+            item.disabled = True
 
 # Sistema de cooldown para evitar rate limiting
 USER_COOLDOWNS = {}
@@ -3924,10 +3933,16 @@ class TaxiAdminCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Error recreando panel administrativo para guild {guild_id}: {e}")
 
+    @rate_limit("debug_shop_stock")
     @app_commands.command(name="debug_shop_stock", description="[DEBUG] Ver stock actual de la tienda")
     @app_commands.default_permissions(administrator=True)
     async def debug_shop_stock(self, interaction: discord.Interaction):
         """Comando temporal para debugging del stock"""
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "debug_shop_stock"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4036,7 +4051,8 @@ class TaxiAdminCommands(commands.Cog):
         shop_channel="Canal para tienda de supervivencia",
         shop_claimer_channel="Canal para notificaciones de compras (solo admins)",
         admin_channel="Canal para panel de administración (gestión usuarios/conductores)",
-        bunker_channel="Canal para sistema de bunkers con botones interactivos"
+        bunker_channel="Canal para sistema de bunkers con botones interactivos",
+        mechanic_notifications_channel="Canal para notificaciones de seguros pendientes (mecánicos)"
     )
     @app_commands.default_permissions(administrator=True)
     async def setup_all_channels(self, interaction: discord.Interaction, 
@@ -4048,7 +4064,8 @@ class TaxiAdminCommands(commands.Cog):
                                  shop_channel: discord.TextChannel,
                                  shop_claimer_channel: discord.TextChannel,
                                  admin_channel: discord.TextChannel,
-                                 bunker_channel: discord.TextChannel):
+                                 bunker_channel: discord.TextChannel,
+                                 mechanic_notifications_channel: discord.TextChannel):
         """Configurar todos los canales de una vez con limpieza de paneles anteriores"""
         await interaction.response.defer(ephemeral=True)
         
@@ -4566,6 +4583,61 @@ class TaxiAdminCommands(commands.Cog):
             except Exception as e:
                 results.append(f"⏰ Bunkers: ❌ Error - {str(e)}")
             
+            # === CONFIGURAR CANAL DE NOTIFICACIONES DE MECÁNICO ===
+            try:
+                mechanic_cog = self.bot.get_cog('MechanicSystem')
+                if mechanic_cog:
+                    guild_id = str(interaction.guild.id)
+                    try:
+                        # Guardar configuración en la base de datos
+                        async with aiosqlite.connect(taxi_db.db_path) as db:
+                            await db.execute(
+                                """INSERT OR REPLACE INTO channel_config 
+                                (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                                VALUES (?, ?, ?, ?, ?)""",
+                                (guild_id, 'mechanic_notifications', str(mechanic_notifications_channel.id), 
+                                 datetime.now().isoformat(), str(interaction.user.id))
+                            )
+                            await db.commit()
+                        
+                        # Configurar en el cog de mecánico
+                        mechanic_cog.mechanic_notification_channels[interaction.guild.id] = mechanic_notifications_channel.id
+                        
+                        results.append(f"🔧 Notificaciones Mecánico: ✅ {mechanic_notifications_channel.mention}")
+                        
+                        # Enviar mensaje de prueba al canal configurado
+                        try:
+                            test_embed = discord.Embed(
+                                title="🔧 Canal de Notificaciones de Seguros Activo",
+                                description="Este canal ha sido configurado para recibir notificaciones de seguros de vehículos pendientes de confirmación.",
+                                color=0xff8800
+                            )
+                            test_embed.add_field(
+                                name="ℹ️ Funcionamiento",
+                                value="• Cada solicitud de seguro aparecerá aquí con botones\n• Los mecánicos pueden confirmar o rechazar\n• Se incluyen todos los detalles del vehículo y cliente\n• El débito de Discord se hace solo tras confirmación",
+                                inline=False
+                            )
+                            test_embed.add_field(
+                                name="🎯 Acceso",
+                                value="Solo mecánicos registrados y administradores pueden usar los botones de confirmación.",
+                                inline=False
+                            )
+                            test_embed.set_footer(text=f"Configurado por {interaction.user.display_name}")
+                            
+                            await mechanic_notifications_channel.send(embed=test_embed)
+                            results[-1] += " + Panel"
+                        except Exception as panel_e:
+                            logger.error(f"Error enviando mensaje de prueba: {panel_e}")
+                            results[-1] += " ⚠️ (sin mensaje de prueba)"
+                        
+                    except Exception as db_e:
+                        logger.error(f"Error guardando configuración de notificaciones de mecánico: {db_e}")
+                        results.append(f"🔧 Notificaciones Mecánico: ⚠️ {mechanic_notifications_channel.mention} (sin persistencia)")
+                else:
+                    results.append("🔧 Notificaciones Mecánico: ❌ Cog no encontrado")
+            except Exception as e:
+                results.append(f"🔧 Notificaciones Mecánico: ❌ Error - {str(e)}")
+            
             # Resultado final
             embed = discord.Embed(
                 title="⚙️ Configuración de Canales Completa",
@@ -4590,8 +4662,9 @@ class TaxiAdminCommands(commands.Cog):
                 value="""
                 1. Verifica que todos los canales funcionan correctamente
                 2. Ajusta permisos si es necesario
-                3. Informa a tu comunidad sobre el nuevo sistema
-                4. Usa `/taxi_admin_stats` para monitorear el uso
+                3. Registra mecánicos con `/mechanic_admin_register`
+                4. Informa a tu comunidad sobre el nuevo sistema
+                5. Usa `/taxi_admin_stats` para monitorear el uso
                 """,
                 inline=False
             )
@@ -4680,10 +4753,15 @@ class TaxiAdminCommands(commands.Cog):
             )
             await interaction.followup.send(embed=error_embed, ephemeral=True)
 
+    @rate_limit("taxi_admin_stats")
     @app_commands.command(name="taxi_admin_stats", description="[ADMIN] Ver estadísticas completas del sistema")
     @app_commands.default_permissions(administrator=True)
     async def admin_stats(self, interaction: discord.Interaction):
         """Estadísticas administrativas detalladas"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_admin_stats"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4798,6 +4876,7 @@ class TaxiAdminCommands(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_admin_tarifa")
     @app_commands.command(name="taxi_admin_tarifa", description="[ADMIN] Configurar tarifas del sistema de taxi")
     @app_commands.describe(
         zona="Zona a configurar (centro, suburbios, aeropuerto, etc.)",
@@ -4810,6 +4889,10 @@ class TaxiAdminCommands(commands.Cog):
                               precio_base: float,
                               precio_por_km: float):
         """Configurar tarifas para diferentes zonas"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_admin_tarifa"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4878,10 +4961,15 @@ class TaxiAdminCommands(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_admin_refresh")
     @app_commands.command(name="taxi_admin_refresh", description="[ADMIN] Recrear el panel de administración")
     @app_commands.default_permissions(administrator=True)
     async def refresh_admin_panel(self, interaction: discord.Interaction):
         """Recrear el panel administrativo con limpieza previa"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_admin_refresh"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -4948,6 +5036,7 @@ class TaxiAdminCommands(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @rate_limit("taxi_admin_expiration")
     @app_commands.command(name="taxi_admin_expiration", description="[ADMIN] Configurar tiempo de expiración de solicitudes")
     @app_commands.describe(
         minutes="Tiempo en minutos para que expire una solicitud (1-120, default: 15)"
@@ -4955,6 +5044,10 @@ class TaxiAdminCommands(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def configure_expiration(self, interaction: discord.Interaction, minutes: int = 15):
         """Configurar tiempo de expiración de solicitudes de taxi"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_admin_expiration"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -5107,6 +5200,7 @@ class TaxiAdminCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Error limpiando solicitudes expiradas: {e}")
 
+    @rate_limit("taxi_admin_leaderboard")
     @app_commands.command(name="taxi_admin_leaderboard", description="[ADMIN] Ver clasificación de conductores por rendimiento")
     @app_commands.describe(
         limit="Número de conductores a mostrar (1-20, default: 10)"
@@ -5114,6 +5208,10 @@ class TaxiAdminCommands(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def leaderboard_command(self, interaction: discord.Interaction, limit: int = 10):
         """Ver tabla de clasificación de conductores"""
+        # Verificar rate limiting
+        if not await rate_limiter.check_and_record(interaction, "taxi_admin_leaderboard"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         try:
@@ -6478,7 +6576,7 @@ class DeliveryConfirmationView(discord.ui.View):
         else:
             await interaction.followup.send("❌ Error marcando paquete como entregado", ephemeral=True)
 
-class AdminPanelView(discord.ui.View):
+class AdminPanelView(BaseView):
     """Panel administrativo centralizado para gestión del sistema"""
     def __init__(self):
         super().__init__(timeout=None)
@@ -6995,6 +7093,122 @@ class AdminPanelView(discord.ui.View):
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error mostrando los comandos",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🔍 Seguros Pendientes", style=discord.ButtonStyle.secondary, custom_id="admin_pending_insurance")
+    async def pending_insurance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver y gestionar seguros pendientes de confirmación"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos de administrador o mecánico
+            is_admin = interaction.user.guild_permissions.administrator
+            
+            # Importar función desde mechanic_system
+            try:
+                from mechanic_system import is_user_mechanic
+                is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
+            except ImportError:
+                is_mechanic = False
+            
+            if not (is_admin or is_mechanic):
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores o mecánicos registrados pueden ver seguros pendientes",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener seguros pendientes de confirmación
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT insurance_id, vehicle_id, vehicle_type, vehicle_location, 
+                           owner_discord_id, owner_ingame_name, cost, payment_method, 
+                           description, created_at
+                    FROM vehicle_insurance 
+                    WHERE guild_id = ? AND status = 'pending_confirmation'
+                    ORDER BY created_at ASC
+                """, (str(interaction.guild.id),))
+                
+                pending_insurances = await cursor.fetchall()
+            
+            if not pending_insurances:
+                embed = discord.Embed(
+                    title="🔍 Seguros Pendientes",
+                    description="No hay seguros pendientes de confirmación en este momento.",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="💡 Información",
+                    value="Los seguros aparecen aquí cuando los clientes los solicitan y están esperando confirmación de un mecánico.",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear embed con la lista
+            embed = discord.Embed(
+                title="🔍 Seguros Pendientes de Confirmación",
+                description=f"**{len(pending_insurances)} seguros** esperando confirmación en **{interaction.guild.name}**",
+                color=0xff8800
+            )
+            
+            # Crear selector con los seguros pendientes
+            options = []
+            for insurance in pending_insurances[:25]:  # Límite de Discord
+                insurance_id, vehicle_id, vehicle_type, vehicle_location, owner_discord_id, owner_ingame_name, cost, payment_method, description, created_at = insurance
+                
+                # Formatear información
+                try:
+                    created_date = created_at[:16].replace('T', ' ')  # YYYY-MM-DD HH:MM
+                except:
+                    created_date = "Fecha desconocida"
+                
+                # Preparar descripción del selector
+                selector_description = f"💰 ${cost:,.0f} | 🎮 {owner_ingame_name} | 📅 {created_date}"
+                if len(selector_description) > 100:  # Límite de Discord
+                    selector_description = f"💰 ${cost:,.0f} | 🎮 {owner_ingame_name[:20]}..."
+                
+                options.append(discord.SelectOption(
+                    label=f"{vehicle_type.title()} - {owner_ingame_name[:30]}",
+                    description=selector_description,
+                    value=insurance_id,
+                    emoji="🚗"
+                ))
+            
+            embed.add_field(
+                name="📋 Instrucciones",
+                value="• Selecciona un seguro del menú desplegable\n• Se mostrará la información completa\n• Podrás confirmar o rechazar directamente",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📊 Resumen",
+                value=f"• **Total pendientes:** {len(pending_insurances)}\n• **Mostrando:** {min(len(pending_insurances), 25)}",
+                inline=True
+            )
+            
+            if len(pending_insurances) > 25:
+                embed.add_field(
+                    name="⚠️ Nota",
+                    value=f"Solo se muestran los primeros 25 seguros. Hay {len(pending_insurances) - 25} más.",
+                    inline=True
+                )
+            
+            embed.set_footer(text=f"Panel administrativo • {interaction.user.display_name}")
+            
+            # Crear vista con selector
+            view = PendingInsuranceView(options, interaction.client)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo seguros pendientes: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error obteniendo los seguros pendientes",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -7802,6 +8016,160 @@ async def setup_bunker_panel(channel: discord.TextChannel, bot):
     except Exception as e:
         logger.error(f"Error configurando panel de bunkers: {e}")
         return False
+
+
+class PendingInsuranceView(BaseView):
+    """Vista para seleccionar y gestionar seguros pendientes"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(timeout=300)  # 5 minutos
+        self.bot = bot
+        
+        if options:
+            # Agregar selector con las opciones
+            select = PendingInsuranceSelect(options, bot)
+            self.add_item(select)
+
+class PendingInsuranceSelect(discord.ui.Select):
+    """Selector para elegir seguro pendiente"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(
+            placeholder="Selecciona un seguro para revisar...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.bot = bot
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Callback cuando se selecciona un seguro"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            insurance_id = self.values[0]
+            
+            # Obtener información completa del seguro
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT insurance_id, vehicle_id, vehicle_type, vehicle_location, 
+                           description, owner_discord_id, owner_ingame_name, guild_id, 
+                           cost, payment_method, status, created_at
+                    FROM vehicle_insurance 
+                    WHERE insurance_id = ? AND status = 'pending_confirmation'
+                """, (insurance_id,))
+                
+                insurance_data = await cursor.fetchone()
+            
+            if not insurance_data:
+                embed = discord.Embed(
+                    title="❌ Seguro No Encontrado",
+                    description="El seguro seleccionado ya no está pendiente o fue eliminado.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear diccionario con los datos del seguro
+            insurance_dict = {
+                'insurance_id': insurance_data[0],
+                'vehicle_id': insurance_data[1],
+                'vehicle_type': insurance_data[2],
+                'vehicle_location': insurance_data[3],
+                'description': insurance_data[4],
+                'owner_discord_id': insurance_data[5],
+                'owner_ingame_name': insurance_data[6],
+                'guild_id': insurance_data[7],
+                'cost': insurance_data[8],
+                'payment_method': insurance_data[9],
+                'status': insurance_data[10],
+                'created_at': insurance_data[11]
+            }
+            
+            # Obtener información del cliente para el embed
+            try:
+                user = self.bot.get_user(int(insurance_data[5]))
+                if user:
+                    insurance_dict['client_display_name'] = user.display_name
+                else:
+                    insurance_dict['client_display_name'] = f"Usuario {insurance_data[5]}"
+            except:
+                insurance_dict['client_display_name'] = f"Usuario {insurance_data[5]}"
+            
+            # Crear embed similar al del DM/canal
+            embed = discord.Embed(
+                title="🔔 Detalles del Seguro Pendiente",
+                description=f"**Revisión desde panel administrativo**",
+                color=0xff8800,
+                timestamp=datetime.now()
+            )
+            
+            embed.add_field(
+                name="🚗 Vehículo",
+                value=f"**Tipo:** {insurance_dict['vehicle_type'].title()}\n**ID:** `{insurance_dict['vehicle_id']}`\n**Ubicación:** {insurance_dict['vehicle_location']}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="👤 Cliente",
+                value=f"**Discord:** {insurance_dict['client_display_name']}\n**InGame:** `{insurance_dict['owner_ingame_name']}`",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Seguro",
+                value=f"**Costo:** ${insurance_dict['cost']:,.0f}\n**Pago:** {insurance_dict['payment_method'].title()}\n**ID:** `{insurance_dict['insurance_id']}`",
+                inline=True
+            )
+            
+            if insurance_dict.get('description'):
+                embed.add_field(
+                    name="📝 Descripción",
+                    value=insurance_dict['description'],
+                    inline=False
+                )
+            
+            # Formatear fecha de creación
+            try:
+                created_date = insurance_dict['created_at'][:16].replace('T', ' ')
+                embed.add_field(
+                    name="📅 Solicitud Creada",
+                    value=f"{created_date}",
+                    inline=True
+                )
+            except:
+                pass
+            
+            embed.add_field(
+                name="⚠️ Importante",
+                value="• **Confirmar:** Procesa el pago y activa el seguro\n• **Rechazar:** Cancela la solicitud sin cobrar\n• El débito de Discord se hará solo tras confirmación",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Panel Admin • Revisado por {interaction.user.display_name}")
+            
+            # Importar y crear vista de confirmación desde mechanic_system
+            try:
+                from mechanic_system import InsuranceConfirmationView
+                view = InsuranceConfirmationView(insurance_dict, self.bot)
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            except ImportError:
+                # Fallback si no se puede importar
+                embed_error = discord.Embed(
+                    title="❌ Error del Sistema",
+                    description="No se pudo cargar la vista de confirmación. Usa el canal de notificaciones.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed_error, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando detalles del seguro: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error obteniendo los detalles del seguro",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===

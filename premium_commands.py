@@ -10,6 +10,7 @@ from premium_utils import get_subscription_embed
 from typing import List
 import logging
 import os
+from rate_limiter import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +91,15 @@ class PremiumCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @rate_limit("ba_plans")
     @app_commands.command(name="ba_plans", description="Ver planes de suscripción disponibles")
     async def subscription_plans(self, interaction: discord.Interaction):
         """Mostrar información sobre planes premium"""
+        
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "ba_plans"):
+            return
         
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
         
@@ -174,6 +181,7 @@ class PremiumCommands(commands.Cog):
             )
             await interaction.response.send_message(embed=embed)
 
+    @rate_limit("ba_admin_subs")
     @app_commands.command(name="ba_admin_subs", description="[ADMIN] Gestionar suscripciones premium")
     @app_commands.autocomplete(action=action_autocomplete, plan=plan_autocomplete)
     @app_commands.describe(
@@ -186,6 +194,11 @@ class PremiumCommands(commands.Cog):
                           guild_id: str = None,
                           plan: str = "premium"):
         """Comando de administración para gestionar suscripciones"""
+        
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "ba_admin_subs"):
+            return
         
         # Defer la respuesta inmediatamente para evitar timeouts
         await interaction.response.defer(ephemeral=True)

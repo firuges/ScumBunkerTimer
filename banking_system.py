@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from rate_limiter import rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +194,14 @@ class BankingSystem(commands.Cog):
     # === COMANDOS DEL BANCO ===
     
     @app_commands.command(name="banco_balance", description="💰 Ver tu balance actual")
+    @rate_limit("banco_balance")
     async def banco_balance(self, interaction: discord.Interaction):
         """Ver balance del usuario"""
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "banco_balance"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         # Verificar si el usuario está registrado
@@ -266,8 +273,14 @@ class BankingSystem(commands.Cog):
         cantidad="Cantidad a transferir",
         concepto="Concepto de la transferencia (opcional)"
     )
+    @rate_limit("banco_transferir")
     async def banco_transferir(self, interaction: discord.Interaction, usuario: discord.User, cantidad: int, concepto: str = "Transferencia"):
         """Transferir dinero a otro usuario"""
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "banco_transferir"):
+            return
+        
         await interaction.response.defer()
         
         # Verificar que no sea a sí mismo
@@ -381,8 +394,14 @@ class BankingSystem(commands.Cog):
 
     @app_commands.command(name="banco_historial", description="📊 Ver historial de transacciones")
     @app_commands.describe(limite="Número de transacciones a mostrar (1-20)")
+    @rate_limit("banco_historial")
     async def banco_historial(self, interaction: discord.Interaction, limite: int = 10):
         """Ver historial de transacciones"""
+        # Manual rate limiting check
+        from rate_limiter import rate_limiter
+        if not await rate_limiter.check_and_record(interaction, "banco_historial"):
+            return
+        
         await interaction.response.defer(ephemeral=True)
         
         # Verificar límite

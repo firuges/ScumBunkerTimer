@@ -43,8 +43,9 @@ def detect_user_timezone(interaction=None) -> str:
         # 3. Brasil (America/Sao_Paulo) - UTC-3
         
         # Mapeo mejorado con preferencia por zona Uruguay
+        # Nota: Uruguay NO usa horario de verano, siempre es UTC-3
         timezone_map = {
-            -3: "America/Montevideo",  # Uruguay (principal)
+            -3: "America/Montevideo",  # Uruguay (siempre UTC-3)
             -5: "America/New_York",    # US Eastern
             -6: "America/Chicago",     # US Central  
             -8: "America/Los_Angeles", # US Pacific
@@ -57,6 +58,11 @@ def detect_user_timezone(interaction=None) -> str:
             detected_tz = timezone_map[offset_hours]
             logger.info(f"Timezone detectado para usuario: {detected_tz} (offset: {offset_hours}h)")
             return detected_tz
+        
+        # Manejo especial para offset -4 (error común de detección)
+        if offset_hours == -4:
+            logger.info(f"Offset -4h detectado, corrigiendo a Uruguay (UTC-3)")
+            return "America/Montevideo"
         
         # Si no coincide con ningún offset conocido, pero estamos en bot Uruguay,
         # asumir que es Uruguay (la mayoría de usuarios)
@@ -418,6 +424,10 @@ class TaxiDatabase:
                 if 'guild_id' not in column_names:
                     await db.execute("ALTER TABLE shop_purchases ADD COLUMN guild_id TEXT NOT NULL DEFAULT ''")
                     logger.info("✅ Columna guild_id agregada a shop_purchases")
+                
+                if 'payment_method' not in column_names:
+                    await db.execute("ALTER TABLE shop_purchases ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'discord'")
+                    logger.info("✅ Columna payment_method agregada a shop_purchases")
                 
                 # Actualizar status por defecto para compras existentes
                 await db.execute("UPDATE shop_purchases SET status = 'pending' WHERE status = 'completed'")

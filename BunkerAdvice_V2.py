@@ -17,6 +17,7 @@ from aiohttp import web
 import aiohttp
 from subscription_manager import subscription_manager
 from premium_utils import check_limits, premium_required
+from rate_limiter import rate_limit, rate_limiter
 from premium_commands import setup_premium_commands
 from translation_manager import t, get_user_language_by_discord_id
 from premium_exclusive_commands import setup_premium_exclusive_commands
@@ -88,6 +89,13 @@ class BunkerBotV2(commands.Bot):
                 logger.info("✅ Sistema bancario cargado exitosamente")
             except Exception as bank_error:
                 logger.error(f"❌ Error cargando sistema bancario: {bank_error}")
+            
+            # Cargar sistema de rate limiting administrativo
+            try:
+                await self.load_extension('rate_limit_admin')
+                logger.info("✅ Sistema de rate limiting administrativo cargado exitosamente")
+            except Exception as rl_error:
+                logger.error(f"❌ Error cargando rate limiting admin: {rl_error}")
             
             await self.load_extension('taxi_system')
             await self.load_extension('taxi_admin')  # ✅ Rehabilitado con migración completa
@@ -286,6 +294,14 @@ class BunkerBotV2(commands.Bot):
                 await self.status_system.send_shutdown_notification()
             except Exception as e:
                 logger.error(f"Error enviando notificación de cierre: {e}")
+        
+        # Cerrar sesiones HTTP del monitor de servidores
+        try:
+            from server_monitor import cleanup_monitor
+            await cleanup_monitor()
+            logger.info("✅ Sesiones HTTP del monitor cerradas correctamente")
+        except Exception as e:
+            logger.error(f"Error cerrando monitor de servidores: {e}")
         
         # Llamar al close original
         await super().close()
@@ -838,10 +854,15 @@ async def sector_autocomplete(
 
 @bot.tree.command(name="ba_add_server", description="Agregar un nuevo servidor para tracking de bunkers")
 @check_limits("servers")
+@rate_limit("ba_add_server")
 async def add_server(interaction: discord.Interaction, 
                     name: str, 
                     description: str = ""):
     """Agregar un servidor nuevo al Discord guild actual"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_add_server"):
+        return
+    
     # El decorador @check_limits ya maneja defer()
     
     try:
@@ -878,8 +899,12 @@ async def add_server(interaction: discord.Interaction,
 
 @bot.tree.command(name="ba_remove_server", description="Eliminar un servidor y todos sus bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
+@rate_limit("ba_remove_server")
 async def remove_server(interaction: discord.Interaction, server: str):
     """Eliminar un servidor del Discord guild actual"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_remove_server"):
+        return
     
     try:
         if server == "Default":
@@ -919,8 +944,12 @@ async def remove_server(interaction: discord.Interaction, server: str):
         await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ba_list_servers", description="Listar todos los servidores disponibles")
+@rate_limit("ba_list_servers")
 async def list_servers(interaction: discord.Interaction):
     """Listar servidores disponibles en este Discord guild"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_list_servers"):
+        return
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -1109,10 +1138,14 @@ async def register_bunker(interaction: discord.Interaction,
 
 @bot.tree.command(name="ba_check_bunker", description="Verificar estado de un bunker específico")
 @app_commands.autocomplete(sector=sector_autocomplete, server=server_autocomplete)
+@rate_limit("ba_check_bunker")
 async def check_bunker(interaction: discord.Interaction, 
                       sector: str, 
                       server: str = "Default"):
     """Verificar el estado de un bunker específico"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_check_bunker"):
+        return
     
     try:
         if sector.upper() not in ["D1", "C4", "A1", "A3"]:
@@ -1204,8 +1237,12 @@ async def check_bunker(interaction: discord.Interaction,
 
 @bot.tree.command(name="ba_status_all", description="Ver estado de todos los bunkers")
 @app_commands.autocomplete(server=server_autocomplete)
+@rate_limit("ba_status_all")
 async def status_all(interaction: discord.Interaction, server: str = "Default"):
     """Ver el estado de todos los bunkers de un servidor en este Discord guild"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_status_all"):
+        return
     
     try:
         guild_id = str(interaction.guild.id) if interaction.guild else "default"
@@ -1264,8 +1301,12 @@ async def status_all(interaction: discord.Interaction, server: str = "Default"):
 # === COMANDO DE AYUDA ESENCIAL ===
 
 @bot.tree.command(name="ba_help", description="Guía básica del bot")
+@rate_limit("ba_help")
 async def help_command(interaction: discord.Interaction):
     """Mostrar ayuda esencial del bot"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_help"):
+        return
     
     try:
         # Defer para evitar timeout
@@ -1333,8 +1374,13 @@ async def help_command(interaction: discord.Interaction):
             logger.error(f"Error enviando mensaje de error: {follow_error}")
 
 @bot.tree.command(name="ba_my_usage", description="Ver tu uso diario de bunkers")
+@rate_limit("ba_my_usage")
 async def my_usage_command(interaction: discord.Interaction):
     """Ver el uso diario personal"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_my_usage"):
+        return
+    
     try:
         # Defer para evitar timeout
         await interaction.response.defer(ephemeral=True)
@@ -1462,8 +1508,13 @@ async def my_usage_command(interaction: discord.Interaction):
 # === COMANDO SIMPLE DE SUSCRIPCIONES ===
 
 @bot.tree.command(name="ba_suscripcion", description="Ver información sobre planes de suscripción")
+@rate_limit("ba_suscripcion")
 async def subscription_info(interaction: discord.Interaction):
     """Comando simple de información de suscripciones"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_suscripcion"):
+        return
+    
     try:
         # Defer para evitar timeout
         await interaction.response.defer(ephemeral=True)
@@ -1549,8 +1600,13 @@ async def subscription_info(interaction: discord.Interaction):
 # === COMANDO PÚBLICO DE ESTADO DEL BOT ===
 
 @bot.tree.command(name="ba_bot_status", description="Ver el estado del bot en este servidor")
+@rate_limit("ba_bot_status")
 async def bot_status_command(interaction: discord.Interaction):
     """Comando público para ver el estado del bot específico del servidor"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_bot_status"):
+        return
+    
     try:
         # Defer para operaciones de base de datos
         await interaction.response.defer()
@@ -1783,8 +1839,12 @@ async def get_server_bunker_stats(guild_id: str):
 
 @bot.tree.command(name="ba_admin_status", description="[ADMIN] Ver estado de suscripción del servidor")
 @is_bot_admin()
+@rate_limit("ba_admin_status")
 async def admin_status(interaction: discord.Interaction):
     """Ver estado de suscripción del servidor actual"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_admin_status"):
+        return
     
     try:
         # Respuesta rápida sin defer
@@ -1822,8 +1882,12 @@ async def admin_status(interaction: discord.Interaction):
 
 @bot.tree.command(name="ba_admin_upgrade", description="[ADMIN] Dar premium al servidor actual")
 @is_bot_admin()
+@rate_limit("ba_admin_upgrade")
 async def admin_upgrade(interaction: discord.Interaction):
     """Dar premium al servidor actual"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_admin_upgrade"):
+        return
     
     try:
         await interaction.response.send_message("⏳ Procesando...", ephemeral=True)
@@ -1848,8 +1912,12 @@ async def admin_upgrade(interaction: discord.Interaction):
 
 @bot.tree.command(name="ba_admin_cancel", description="[ADMIN] Quitar premium del servidor actual")
 @is_bot_admin()
+@rate_limit("ba_admin_cancel")
 async def admin_cancel(interaction: discord.Interaction):
     """Quitar premium del servidor actual"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_admin_cancel"):
+        return
     
     try:
         await interaction.response.send_message("⏳ Procesando...", ephemeral=True)
@@ -2062,8 +2130,13 @@ async def admin_guide(interaction: discord.Interaction):
 
 @bot.tree.command(name="ba_admin_resync", description="[ADMIN] Forzar resincronización de comandos")
 @is_bot_admin()
+@rate_limit("ba_admin_resync")
 async def admin_resync(interaction: discord.Interaction):
     """Forzar resincronización de todos los comandos"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_admin_resync"):
+        return
+    
     try:
         await interaction.response.defer(ephemeral=True)
         
@@ -2305,8 +2378,13 @@ async def create_web_server():
 
 @bot.tree.command(name="ba_admin_shutdown", description="[ADMIN] ⚠️ Apagar el bot de forma segura")
 @is_bot_admin()
+@rate_limit("ba_admin_shutdown")
 async def admin_shutdown(interaction: discord.Interaction):
     """Comando para apagar el bot de forma segura enviando notificaciones"""
+    # Verificar rate limiting
+    if not await rate_limiter.check_and_record(interaction, "ba_admin_shutdown"):
+        return
+    
     try:
         await interaction.response.defer(ephemeral=True)
         
