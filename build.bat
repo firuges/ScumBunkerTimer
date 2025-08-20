@@ -86,6 +86,20 @@ copy "server_commands.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 echo ✅ Archivos principales copiados
 
 :: ===========================================
+::   MODULO CORE REFACTORIZADO (NUEVO)
+:: ===========================================
+echo.
+echo 🔧 Copiando módulo core refactorizado...
+
+:: Crear directorio core
+mkdir "%BUILD_FULL_DIR%\core" >nul 2>&1
+
+copy "core\__init__.py" "%BUILD_FULL_DIR%\core\" >nul 2>&1
+copy "core\user_manager.py" "%BUILD_FULL_DIR%\core\" >nul 2>&1
+
+echo ✅ Módulo core copiado (sistema de usuarios centralizado)
+
+:: ===========================================
 ::   SISTEMA DE TAXI COMPLETO
 :: ===========================================
 echo.

@@ -10,7 +10,9 @@ from discord import app_commands
 import asyncio
 import logging
 from datetime import datetime
+# Migración gradual: mantenemos ambos imports temporalmente para verificar funcionamiento
 from taxi_database import taxi_db
+from core.user_manager import user_manager, user_exists, get_user, add_money, get_user_balance
 from taxi_config import taxi_config
 from translation_manager import translation_manager, t, get_user_language_by_discord_id, set_user_language
 
@@ -81,8 +83,8 @@ class LanguageChangeView(discord.ui.View):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Actualizar idioma en la base de datos
-        success = await taxi_db.update_user_language(interaction.user.id, new_language)
+        # Actualizar idioma en la base de datos (migrado a user_manager)
+        success = await user_manager.update_user_language(interaction.user.id, new_language)
         
         if success:
             embed = discord.Embed(
@@ -152,9 +154,9 @@ class InGameNameModal(discord.ui.Modal):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Intentar registrar usuario con nombre InGame
+        # Intentar registrar usuario con nombre InGame (migrado a user_manager)
         try:
-            success, result = await taxi_db.register_user(
+            success, result = await user_manager.register_user(
                 str(interaction.user.id),
                 str(interaction.guild.id),
                 interaction.user.name,
@@ -163,11 +165,11 @@ class InGameNameModal(discord.ui.Modal):
             )
             
             if success:
-                # Dar dinero inicial
-                await taxi_db.add_money(interaction.user.id, taxi_config.WELCOME_BONUS)
+                # Dar dinero inicial (migrado a user_manager)
+                await add_money(interaction.user.id, taxi_config.WELCOME_BONUS)
                 
-                # Guardar idioma preferido del usuario
-                await taxi_db.update_user_language(interaction.user.id, self.language)
+                # Guardar idioma preferido del usuario (migrado a user_manager)
+                await user_manager.update_user_language(result['user_id'], self.language)
                 
                 embed = discord.Embed(
                     title=t("welcome.welcome_pack_received", self.language),
@@ -415,9 +417,9 @@ class WelcomePackSystem(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Verificar si ya está registrado
-        user_exists = await taxi_db.user_exists(interaction.user.id)
-        if user_exists:
+        # Verificar si ya está registrado (migrado a user_manager)
+        user_is_registered = await user_exists(interaction.user.id)
+        if user_is_registered:
             # Obtener idioma del usuario para mostrar mensaje apropiado
             user_language = await get_user_language_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
@@ -427,8 +429,8 @@ class WelcomePackSystem(commands.Cog):
                 color=discord.Color.blue()
             )
             
-            # Mostrar balance actual
-            balance = await taxi_db.get_user_balance(interaction.user.id)
+            # Mostrar balance actual (migrado a user_manager)
+            balance = await get_user_balance(interaction.user.id)
             embed.add_field(
                 name=t("welcome.current_balance", user_language),
                 value=f"${balance:,.0f}",
@@ -475,9 +477,9 @@ class WelcomePackSystem(commands.Cog):
         """Ver estado de registro del usuario"""
         await interaction.response.defer(ephemeral=True)
         
-        # Obtener información del usuario
-        user_exists = await taxi_db.get_user(interaction.user.id)
-        if not user_exists:
+        # Obtener información del usuario (migrado a user_manager)
+        user_data = await get_user(interaction.user.id)
+        if not user_data:
             embed = discord.Embed(
                 title="❌ Sin Registro",
                 description="No estás registrado en el sistema. Usa `/welcome_registro` para registrarte",
@@ -486,8 +488,8 @@ class WelcomePackSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener balance
-        balance = await taxi_db.get_user_balance(interaction.user.id)
+        # Obtener balance (migrado a user_manager)
+        balance = await get_user_balance(interaction.user.id)
         
         # Obtener estadísticas de taxis
         stats = await taxi_db.get_user_taxi_stats(interaction.user.id)
@@ -512,13 +514,13 @@ class WelcomePackSystem(commands.Cog):
         
         embed.add_field(
             name="👤 Tipo de Usuario",
-            value=user_exists.get('user_type', 'player').title(),
+            value=user_data.get('user_type', 'player').title(),
             inline=True
         )
         
         embed.add_field(
             name="🗓️ Registrado",
-            value=f"<t:{int(user_exists.get('created_at', datetime.now()).timestamp())}:D>",
+            value=f"<t:{int(user_data.get('created_at', datetime.now()).timestamp())}:D>",
             inline=True
         )
         
@@ -559,8 +561,8 @@ class WelcomePackView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Intentar registrar usuario
-        success, result = await taxi_db.register_user(
+        # Intentar registrar usuario (migrado a user_manager)
+        success, result = await user_manager.register_user(
             str(interaction.user.id),
             str(interaction.guild.id),
             interaction.user.name,
@@ -569,8 +571,8 @@ class WelcomePackView(discord.ui.View):
         
         if not success:
             if "ya registrado" in result.get("error", "").lower():
-                # Usuario ya registrado, mostrar información
-                user_data = await taxi_db.get_user_by_discord_id(
+                # Usuario ya registrado, mostrar información (migrado a user_manager)
+                user_data = await user_manager.get_user_by_discord_id(
                     str(interaction.user.id), 
                     str(interaction.guild.id)
                 )
@@ -804,9 +806,9 @@ class WelcomePackView(discord.ui.View):
         """Cambiar idioma preferido del usuario"""
         await interaction.response.defer(ephemeral=True)
         
-        # Verificar si el usuario está registrado
-        user_exists = await taxi_db.user_exists(interaction.user.id)
-        if not user_exists:
+        # Verificar si el usuario está registrado (migrado a user_manager)
+        user_is_registered = await user_exists(interaction.user.id)
+        if not user_is_registered:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado / User Not Registered",
                 description="Debes registrarte primero usando `/welcome_registro`\nYou must register first using `/welcome_registro`",

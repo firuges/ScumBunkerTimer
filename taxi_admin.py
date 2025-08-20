@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from core.user_manager import user_manager, get_user_by_discord_id, get_user_balance
 from rate_limiter import rate_limit, rate_limiter
 
 # Obtener VEHICLE_TYPES desde la instancia de configuración
@@ -399,7 +400,7 @@ class TaxiSystemView(discord.ui.View):
         try:
             # Verificar si es conductor registrado
             # Obtener datos del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             logger.info(f"Datos del usuario obtenidos: {user_data}")
             if not user_data:
                 embed = discord.Embed(
@@ -476,7 +477,7 @@ class TaxiSystemView(discord.ui.View):
                 return
 
             # Verificar registro del usuario
-            user_data = await taxi_db.get_user_by_discord_id(
+            user_data = await get_user_by_discord_id(
                 str(interaction.user.id), 
                 str(interaction.guild.id)
             )
@@ -640,7 +641,7 @@ class TaxiSystemView(discord.ui.View):
                 guild_id_str = "1400107221324664962"  # Guild ID real del servidor
             
             # Primero obtener el user_id interno desde el discord_id
-            user_data = await taxi_db.get_user_by_discord_id(str(user_id), guild_id_str)
+            user_data = await get_user_by_discord_id(str(user_id), guild_id_str)
             
             # Si no encuentra con el guild_id real, probar con otros métodos
             if not user_data and guild_id:
@@ -695,7 +696,7 @@ class TaxiSystemView(discord.ui.View):
             logger.debug(f"🔍 Verificando info de conductor para usuario {user_id}")
             
             # Obtener datos del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(user_id), str(guild_id))
+            user_data = await get_user_by_discord_id(str(user_id), str(guild_id))
             
             if not user_data:
                 logger.debug(f"❌ Usuario {user_id} no encontrado en taxi_users")
@@ -910,7 +911,7 @@ class TaxiSystemView(discord.ui.View):
         
         try:
             # Obtener usuario en la base de datos
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 embed = discord.Embed(
                     title="❌ Error",
@@ -1301,7 +1302,7 @@ class DriverRegistrationView(discord.ui.View):
         
         try:
             # Verificar si ya es conductor
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if user_data:
                 driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
             else:
@@ -1744,7 +1745,7 @@ class DriverStatusView(discord.ui.View):
                 return
 
             # Obtener información del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 await interaction.response.send_message("❌ Error: Usuario no encontrado", ephemeral=True)
                 return
@@ -1810,7 +1811,7 @@ class AcceptRequestView(discord.ui.View):
             
         try:
             # Re-crear la vista del panel conductor para actualizar
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if user_data:
                 driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
             else:
@@ -1852,7 +1853,7 @@ class AcceptRequestView(discord.ui.View):
             
         try:
             # Obtener información del conductor
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if user_data:
                 driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
                 
@@ -1931,7 +1932,7 @@ class RequestSelect(discord.ui.Select):
             request_id = int(self.values[0])
             request_data = self.requests_data[self.values[0]]
             # Obtener información del conductor
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 await interaction.followup.send("❌ Error: Usuario no encontrado", ephemeral=True)
                 return
@@ -2076,7 +2077,7 @@ class DriverPanelView(discord.ui.View):
             
         try:
             # Obtener datos del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 embed = discord.Embed(
                     title="❌ Error",
@@ -2316,7 +2317,7 @@ class DriverPanelView(discord.ui.View):
             
         try:
             # Obtener viajes activos del conductor
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 await interaction.response.send_message("❌ No se encontraron datos del usuario", ephemeral=True)
                 return
@@ -2711,7 +2712,7 @@ class DriverStatusView(discord.ui.View):
             success, message = await taxi_db.update_driver_status(interaction.user.id, new_status)
             if success:
                 # Obtener datos del usuario
-                user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+                user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
                 if not user_data:
                     await interaction.response.send_message("❌ Error: Usuario no encontrado", ephemeral=True)
                     return
@@ -3174,7 +3175,7 @@ class TaxiRequestView(discord.ui.View):
                 logger.info("🔧 PROCESS REQUEST - Intentando guardar solicitud en base de datos")
                 
                 # Obtener datos del usuario para guardar en BD
-                user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+                user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
                 logger.info(f"🔧 PROCESS REQUEST - Datos de usuario obtenidos: {user_data}")
                 if user_data:
                     # Obtener coordenadas de las zonas
@@ -3385,7 +3386,7 @@ class BankSystemView(discord.ui.View):
         
         try:
             # Obtener información del usuario desde la base de datos usando taxi_db
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -3425,7 +3426,7 @@ class BankSystemView(discord.ui.View):
         
         try:
             # Obtener información del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -3532,7 +3533,7 @@ class TransferModal(discord.ui.Modal, title="💸 Transferir Dinero"):
                 return
             
             # Obtener información del usuario remitente
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 await interaction.followup.send("❌ No estás registrado en el sistema", ephemeral=True)
@@ -3569,12 +3570,12 @@ class TransferModal(discord.ui.Modal, title="💸 Transferir Dinero"):
                     return
             
             # Realizar transferencia usando el método existente
-            success, message = await taxi_db.transfer_money(
-                from_account=sender_account,
-                to_account=target_account,
+            # Usar transfer_money del user_manager (requiere user_ids, no account numbers)
+            success, message = await user_manager.transfer_money(
+                from_user_id=sender_user_data['user_id'],
+                to_user_id=target_user_data['user_id'],
                 amount=transfer_amount,
-                description=desc,
-                reference_id=f"button_transfer_{interaction.user.id}_{datetime.now().timestamp()}"
+                description=f"{desc} - via admin panel"
             )
             
             if success:
@@ -3676,7 +3677,7 @@ class WelcomeSystemView(discord.ui.View):
         
         try:
             # Verificar si el usuario ya está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if user_data:
                 embed = discord.Embed(
@@ -3692,8 +3693,8 @@ class WelcomeSystemView(discord.ui.View):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
-            # Registrar nuevo usuario usando taxi_db
-            success, result = await taxi_db.register_user(
+            # Registrar nuevo usuario usando user_manager
+            success, result = await user_manager.register_user(
                 discord_id=str(interaction.user.id),
                 guild_id=str(interaction.guild.id),
                 username=interaction.user.name,
@@ -3754,7 +3755,7 @@ class WelcomeSystemView(discord.ui.View):
         
         try:
             # Obtener información del usuario
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -3846,7 +3847,7 @@ class WelcomeSystemView(discord.ui.View):
         """Actualizar nombre InGame del usuario"""
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -5876,7 +5877,7 @@ class ShopSystemView(discord.ui.View):
         """Mostrar saldo del usuario"""
         await interaction.response.defer(ephemeral=True)
         
-        user_data = await taxi_db.get_user_by_discord_id(
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id),
             str(interaction.guild.id)
         )
@@ -6202,7 +6203,7 @@ class TierShopView(discord.ui.View):
                 return
             
             # Obtener datos del usuario
-            user_data = await taxi_db.get_user_by_discord_id(
+            user_data = await get_user_by_discord_id(
                 str(interaction.user.id),
                 str(interaction.guild.id)
             )
@@ -7349,7 +7350,7 @@ class TripRatingModal(discord.ui.Modal):
             comment = self.comment_input.value.strip() if self.comment_input.value else None
             
             # Obtener usuario que califica
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data:
                 embed = discord.Embed(
                     title="❌ Error",

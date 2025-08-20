@@ -10,7 +10,9 @@ from discord import app_commands
 import asyncio
 import logging
 from datetime import datetime, timedelta
+# Migración gradual: mantener taxi_db para funciones de sistema, user_manager para usuarios
 from taxi_database import taxi_db
+from core.user_manager import user_manager, get_user, get_user_balance, get_user_transactions, get_user_by_discord_id, get_last_daily_claim, add_daily_reward, transfer_money_by_discord_id
 from taxi_config import taxi_config
 from rate_limiter import rate_limit
 
@@ -204,8 +206,8 @@ class BankingSystem(commands.Cog):
         
         await interaction.response.defer(ephemeral=True)
         
-        # Verificar si el usuario está registrado
-        user_exists = await taxi_db.get_user(interaction.user.id)
+        # Verificar si el usuario está registrado (migrado a user_manager)
+        user_exists = await get_user(interaction.user.id)
         if not user_exists:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado",
@@ -215,8 +217,8 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener balance
-        balance = await taxi_db.get_user_balance(interaction.user.id)
+        # Obtener balance (migrado a user_manager)
+        balance = await get_user_balance(interaction.user.id)
         
         embed = discord.Embed(
             title="💰 Tu Balance Bancario",
@@ -230,8 +232,8 @@ class BankingSystem(commands.Cog):
             inline=True
         )
         
-        # Obtener transacciones recientes
-        recent_transactions = await taxi_db.get_user_transactions(interaction.user.id, limit=5)
+        # Obtener transacciones recientes (migrado a user_manager)
+        recent_transactions = await get_user_transactions(interaction.user.id, limit=5)
         
         if recent_transactions:
             transaction_text = ""
@@ -313,9 +315,9 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Verificar que ambos usuarios estén registrados
-        sender_exists = await taxi_db.get_user(interaction.user.id)
-        receiver_exists = await taxi_db.get_user(usuario.id)
+        # Verificar que ambos usuarios estén registrados (migrado a user_manager)
+        sender_exists = await get_user(interaction.user.id)
+        receiver_exists = await get_user(usuario.id)
         
         if not sender_exists:
             embed = discord.Embed(
@@ -335,8 +337,8 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Verificar balance suficiente
-        sender_balance = await taxi_db.get_user_balance(interaction.user.id)
+        # Verificar balance suficiente (migrado a user_manager)
+        sender_balance = await get_user_balance(interaction.user.id)
         if sender_balance < cantidad:
             embed = discord.Embed(
                 title="💰 Saldo Insuficiente",
@@ -346,16 +348,16 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Realizar transferencia
-        success = await taxi_db.transfer_money(
+        # Realizar transferencia (migrado a user_manager)
+        success, message = await transfer_money_by_discord_id(
             sender_id=interaction.user.id,
             receiver_id=usuario.id,
             amount=cantidad,
-            concept=concepto
+            description=concepto or "Transferencia"
         )
         
         if success:
-            new_balance = await taxi_db.get_user_balance(interaction.user.id)
+            new_balance = await get_user_balance(interaction.user.id)
             
             embed = discord.Embed(
                 title="✅ Transferencia Exitosa",
@@ -414,8 +416,8 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Verificar registro
-        user_exists = await taxi_db.get_user(interaction.user.id)
+        # Verificar registro (migrado a user_manager)
+        user_exists = await get_user(interaction.user.id)
         if not user_exists:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado",
@@ -425,8 +427,8 @@ class BankingSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener transacciones
-        transactions = await taxi_db.get_user_transactions(interaction.user.id, limit=limite)
+        # Obtener transacciones (migrado a user_manager)
+        transactions = await get_user_transactions(interaction.user.id, limit=limite)
         
         if not transactions:
             embed = discord.Embed(
@@ -443,8 +445,8 @@ class BankingSystem(commands.Cog):
             color=discord.Color.blue()
         )
         
-        # Balance actual
-        current_balance = await taxi_db.get_user_balance(interaction.user.id)
+        # Balance actual (migrado a user_manager)
+        current_balance = await get_user_balance(interaction.user.id)
         embed.add_field(
             name="💰 Balance Actual",
             value=f"${current_balance:,.0f}",
@@ -541,8 +543,8 @@ class BankingView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener datos del usuario
-        user_data = await taxi_db.get_user_by_discord_id(
+        # Obtener datos del usuario (migrado a user_manager)
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id), 
             str(interaction.guild.id)
         )
@@ -600,9 +602,38 @@ class BankingView(discord.ui.View):
             inline=False
         )
         
+        # Información de cuenta con manejo de campos que pueden no existir
+        account_info = []
+        
+        # Miembro desde (usar joined_at o created_at como fallback)
+        if user_data.get('joined_at'):
+            try:
+                joined_timestamp = int(datetime.fromisoformat(user_data['joined_at']).timestamp())
+                account_info.append(f"**Miembro desde:** <t:{joined_timestamp}:D>")
+            except:
+                account_info.append("**Miembro desde:** Información no disponible")
+        elif user_data.get('created_at'):
+            try:
+                joined_timestamp = int(datetime.fromisoformat(user_data['created_at']).timestamp())
+                account_info.append(f"**Miembro desde:** <t:{joined_timestamp}:D>")
+            except:
+                account_info.append("**Miembro desde:** Información no disponible")
+        else:
+            account_info.append("**Miembro desde:** Información no disponible")
+        
+        # Última actividad
+        if user_data.get('last_active'):
+            try:
+                active_timestamp = int(datetime.fromisoformat(user_data['last_active']).timestamp())
+                account_info.append(f"**Última actividad:** <t:{active_timestamp}:R>")
+            except:
+                account_info.append("**Última actividad:** Información no disponible")
+        else:
+            account_info.append("**Última actividad:** Información no disponible")
+        
         embed.add_field(
             name="📅 Información de Cuenta",
-            value=f"**Miembro desde:** <t:{int(datetime.fromisoformat(user_data['joined_at']).timestamp())}:D>\n**Última actividad:** <t:{int(datetime.fromisoformat(user_data['last_active']).timestamp())}:R>",
+            value="\n".join(account_info),
             inline=False
         )
         
@@ -685,8 +716,8 @@ class BankingView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener datos del usuario
-        user_data = await taxi_db.get_user_by_discord_id(
+        # Obtener datos del usuario (migrado a user_manager)
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id), 
             str(interaction.guild.id)
         )
@@ -722,8 +753,8 @@ class BankingView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Obtener datos del usuario
-        user_data = await taxi_db.get_user_by_discord_id(
+        # Obtener datos del usuario (migrado a user_manager)
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id), 
             str(interaction.guild.id)
         )
@@ -737,8 +768,8 @@ class BankingView(discord.ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Verificar si ya reclamó hoy
-        last_daily_claim = await taxi_db.get_last_daily_claim(user_data['user_id'])
+        # Verificar si ya reclamó hoy (migrado a user_manager)
+        last_daily_claim = await get_last_daily_claim(user_data['user_id'])
         now = datetime.now()
         
         if last_daily_claim:
@@ -766,9 +797,9 @@ class BankingView(discord.ui.View):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
         
-        # Dar recompensa diaria
+        # Dar recompensa diaria (migrado a user_manager)
         daily_amount = 500
-        success = await taxi_db.add_daily_reward(user_data['user_id'], daily_amount)
+        success = await add_daily_reward(user_data['user_id'], daily_amount)
         
         if success:
             # Actualizar balance

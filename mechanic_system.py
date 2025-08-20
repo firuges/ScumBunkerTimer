@@ -14,6 +14,7 @@ import typing
 from datetime import datetime, timedelta
 from taxi_database import taxi_db
 from taxi_config import taxi_config
+from core.user_manager import user_manager, get_user_by_discord_id, get_user_balance, subtract_money
 from rate_limiter import rate_limit, rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -388,7 +389,7 @@ class VehicleInsuranceSelectView(BaseView):
         
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -437,7 +438,7 @@ class VehicleInsuranceSelectView(BaseView):
             # Manejar pago según método seleccionado
             if self.payment_method == 'discord':
                 # Verificar si el usuario tiene suficiente dinero
-                user_balance = await taxi_db.get_user_balance(interaction.user.id)
+                user_balance = await get_user_balance(interaction.user.id)
                 
                 if user_balance < insurance_cost:
                     embed = discord.Embed(
@@ -479,20 +480,11 @@ class VehicleInsuranceSelectView(BaseView):
             if insurance_id:
                 # Procesar pago según método
                 if self.payment_method == 'discord':
-                    # Cobrar el seguro del balance Discord
-                    await taxi_db.subtract_money(interaction.user.id, insurance_cost)
-                    
-                    # Crear transacción bancaria
-                    await taxi_db.add_transaction(
-                        user_data['account_number'],
-                        "SYSTEM",
-                        insurance_cost,
-                        "outgoing",
-                        f"Seguro de vehículo {self.vehicle_type} - ID: {self.vehicle_id}"
-                    )
+                    # Cobrar el seguro del balance Discord (la transacción se registra automáticamente)
+                    await subtract_money(interaction.user.id, insurance_cost, f"Seguro de vehículo {self.vehicle_type} - ID: {self.vehicle_id}")
                     
                     payment_status = "✅ Pagado (Discord)"
-                    balance_info = f"**Balance Restante:** ${await taxi_db.get_user_balance(interaction.user.id):,.0f}"
+                    balance_info = f"**Balance Restante:** ${await get_user_balance(interaction.user.id):,.0f}"
                 else:
                     # Pago InGame - solo registrar el seguro
                     payment_status = "⏳ Pendiente (InGame)"
@@ -1447,7 +1439,7 @@ class MechanicSystemView(discord.ui.View):
         
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -1914,7 +1906,7 @@ class MechanicSystemView(discord.ui.View):
         
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -2220,7 +2212,7 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
                 return
             
             # Verificar usuario registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             if not user_data or not user_data.get('ingame_name'):
                 embed = discord.Embed(
                     title="❌ Error de Usuario",
@@ -2604,7 +2596,7 @@ class SquadronSystemView(discord.ui.View):
         """Botón para crear un nuevo escuadrón"""
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -2677,7 +2669,7 @@ class SquadronSystemView(discord.ui.View):
         
         try:
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -2802,7 +2794,7 @@ class SquadronSystemView(discord.ui.View):
                 return
             
             # Verificar si el usuario está registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -3432,7 +3424,7 @@ class SquadronTypeSelectView(discord.ui.View):
         
         try:
             # Verificar usuario registrado
-            user_data = await taxi_db.get_user_by_discord_id(str(self.user.id), str(self.guild.id))
+            user_data = await get_user_by_discord_id(str(self.user.id), str(self.guild.id))
             if not user_data or not user_data.get('ingame_name'):
                 embed = discord.Embed(
                     title="❌ Error de Usuario",
@@ -4528,7 +4520,7 @@ class MechanicSystem(commands.Cog):
         
         # Verificar si el usuario está registrado y tiene nombre InGame
         try:
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -4586,7 +4578,7 @@ class MechanicSystem(commands.Cog):
         
         try:
             # Verificar si el usuario está registrado y tiene nombre InGame
-            user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
@@ -4681,7 +4673,7 @@ class MechanicSystem(commands.Cog):
         
         try:
             # Verificar si el usuario está registrado en el sistema
-            user_data = await taxi_db.get_user_by_discord_id(str(user.id), str(interaction.guild.id))
+            user_data = await get_user_by_discord_id(str(user.id), str(interaction.guild.id))
             
             if not user_data:
                 embed = discord.Embed(
