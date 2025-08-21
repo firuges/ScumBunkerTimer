@@ -20,75 +20,75 @@ class RateLimiter:
         
         self.command_limits = {
             # === SISTEMA BANCARIO ===
-            'banco_balance': {'user_rate': (3, 60), 'guild_rate': (20, 60), 'cooldown': 10},
-            'banco_transferir': {'user_rate': (2, 300), 'guild_rate': (10, 60), 'cooldown': 30},
-            'banco_historial': {'user_rate': (5, 300), 'guild_rate': (25, 60), 'cooldown': 15},
+            'banco_balance': {'user_rate': (10, 60), 'guild_rate': (50, 60), 'cooldown': 5},
+            'banco_transferir': {'user_rate': (5, 300), 'guild_rate': (20, 60), 'cooldown': 15},
+            'banco_historial': {'user_rate': (8, 60), 'guild_rate': (30, 60), 'cooldown': 8},
             
             # === SISTEMA DE BUNKERS ===
-            'ba_check_bunker': {'user_rate': (10, 60), 'guild_rate': (50, 60), 'cooldown': 3},
-            'ba_status_all': {'user_rate': (5, 60), 'guild_rate': (20, 60), 'cooldown': 10},
-            'ba_my_usage': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 15},
-            'ba_help': {'user_rate': (2, 300), 'guild_rate': (10, 60), 'cooldown': 30},
-            'ba_bot_status': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 10},
-            'ba_suscripcion': {'user_rate': (2, 300), 'guild_rate': (10, 60), 'cooldown': 30},
-            'ba_add_server': {'user_rate': (2, 300), 'guild_rate': (5, 300), 'cooldown': 60},
-            'ba_remove_server': {'user_rate': (1, 600), 'guild_rate': (3, 300), 'cooldown': 120},
-            'ba_list_servers': {'user_rate': (5, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'ba_check_bunker': {'user_rate': (15, 60), 'guild_rate': (80, 60), 'cooldown': 2},
+            'ba_status_all': {'user_rate': (8, 60), 'guild_rate': (30, 60), 'cooldown': 5},
+            'ba_my_usage': {'user_rate': (6, 60), 'guild_rate': (20, 60), 'cooldown': 8},
+            'ba_help': {'user_rate': (5, 300), 'guild_rate': (15, 60), 'cooldown': 15},
+            'ba_bot_status': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'ba_suscripcion': {'user_rate': (3, 300), 'guild_rate': (12, 60), 'cooldown': 20},
+            'ba_add_server': {'user_rate': (5, 300), 'guild_rate': (8, 300), 'cooldown': 30},
+            'ba_remove_server': {'user_rate': (3, 600), 'guild_rate': (5, 300), 'cooldown': 15},
+            'ba_list_servers': {'user_rate': (10, 60), 'guild_rate': (40, 60), 'cooldown': 3},
             
             # === COMANDOS ADMIN DE BUNKERS ===
-            'ba_admin_status': {'user_rate': (5, 60), 'guild_rate': (20, 60), 'cooldown': 10},
-            'ba_admin_upgrade': {'user_rate': (1, 600), 'guild_rate': (3, 600), 'cooldown': 300},
-            'ba_admin_cancel': {'user_rate': (1, 600), 'guild_rate': (2, 600), 'cooldown': 300},
-            'ba_admin_resync': {'user_rate': (1, 300), 'guild_rate': (3, 300), 'cooldown': 120},
-            'ba_admin_shutdown': {'user_rate': (1, 3600), 'guild_rate': (1, 3600), 'cooldown': 1800},
+            'ba_admin_status': {'user_rate': (10, 60), 'guild_rate': (30, 60), 'cooldown': 5},
+            'ba_admin_upgrade': {'user_rate': (3, 600), 'guild_rate': (5, 600), 'cooldown': 60},
+            'ba_admin_cancel': {'user_rate': (3, 600), 'guild_rate': (5, 600), 'cooldown': 60},
+            'ba_admin_resync': {'user_rate': (5, 300), 'guild_rate': (8, 300), 'cooldown': 30},
+            'ba_admin_shutdown': {'user_rate': (2, 3600), 'guild_rate': (2, 3600), 'cooldown': 300},
             
             # === SISTEMA DE MECÁNICO Y SEGUROS ===
-            'seguro_solicitar': {'user_rate': (3, 300), 'guild_rate': (20, 60), 'cooldown': 60},
-            'seguro_consultar': {'user_rate': (5, 60), 'guild_rate': (30, 60), 'cooldown': 10},
-            'mechanic_notifications': {'user_rate': (2, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'mechanic_admin_register': {'user_rate': (3, 600), 'guild_rate': (10, 600), 'cooldown': 120},
-            'mechanic_admin_remove': {'user_rate': (2, 600), 'guild_rate': (5, 600), 'cooldown': 180},
-            'mechanic_admin_list': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 15},
-            'mechanic_admin_config_pvp': {'user_rate': (1, 600), 'guild_rate': (3, 600), 'cooldown': 300},
-            'mechanic_admin_set_price': {'user_rate': (5, 300), 'guild_rate': (15, 300), 'cooldown': 30},
-            'mechanic_admin_list_prices': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 10},
-            'mechanic_admin_set_limit': {'user_rate': (3, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'mechanic_admin_list_limits': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 10},
+            'seguro_solicitar': {'user_rate': (5, 300), 'guild_rate': (30, 60), 'cooldown': 30},
+            'seguro_consultar': {'user_rate': (10, 60), 'guild_rate': (40, 60), 'cooldown': 5},
+            'mechanic_notifications': {'user_rate': (5, 300), 'guild_rate': (15, 300), 'cooldown': 30},
+            'mechanic_admin_register': {'user_rate': (10, 60), 'guild_rate': (20, 60), 'cooldown': 5},
+            'mechanic_admin_remove': {'user_rate': (5, 300), 'guild_rate': (10, 300), 'cooldown': 30},
+            'mechanic_admin_list': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'mechanic_admin_config_pvp': {'user_rate': (8, 300), 'guild_rate': (12, 300), 'cooldown': 20},
+            'mechanic_admin_set_price': {'user_rate': (10, 300), 'guild_rate': (20, 300), 'cooldown': 15},
+            'mechanic_admin_list_prices': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'mechanic_admin_set_limit': {'user_rate': (8, 300), 'guild_rate': (15, 300), 'cooldown': 20},
+            'mechanic_admin_list_limits': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
             
             # === SISTEMA DE ESCUADRONES ===
-            'squadron_admin_config_limits': {'user_rate': (2, 600), 'guild_rate': (5, 600), 'cooldown': 300},
-            'squadron_admin_view_config': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 10},
-            'squadron_admin_remove_member': {'user_rate': (3, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'squadron_admin_view_member': {'user_rate': (5, 60), 'guild_rate': (20, 60), 'cooldown': 10},
-            'squadron_admin_cleanup': {'user_rate': (1, 600), 'guild_rate': (3, 600), 'cooldown': 300},
+            'squadron_admin_config_limits': {'user_rate': (6, 600), 'guild_rate': (10, 600), 'cooldown': 60},
+            'squadron_admin_view_config': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'squadron_admin_remove_member': {'user_rate': (8, 300), 'guild_rate': (15, 300), 'cooldown': 20},
+            'squadron_admin_view_member': {'user_rate': (10, 60), 'guild_rate': (30, 60), 'cooldown': 5},
+            'squadron_admin_cleanup': {'user_rate': (3, 600), 'guild_rate': (5, 600), 'cooldown': 120},
             
             # === SISTEMA DE TAXI ===
-            'taxi_solicitar': {'user_rate': (3, 300), 'guild_rate': (20, 60), 'cooldown': 60},
-            'taxi_status': {'user_rate': (5, 60), 'guild_rate': (30, 60), 'cooldown': 5},
-            'taxi_cancelar': {'user_rate': (3, 300), 'guild_rate': (15, 60), 'cooldown': 10},
-            'taxi_zonas': {'user_rate': (5, 300), 'guild_rate': (20, 60), 'cooldown': 30},
-            'taxi_tarifas': {'user_rate': (5, 300), 'guild_rate': (20, 60), 'cooldown': 30},
-            'ba_reset_alerts': {'user_rate': (2, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'taxi_admin_stats': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 15},
-            'taxi_admin_tarifa': {'user_rate': (3, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'taxi_admin_refresh': {'user_rate': (2, 300), 'guild_rate': (5, 300), 'cooldown': 60},
-            'taxi_admin_expiration': {'user_rate': (2, 600), 'guild_rate': (5, 600), 'cooldown': 300},
-            'taxi_admin_leaderboard': {'user_rate': (3, 60), 'guild_rate': (15, 60), 'cooldown': 10},
+            'taxi_solicitar': {'user_rate': (5, 300), 'guild_rate': (25, 60), 'cooldown': 30},
+            'taxi_status': {'user_rate': (10, 60), 'guild_rate': (40, 60), 'cooldown': 3},
+            'taxi_cancelar': {'user_rate': (5, 300), 'guild_rate': (20, 60), 'cooldown': 5},
+            'taxi_zonas': {'user_rate': (8, 300), 'guild_rate': (25, 60), 'cooldown': 15},
+            'taxi_tarifas': {'user_rate': (8, 300), 'guild_rate': (25, 60), 'cooldown': 15},
+            'ba_reset_alerts': {'user_rate': (5, 300), 'guild_rate': (15, 300), 'cooldown': 30},
+            'taxi_admin_stats': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
+            'taxi_admin_tarifa': {'user_rate': (8, 300), 'guild_rate': (15, 300), 'cooldown': 20},
+            'taxi_admin_refresh': {'user_rate': (5, 300), 'guild_rate': (10, 300), 'cooldown': 30},
+            'taxi_admin_expiration': {'user_rate': (5, 600), 'guild_rate': (8, 600), 'cooldown': 60},
+            'taxi_admin_leaderboard': {'user_rate': (8, 60), 'guild_rate': (25, 60), 'cooldown': 5},
             
             # === SISTEMA PREMIUM/SHOP ===
-            'ba_plans': {'user_rate': (5, 300), 'guild_rate': (20, 60), 'cooldown': 30},
-            'ba_admin_subs': {'user_rate': (3, 300), 'guild_rate': (10, 300), 'cooldown': 60},
-            'ba_stats': {'user_rate': (5, 60), 'guild_rate': (25, 60), 'cooldown': 10},
-            'ba_notifications': {'user_rate': (3, 300), 'guild_rate': (15, 300), 'cooldown': 60},
-            'ba_check_notifications': {'user_rate': (3, 60), 'guild_rate': (20, 60), 'cooldown': 15},
-            'ba_export': {'user_rate': (2, 600), 'guild_rate': (10, 600), 'cooldown': 120},
-            'debug_shop_stock': {'user_rate': (3, 60), 'guild_rate': (10, 60), 'cooldown': 15},
+            'ba_plans': {'user_rate': (8, 300), 'guild_rate': (25, 60), 'cooldown': 15},
+            'ba_admin_subs': {'user_rate': (8, 300), 'guild_rate': (15, 300), 'cooldown': 20},
+            'ba_stats': {'user_rate': (10, 60), 'guild_rate': (35, 60), 'cooldown': 5},
+            'ba_notifications': {'user_rate': (8, 300), 'guild_rate': (20, 300), 'cooldown': 20},
+            'ba_check_notifications': {'user_rate': (8, 60), 'guild_rate': (30, 60), 'cooldown': 8},
+            'ba_export': {'user_rate': (5, 600), 'guild_rate': (15, 600), 'cooldown': 60},
+            'debug_shop_stock': {'user_rate': (8, 60), 'guild_rate': (20, 60), 'cooldown': 8},
             
             # === SISTEMA DE PRUEBAS ===
-            'rate_limit_test': {'user_rate': (2, 60), 'guild_rate': (10, 60), 'cooldown': 5},
+            'rate_limit_test': {'user_rate': (5, 60), 'guild_rate': (15, 60), 'cooldown': 3},
             
             # === CONFIGURACIÓN POR DEFECTO ===
-            'default': {'user_rate': (10, 60), 'guild_rate': (50, 60), 'cooldown': 5}
+            'default': {'user_rate': (15, 60), 'guild_rate': (60, 60), 'cooldown': 3}
         }
 
     async def check_and_record(self, interaction: discord.Interaction, command_name: str) -> bool:

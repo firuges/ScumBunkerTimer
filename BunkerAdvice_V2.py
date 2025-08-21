@@ -58,85 +58,88 @@ class BunkerBotV2(commands.Bot):
 
     async def setup_hook(self):
         """Inicializa el bot"""
+        # Sistema de progreso de carga
+        total_steps = 12
+        current_step = 0
+        
+        def log_progress(step_name: str):
+            nonlocal current_step
+            current_step += 1
+            percentage = int((current_step / total_steps) * 100)
+            logger.info(f"🚀 [{percentage:3d}%] {step_name}")
+        
+        log_progress("Inicializando base de datos principal...")
         await self.db.initialize()
         
-        # Inicializar sistema de suscripciones
+        log_progress("Inicializando sistema de suscripciones...")
         await subscription_manager.initialize()
-        logger.info("Sistema de suscripciones inicializado")
         
-        # Inicializar tablas de monitoreo de servidores
+        log_progress("Inicializando sistema de monitoreo de servidores...")
         await server_db.initialize_server_tables()
-        logger.info("Sistema de monitoreo de servidores inicializado")
         
         # === INICIALIZAR SISTEMA DE TAXI MODULAR ===
         try:
-            # Inicializar base de datos del taxi
+            log_progress("Inicializando base de datos del taxi...")
             from taxi_database import taxi_db
             await taxi_db.initialize()
-            logger.info("✅ Sistema de taxi - Base de datos inicializada")
             
-            # Cargar configuración del taxi
+            log_progress("Cargando configuración del taxi...")
             from taxi_config import taxi_config
             taxi_config.load_config_from_db(taxi_db.db_path)
-            logger.info("✅ Sistema de taxi - Configuración cargada")
             
-            # Cargar extensiones del taxi
+            log_progress("Cargando sistema de bienvenida...")
             await self.load_extension('welcome_system')
             
-            # Cargar sistema bancario con manejo de errores específico
+            log_progress("Cargando sistema bancario...")
             try:
                 await self.load_extension('banking_system')
-                logger.info("✅ Sistema bancario cargado exitosamente")
             except Exception as bank_error:
                 logger.error(f"❌ Error cargando sistema bancario: {bank_error}")
             
-            # Cargar sistema de rate limiting administrativo
+            log_progress("Cargando sistema de rate limiting...")
             try:
                 await self.load_extension('rate_limit_admin')
-                logger.info("✅ Sistema de rate limiting administrativo cargado exitosamente")
             except Exception as rl_error:
                 logger.error(f"❌ Error cargando rate limiting admin: {rl_error}")
             
+            log_progress("Cargando sistema de taxi y administración...")
             await self.load_extension('taxi_system')
-            await self.load_extension('taxi_admin')  # ✅ Rehabilitado con migración completa
+            await self.load_extension('taxi_admin')
             
-            # Cargar sistema de mecánico
+            log_progress("Cargando sistema de mecánico...")
             try:
                 await self.load_extension('mechanic_system')
-                logger.info("✅ Sistema de mecánico cargado exitosamente")
             except Exception as mechanic_error:
                 logger.error(f"❌ Error cargando sistema de mecánico: {mechanic_error}")
             
-            logger.info("✅ Sistema de taxi - Extensiones principales cargadas")
             
-            # Registrar vistas persistentes para el sistema de shop
+            log_progress("Registrando vistas persistentes...")
             try:
                 from taxi_admin import DeliveryConfirmationView, PersistentDeliveryView
-                
-                # Registrar una vista general para todos los botones de entrega
                 self.add_view(PersistentDeliveryView())
-                logger.info("✅ Vista persistente de confirmación de entrega registrada")
             except Exception as view_error:
                 logger.error(f"❌ Error registrando vistas persistentes: {view_error}")
             
         except Exception as e:
                 logger.error(f"❌ Error inicializando sistema de taxi: {e}")
         
-        # Configurar comandos premium
+        log_progress("Configurando comandos premium...")
         await setup_premium_commands(self)
         setup_premium_exclusive_commands(self)
         
-        # Cargar cog de comandos de servidor
+        log_progress("Cargando comandos de monitoreo de servidores...")
         await self.load_extension('server_commands')
-        logger.info("Comandos de monitoreo de servidores cargados")
         
-        # Cargar cog de comandos de alertas de reinicio
+        log_progress("Cargando comandos de alertas de reinicio...")
         await self.load_extension('reset_alerts_admin')
-        logger.info("Comandos administrativos de alertas de reinicio cargados")
         
+        log_progress("Iniciando tareas en segundo plano...")
         self.notification_task.start()
         self.reset_alerts_task.start()
         self.cleanup_task.start()
+        
+        # Mensaje de completado
+        logger.info("✅ [100%] Inicialización del bot completada exitosamente")
         
         # NO sincronizar aquí - se hace en on_ready después de que todos los comandos estén registrados
 
@@ -339,16 +342,13 @@ class BunkerBotV2(commands.Bot):
                     if hasattr(self, 'status_system'):
                         self.status_system.status_channel_id = channel_id
                         await self.status_system.setup_status_channel(channel_id)
-                        logger.info(f"Status channel {channel_id} cargado para guild {guild_id}")
                 
                 if "public_status" in channels:
                     channel_id = int(channels["public_status"])
                     if hasattr(self, 'status_system'):
                         self.status_system.public_status_channel_id = channel_id
                         await self.status_system.setup_public_status_channel(channel_id)
-                        logger.info(f"Public status channel {channel_id} cargado para guild {guild_id}")
             
-            logger.info(f"Sistema de shop: {shop_panels_recreated} paneles recreados")
             
         except Exception as e:
             logger.error(f"Error cargando configuraciones de shop: {e}")
@@ -372,8 +372,6 @@ class BunkerBotV2(commands.Bot):
                                 await message.delete()
                                 deleted_count += 1
                                 break
-                if deleted_count > 0:
-                    logger.info(f"Eliminados {deleted_count} paneles de shop anteriores del canal {channel_id}")
             except Exception as cleanup_e:
                 logger.warning(f"Error limpiando mensajes de shop anteriores: {cleanup_e}")
             
@@ -401,7 +399,6 @@ class BunkerBotV2(commands.Bot):
                 
                 shop_view = ShopSystemView()
                 await channel.send(embed=shop_embed, view=shop_view)
-                logger.info(f"Panel de shop recreado exitosamente en canal {channel_id}")
                 
             except ImportError:
                 # Si no se puede importar ShopSystemView, crear panel básico
@@ -434,8 +431,6 @@ class BunkerBotV2(commands.Bot):
                                 await message.delete()
                                 deleted_count += 1
                                 break
-                if deleted_count > 0:
-                    logger.info(f"Eliminados {deleted_count} paneles de shop_claimer anteriores del canal {channel_id}")
             except Exception as cleanup_e:
                 logger.warning(f"Error limpiando mensajes de shop_claimer anteriores: {cleanup_e}")
             
@@ -459,7 +454,6 @@ class BunkerBotV2(commands.Bot):
             )
             
             await channel.send(embed=claimer_embed)
-            logger.info(f"Panel de shop_claimer recreado exitosamente en canal {channel_id}")
             
         except Exception as e:
             logger.error(f"Error recreando panel de shop_claimer para canal {channel_id}: {e}")
@@ -482,17 +476,13 @@ class BunkerBotV2(commands.Bot):
                                 await message.delete()
                                 deleted_count += 1
                                 break
-                if deleted_count > 0:
-                    logger.info(f"Eliminados {deleted_count} paneles de bunkers anteriores del canal {channel_id}")
             except Exception as cleanup_e:
                 logger.warning(f"Error limpiando mensajes de bunkers anteriores: {cleanup_e}")
             
             # Usar la función setup_bunker_panel local
             try:
                 success = await setup_bunker_panel(channel, self)
-                if success:
-                    logger.info(f"Panel de bunkers recreado exitosamente en canal {channel_id}")
-                else:
+                if not success:
                     logger.warning(f"Error recreando panel de bunkers en canal {channel_id}")
             except Exception as setup_e:
                 logger.error(f"Error ejecutando setup_bunker_panel: {setup_e}")
@@ -505,13 +495,9 @@ class BunkerBotV2(commands.Bot):
         """Tarea para enviar notificaciones programadas"""
         try:
             notifications = await self.db.get_pending_notifications()
-            logger.info(f"Verificando notificaciones: {len(notifications)} pendientes")
-            
             for notification in notifications:
-                logger.info(f"Enviando notificación: {notification['type']} para {notification['sector']} en {notification['server_name']}")
                 await self.send_notification(notification)
                 await self.db.mark_notification_sent(notification["id"])
-                logger.info(f"Notificación enviada y marcada como completada")
                 
         except Exception as e:
             logger.error(f"Error en notification_task: {e}")
@@ -666,7 +652,6 @@ class BunkerBotV2(commands.Bot):
             # Enviar DM al usuario
             try:
                 await user.send(embed=embed)
-                logger.info(f"Alerta de reinicio enviada a {user.display_name} para {server_name}")
                 return True
             except discord.Forbidden:
                 # Si no se puede enviar DM, intentar enviar en el canal general del servidor
@@ -674,7 +659,6 @@ class BunkerBotV2(commands.Bot):
                     general_channel = discord.utils.get(guild.text_channels, name='general') or guild.text_channels[0]
                     if general_channel:
                         await general_channel.send(f"{user.mention}", embed=embed)
-                        logger.info(f"Alerta de reinicio enviada en canal {general_channel.name} para {user.display_name}")
                         return True
                 except:
                     logger.warning(f"No se pudo enviar alerta de reinicio a {user.display_name}")
@@ -698,7 +682,6 @@ class BunkerBotV2(commands.Bot):
             configs = await get_notification_configs(guild_id, notification["server_name"], notification["sector"])
             
             if not configs:
-                logger.info(f"No hay configuraciones de notificación para {notification['sector']} en {notification['server_name']}")
                 return
             
             # Crear embed de notificación
@@ -737,7 +720,6 @@ class BunkerBotV2(commands.Bot):
                                     dm_embed = embed.copy()
                                     dm_embed.set_footer(text="💎 Notificación Premium Personal")
                                     await user.send(embed=dm_embed)
-                                    logger.info(f"DM automático enviado a {user.display_name} para {notification['sector']}")
                             except Exception as e:
                                 logger.error(f"Error enviando DM automático a usuario {notification.get('registered_by_id')}: {e}")
                     else:
@@ -746,7 +728,6 @@ class BunkerBotV2(commands.Bot):
                         if channel:
                             content = f"<@&{config['role_id']}>" if config["role_id"] else None
                             await channel.send(content=content, embed=embed)
-                            logger.info(f"Notificación pública enviada a #{channel.name} para {notification['sector']}")
                         else:
                             logger.error(f"Canal {config['channel_id']} no encontrado")
                 except Exception as e:
@@ -2141,7 +2122,6 @@ async def admin_resync(interaction: discord.Interaction):
         
         # Contar comandos antes de sync
         total_commands = len([cmd for cmd in bot.tree.walk_commands()])
-        logger.info(f"Comandos encontrados antes del resync: {total_commands}")
         
         # Mostrar detalles de comandos
         command_list = []
@@ -3099,30 +3079,23 @@ async def check_bunker_internal(interaction: discord.Interaction, sector: str, s
     """Función interna para verificar bunker desde botones"""
     try:
         await interaction.response.defer(ephemeral=True)
-        logger.info(f"Verificando bunker: sector={sector}, server={server}, guild={interaction.guild.id}")
         
         guild_id = str(interaction.guild.id)
         sector = sector.upper()
         
-        logger.info(f"Parámetros de búsqueda: guild_id={guild_id}, sector={sector}, server={server}")
         
         # Buscar el bunker
         bunker = await bot.db.get_bunker_status(guild_id, sector, server)
-        logger.info(f"Resultado de búsqueda: {bunker}")
         
         if not bunker:
-            logger.warning(f"Bunker no encontrado - guild_id: {guild_id}, sector: {sector}, server: {server}")
             
             # Buscar cualquier bunker en este sector para debug
             try:
                 all_bunkers = await bot.db.get_bunkers(guild_id)
-                logger.info(f"Todos los bunkers en el guild: {all_bunkers}")
                 
                 sector_bunkers = [b for b in all_bunkers if b.get('sector') == sector]
-                logger.info(f"Bunkers en sector {sector}: {sector_bunkers}")
                 
                 server_bunkers = [b for b in all_bunkers if b.get('server_name') == server]
-                logger.info(f"Bunkers en servidor {server}: {server_bunkers}")
                 
             except Exception as debug_error:
                 logger.error(f"Error en debug de bunkers: {debug_error}")
@@ -3411,7 +3384,6 @@ class BunkerPanelView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         
         try:
-            logger.info(f"Showing usage info for user: {interaction.user.display_name}")
             
             guild_id = str(interaction.guild.id)
             user_id = str(interaction.user.id)
@@ -3485,7 +3457,6 @@ class BunkerPanelView(discord.ui.View):
             except Exception as stats_error:
                 logger.error(f"Error obteniendo estadísticas: {stats_error}")
             
-            logger.info(f"Usage info displayed successfully for user: {interaction.user.display_name}")
             await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
@@ -4074,7 +4045,6 @@ class BunkerRegisterSelectView(discord.ui.View):
         """Proceder con el registro usando la lógica del comando original"""
         try:
             await interaction.response.defer(ephemeral=True)
-            logger.info(f"Proceeding with bunker registration: sector={self.selected_sector}, hours={self.hours}, server={self.selected_server}")
             
             # Convertir horas decimales a enteros para el comando original
             hours_int = int(self.hours)
@@ -4143,10 +4113,8 @@ class BunkerRegisterSelectView(discord.ui.View):
                 )
                 embed.set_footer(text=f"Registrado por {username}")
                 
-                logger.info(f"Bunker registrado exitosamente: {sector} en {self.selected_server} por {username}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
             else:
-                logger.warning(f"Registro falló para bunker {sector} en {self.selected_server}")
                 await interaction.followup.send("❌ Error registrando el bunker. Inténtalo de nuevo.", ephemeral=True)
                 
         except Exception as e:
@@ -4263,30 +4231,24 @@ class BunkerCheckSelectView(discord.ui.View):
         """Proceder con la verificación usando lógica adaptada para botones"""
         try:
             await interaction.response.defer(ephemeral=True)
-            logger.info(f"Proceeding with bunker check: sector={self.selected_sector}, server={self.selected_server}")
             
             guild_id = str(interaction.guild.id)
             sector = self.selected_sector.upper()
             server = self.selected_server
             
-            logger.info(f"Parámetros de búsqueda: guild_id={guild_id}, sector={sector}, server={server}")
-            
+                
             # Buscar el bunker (orden correcto: sector, guild_id, server_name)
             bunker = await bot.db.get_bunker_status(sector, guild_id, server)
-            logger.info(f"Resultado de búsqueda: {bunker}")
-            
-            if not bunker:
-                logger.warning(f"Bunker no encontrado - guild_id: {guild_id}, sector: {sector}, server: {server}")
                 
+            if not bunker:
+                    
                 # Buscar cualquier bunker en este servidor para debug
                 try:
                     all_bunkers = await bot.db.get_all_bunkers_status(guild_id, server)
-                    logger.info(f"Todos los bunkers en el guild {guild_id} para servidor {server}: {all_bunkers}")
-                    
+                        
                     # También probar con servidor por defecto
                     default_bunkers = await bot.db.get_all_bunkers_status(guild_id, "Default")
-                    logger.info(f"Bunkers en servidor Default: {default_bunkers}")
-                    
+                        
                 except Exception as debug_error:
                     logger.error(f"Error en debug de bunkers: {debug_error}")
                 
@@ -4341,7 +4303,6 @@ class BunkerCheckSelectView(discord.ui.View):
             )
             embed.set_footer(text=f"Registrado por {bunker['registered_by']}")
             
-            logger.info(f"Bunker verificado exitosamente: {sector} en {server}")
             await interaction.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
@@ -4360,7 +4321,6 @@ async def setup_bunker_panel(channel: discord.TextChannel, bot):
     """Configurar panel de bunkers con botones interactivos en un canal"""
     try:
         # Limpiar mensajes anteriores del bot en el canal
-        logger.info(f"Limpiando mensajes anteriores en canal de bunkers {channel.id}...")
         deleted_count = 0
         async for message in channel.history(limit=50):
             if message.author == bot.user:
@@ -4370,7 +4330,6 @@ async def setup_bunker_panel(channel: discord.TextChannel, bot):
                 except Exception as e:
                     logger.warning(f"Error eliminando mensaje {message.id}: {e}")
         
-        logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot en canal de bunkers")
         
         # Crear embed del panel
         embed = discord.Embed(

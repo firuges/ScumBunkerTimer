@@ -50,19 +50,14 @@ class SCUMServerMonitor:
                     data = await response.json()
                     
                     if data.get('data') and len(data['data']) > 0:
-                        logger.info(f"Encontrados {len(data['data'])} servidores para {server_ip}:{server_port}")
-                        
                         # Buscar el servidor que coincida EXACTAMENTE con la IP y puerto
                         for server in data['data']:
                             attrs = server.get('attributes', {})
                             found_ip = attrs.get('ip')
                             found_port = attrs.get('port')
                             
-                            logger.info(f"Verificando servidor {server['id']}: {found_ip}:{found_port} vs {server_ip}:{server_port}")
-                            
                             # Coincidencia EXACTA de IP y puerto
                             if found_ip == server_ip and found_port == server_port:
-                                logger.info(f"✅ COINCIDENCIA EXACTA encontrada: {server['id']} - {attrs.get('name')}")
                                 return self._parse_server_data(server)
                         
                         # Si no hay coincidencia exacta, usar el primer resultado con advertencia
@@ -99,11 +94,10 @@ class SCUMServerMonitor:
                     data = await response.json()
                     
                     # Log para debugging
-                    logger.info(f"Raw API response for server {battlemetrics_id}: status={response.status}")
                     if 'data' in data:
                         attrs = data['data'].get('attributes', {})
-                        logger.info(f"Raw attributes - players: {attrs.get('players')}, maxPlayers: {attrs.get('maxPlayers')}, status: {attrs.get('status')}")
                         logger.info(f"Server name: {attrs.get('name', 'Unknown')}")
+                        logger.info(f"Raw attributes - players: {attrs.get('players')}, maxPlayers: {attrs.get('maxPlayers')}, status: {attrs.get('status')}")
                     
                     return self._parse_server_data(data['data'])
                 else:
@@ -118,12 +112,6 @@ class SCUMServerMonitor:
         """Parsear datos del servidor desde Battlemetrics"""
         attributes = server_data.get('attributes', {})
         details = attributes.get('details', {})
-        
-        # Log para debugging
-        logger.info(f"Parseando datos del servidor {server_data.get('id', 'Unknown')}")
-        logger.info(f"Players: {attributes.get('players', 'Not found')}")
-        logger.info(f"MaxPlayers: {attributes.get('maxPlayers', 'Not found')}")
-        logger.info(f"Status: {attributes.get('status', 'Not found')}")
         
         # Calcular tiempo desde última actualización
         last_seen = attributes.get('lastSeen')

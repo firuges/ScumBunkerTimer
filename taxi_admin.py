@@ -236,9 +236,6 @@ class TaxiSystemView(discord.ui.View):
     @discord.ui.button(label="🚖 Solicitar Taxi", style=discord.ButtonStyle.primary, custom_id="request_taxi")
     async def request_taxi(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Sistema mejorado de solicitudes con verificación de solicitudes activas"""
-        print(f"[DEBUG] 🚖 ENHANCED TAXI REQUEST - Usuario {interaction.user.display_name} ({interaction.user.id}) presionó el botón")
-        logger.info(f"🚖 ENHANCED TAXI REQUEST - Usuario {interaction.user.display_name} ({interaction.user.id}) presionó el botón")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -254,7 +251,6 @@ class TaxiSystemView(discord.ui.View):
             active_request = await self._check_active_request(interaction.user.id, interaction.guild.id)
             
             if active_request:
-                logger.info(f"⚠️ ENHANCED REQUEST - Usuario tiene solicitud activa: {active_request.get('request_uuid', 'N/A')}")
                 embed = discord.Embed(
                     title="🚖 Solicitud de Taxi Activa",
                     description="Ya tienes una solicitud de taxi activa. Usa los botones de abajo para gestionarla.",
@@ -288,7 +284,6 @@ class TaxiSystemView(discord.ui.View):
                 return
             
             # Si no hay solicitud activa, crear nueva
-            logger.info("🔧 ENHANCED REQUEST - Creando nueva vista de solicitud")
             view = TaxiRequestView()
             view._setup_origin_options()
             
@@ -326,8 +321,6 @@ class TaxiSystemView(discord.ui.View):
     @discord.ui.button(label="📊 Estado Solicitud", style=discord.ButtonStyle.secondary, custom_id="check_status")
     async def check_status(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Verificar estado de solicitud"""
-        logger.info(f"📊 STATUS CHECK - Usuario {interaction.user.display_name} verificando estado")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -385,8 +378,6 @@ class TaxiSystemView(discord.ui.View):
     @discord.ui.button(label="🚗 Panel Conductor", style=discord.ButtonStyle.success, custom_id="driver_panel")
     async def driver_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Panel para conductores"""
-        logger.info(f"🚗 DRIVER PANEL - Usuario {interaction.user.display_name} accediendo al panel")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -401,7 +392,6 @@ class TaxiSystemView(discord.ui.View):
             # Verificar si es conductor registrado
             # Obtener datos del usuario
             user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
-            logger.info(f"Datos del usuario obtenidos: {user_data}")
             if not user_data:
                 embed = discord.Embed(
                     title="🚗 Panel de Conductor",
@@ -619,8 +609,6 @@ class TaxiSystemView(discord.ui.View):
             # Crear y mostrar el modal con las zonas
             modal = ZonesModal()
             await interaction.response.send_modal(modal)
-            logger.info(f"📍 ZONES MODAL - Mostrando modal de zonas a usuario {interaction.user.display_name}")
-            
         except Exception as e:
             logger.error(f"Error mostrando modal de zonas: {e}")
             # Fallback a mensaje ephemeral si hay error
@@ -897,8 +885,6 @@ class TaxiSystemView(discord.ui.View):
     @discord.ui.button(label="⭐ Calificar Viaje", style=discord.ButtonStyle.secondary, custom_id="rate_trip")
     async def rate_trip(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Permite a los pasajeros calificar conductores después de un viaje completado"""
-        logger.info(f"⭐ RATE TRIP - Usuario {interaction.user.display_name} quiere calificar un viaje")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -1015,8 +1001,6 @@ class ActiveRequestView(discord.ui.View):
     )
     async def cancel_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancelar la solicitud activa"""
-        logger.info(f"❌ CANCEL REQUEST - Usuario cancelando solicitud")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -1038,8 +1022,6 @@ class ActiveRequestView(discord.ui.View):
     )
     async def refresh_status(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Actualizar el estado de la solicitud"""
-        logger.info(f"🔄 REFRESH - Actualizando estado de solicitud")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -2063,8 +2045,6 @@ class DriverPanelView(discord.ui.View):
     )
     async def view_requests(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Ver solicitudes disponibles (excluyendo las propias)"""
-        logger.info(f"📋 VIEW REQUESTS - Usuario {interaction.user.display_name} viendo solicitudes")
-        
         # Verificar cooldown
         if not check_cooldown(interaction.user.id):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
@@ -2725,7 +2705,6 @@ class DriverStatusView(discord.ui.View):
                     view = DriverPanelView(driver_info)
                     
                     await interaction.response.edit_message(embed=embed, view=view)
-                    logger.info(f"✅ Estado actualizado exitosamente a {new_status} para usuario {interaction.user.id}")
                 else:
                     # Fallback si no se puede obtener info del conductor
                     embed = discord.Embed(
@@ -2766,10 +2745,7 @@ class TaxiRequestView(discord.ui.View):
     
     def _setup_origin_options(self):
         """Configurar opciones del selector de origen"""
-        logger.info("🔧 SETUP ORIGIN - Iniciando configuración de opciones de origen")
-        
         try:
-            logger.info(f"🔧 SETUP ORIGIN - Revisando {len(taxi_config.TAXI_STOPS)} paradas disponibles")
             options = []
             
             # Crear lista de todas las zonas y ordenar por Grid+Pad
@@ -2827,21 +2803,16 @@ class TaxiRequestView(discord.ui.View):
                 ))
                 logger.debug(f"✅ SETUP ORIGIN - Opción agregada: {zone_data['name']} ({zone_data['coordinates']})")
             
-            logger.info(f"🔧 SETUP ORIGIN - Total de opciones creadas: {len(options)}")
-            
             # Actualizar las opciones del selector de origen
             origin_selector_found = False
             for item in self.children:
                 if hasattr(item, 'custom_id') and item.custom_id == 'origin_select':
-                    logger.info("🔧 SETUP ORIGIN - Actualizando selector de origen")
                     item.options = options[:25]  # Máximo 25 opciones por selector
                     origin_selector_found = True
-                    logger.info(f"✅ SETUP ORIGIN - Selector actualizado con {len(item.options)} opciones")
                     break
             
             if not origin_selector_found:
                 logger.warning("⚠️ SETUP ORIGIN - No se encontró el selector de origen en children")
-                logger.info(f"🔧 SETUP ORIGIN - Children disponibles: {[getattr(item, 'custom_id', 'No ID') for item in self.children]}")
             
         except Exception as e:
             logger.error(f"❌ SETUP ORIGIN ERROR - Error configurando opciones de origen: {e}")
@@ -2856,18 +2827,14 @@ class TaxiRequestView(discord.ui.View):
     )
     async def origin_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         """Selector de parada de origen"""
-        logger.info(f"🚖 ORIGIN SELECT - Usuario {interaction.user.display_name} seleccionó origen")
-        
         try:
             self.origin = select.values[0]
             logger.info(f"🔧 ORIGIN SELECT - Origen seleccionado: {self.origin}")
             
             origin_data = taxi_config.TAXI_STOPS[self.origin]
-            logger.info(f"🔧 ORIGIN SELECT - Datos de origen: {origin_data.get('name', 'Sin nombre')}")
             
             # Actualizar selector de vehículo según parada
             available_vehicles = origin_data.get('vehicle_types', [])
-            logger.info(f"🔧 ORIGIN SELECT - Vehículos disponibles: {available_vehicles}")
             
             vehicle_options = []
             
@@ -2884,18 +2851,14 @@ class TaxiRequestView(discord.ui.View):
                 else:
                     logger.warning(f"⚠️ ORIGIN SELECT - Vehículo no encontrado en configuración: {vehicle_id}")
             
-            logger.info(f"🔧 ORIGIN SELECT - Total opciones de vehículo: {len(vehicle_options)}")
-            
             # Encontrar y actualizar el selector de vehículos
             vehicle_selector_found = False
             for item in self.children:
                 if hasattr(item, 'custom_id') and item.custom_id == 'vehicle_select':
-                    logger.info("🔧 ORIGIN SELECT - Actualizando selector de vehículos")
                     item.options = vehicle_options[:25]
                     item.placeholder = "🚗 Selecciona tu vehículo..."
                     item.disabled = False
                     vehicle_selector_found = True
-                    logger.info(f"✅ ORIGIN SELECT - Selector de vehículos actualizado con {len(item.options)} opciones")
                     break
             
             if not vehicle_selector_found:
@@ -2904,7 +2867,6 @@ class TaxiRequestView(discord.ui.View):
             # Limpiar destinos hasta que se seleccione vehículo
             for item in self.children:
                 if hasattr(item, 'custom_id') and item.custom_id == 'destination_select':
-                    logger.info("🔧 ORIGIN SELECT - Limpiando selector de destinos")
                     item.options = [discord.SelectOption(label="Primero selecciona un vehículo", value="disabled")]
                     item.placeholder = "🚫 Primero selecciona un vehículo..."
                     item.disabled = True
@@ -2916,9 +2878,7 @@ class TaxiRequestView(discord.ui.View):
                 color=discord.Color.green()
             )
             
-            logger.info("🔧 ORIGIN SELECT - Enviando respuesta actualizada")
             await interaction.response.edit_message(embed=embed, view=self)
-            logger.info("✅ ORIGIN SELECT - Respuesta enviada exitosamente")
             
         except Exception as e:
             logger.error(f"❌ ORIGIN SELECT ERROR - Error en selección de origen: {e}")
@@ -2949,21 +2909,15 @@ class TaxiRequestView(discord.ui.View):
     )
     async def vehicle_select(self, interaction: discord.Interaction, select: discord.ui.Select):
         """Selector de tipo de vehículo"""
-        logger.info(f"🚗 VEHICLE SELECT - Usuario {interaction.user.display_name} seleccionó vehículo")
-        
         try:
             self.vehicle_type = select.values[0]
-            logger.info(f"🔧 VEHICLE SELECT - Vehículo seleccionado: {self.vehicle_type}")
-            
             vehicle_data = taxi_config.VEHICLE_TYPES[self.vehicle_type]
             origin_data = taxi_config.TAXI_STOPS[self.origin]
-            logger.info(f"🔧 VEHICLE SELECT - Datos del vehículo: {vehicle_data.get('name', 'Sin nombre')}")
             
             # Actualizar selector de destino según vehículo
             destination_options = []
             
             # Filtrar destinos según el vehículo seleccionado
-            logger.info(f"🔧 VEHICLE SELECT - Filtrando destinos para vehículo: {self.vehicle_type}")
             for zone_id, zone_data in taxi_config.PVP_ZONES.items():
                 # Verificar si el vehículo puede acceder a esta zona
                 zone_access = zone_data.get('vehicle_access', ['auto', 'moto'])  # Default para compatibilidad
@@ -2985,18 +2939,14 @@ class TaxiRequestView(discord.ui.View):
                 else:
                     logger.debug(f"❌ VEHICLE SELECT - Zona no accesible: {zone_data.get('name', 'Sin nombre')} (acceso: {zone_access})")
             
-            logger.info(f"🔧 VEHICLE SELECT - Total destinos disponibles: {len(destination_options)}")
-            
             # Encontrar y actualizar el selector de destinos
             destination_selector_found = False
             for item in self.children:
                 if hasattr(item, 'custom_id') and item.custom_id == 'destination_select':
-                    logger.info("🔧 VEHICLE SELECT - Actualizando selector de destinos")
                     item.options = destination_options[:25]  # Máximo 25 opciones
                     item.placeholder = "🎯 Selecciona tu destino..."
                     item.disabled = False
                     destination_selector_found = True
-                    logger.info(f"✅ VEHICLE SELECT - Selector de destinos actualizado con {len(item.options)} opciones")
                     break
             
             if not destination_selector_found:
@@ -3014,9 +2964,7 @@ class TaxiRequestView(discord.ui.View):
                 inline=False
             )
             
-            logger.info("🔧 VEHICLE SELECT - Enviando respuesta actualizada")
             await interaction.response.edit_message(embed=embed, view=self)
-            logger.info("✅ VEHICLE SELECT - Respuesta enviada exitosamente")
             
         except Exception as e:
             logger.error(f"❌ VEHICLE SELECT ERROR - Error en selección de vehículo: {e}")
@@ -3054,7 +3002,6 @@ class TaxiRequestView(discord.ui.View):
             logger.info(f"🔧 DESTINATION SELECT - Destino seleccionado: {self.destination}")
             
             # Procesar solicitud de taxi
-            logger.info("🔧 DESTINATION SELECT - Procesando solicitud de taxi")
             await self.process_taxi_request(interaction)
             
         except Exception as e:
@@ -3078,12 +3025,6 @@ class TaxiRequestView(discord.ui.View):
     
     async def process_taxi_request(self, interaction: discord.Interaction):
         """Procesar la solicitud de taxi con origen, vehículo y destino seleccionados"""
-        logger.info(f"🚖 PROCESS REQUEST - Iniciando procesamiento de solicitud de taxi")
-        logger.info(f"🔧 PROCESS REQUEST - Usuario: {interaction.user.display_name} ({interaction.user.id})")
-        logger.info(f"🔧 PROCESS REQUEST - Origen: {self.origin}")
-        logger.info(f"🔧 PROCESS REQUEST - Vehículo: {self.vehicle_type}")
-        logger.info(f"🔧 PROCESS REQUEST - Destino: {self.destination}")
-        
         try:
             if not self.origin or not self.vehicle_type or not self.destination:
                 logger.warning("⚠️ PROCESS REQUEST - Faltan datos de la solicitud")
@@ -3108,13 +3049,9 @@ class TaxiRequestView(discord.ui.View):
                 logger.warning(f"❌ Origen no válido: {msg_origin}")
                 return
 
-            logger.info("🔧 PROCESS REQUEST - Validación de zonas OK")
-            logger.info("🔧 PROCESS REQUEST - Calculando tarifa")
             base_fare = taxi_config.TAXI_BASE_RATE * vehicle_data['cost_multiplier']
             distance_fare = (taxi_config.TAXI_PER_KM_RATE * 5) * vehicle_data['cost_multiplier']  # Estimación
             total_fare = base_fare + distance_fare
-
-            logger.info(f"🔧 PROCESS REQUEST - Tarifa calculada: ${total_fare:.2f}")
 
             embed = discord.Embed(
                 title="🚖 Solicitud de Taxi Confirmada",
@@ -3172,11 +3109,8 @@ class TaxiRequestView(discord.ui.View):
             request_id = None
             request_uuid = None
             try:
-                logger.info("🔧 PROCESS REQUEST - Intentando guardar solicitud en base de datos")
-                
                 # Obtener datos del usuario para guardar en BD
                 user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
-                logger.info(f"🔧 PROCESS REQUEST - Datos de usuario obtenidos: {user_data}")
                 if user_data:
                     # Obtener coordenadas de las zonas
                     origin_data = taxi_config.TAXI_STOPS.get(self.origin, {})
@@ -3243,9 +3177,6 @@ class TaxiRequestView(discord.ui.View):
                         request_id = result.get('request_id')
                         request_uuid = result.get('request_uuid')
                         
-                        logger.info(f"✅ PROCESS REQUEST - Solicitud guardada con ID: {request_id}")
-                        logger.info(f"✅ PROCESS REQUEST - UUID: {request_uuid}")
-                        
                         # Agregar información de la solicitud guardada al embed
                         embed.add_field(
                             name="🆔 Solicitud Registrada",
@@ -3301,10 +3232,7 @@ class TaxiRequestView(discord.ui.View):
             }
             
             confirmed_view = RequestConfirmedView(request_data)
-            
-            logger.info("🔧 PROCESS REQUEST - Enviando respuesta final con navegación")
             await interaction.response.edit_message(embed=embed, view=confirmed_view)
-            logger.info("✅ PROCESS REQUEST - Solicitud de taxi procesada exitosamente")
             
         except Exception as e:
             logger.error(f"❌ PROCESS REQUEST ERROR - Error procesando solicitud de taxi: {e}")
@@ -3355,7 +3283,6 @@ class TaxiRequestView(discord.ui.View):
             view = TaxiSystemView()
             
             await interaction.response.edit_message(embed=embed, view=view)
-            logger.info(f"✅ Usuario {interaction.user.display_name} canceló solicitud de taxi")
             
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -3886,7 +3813,6 @@ class TaxiAdminCommands(commands.Cog):
         
         # Iniciar task de limpieza de solicitudes expiradas
         self._cleanup_task = asyncio.create_task(self._start_cleanup_loop())
-        logger.info("Task de limpieza de solicitudes expiradas iniciado en cog_load")
     
     async def load_channel_configs(self):
         """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
@@ -4103,15 +4029,13 @@ class TaxiAdminCommands(commands.Cog):
                         
                         # Limpiar mensajes anteriores del bot
                         try:
-                            logger.info("Limpiando mensajes anteriores en canal de bienvenida...")
                             deleted_count = 0
                             async for message in welcome_channel.history(limit=50):
                                 if message.author == self.bot.user:
                                     await message.delete()
                                     deleted_count += 1
                                     await asyncio.sleep(0.1)  # Evitar rate limits
-                            if deleted_count > 0:
-                                logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                         except Exception as cleanup_e:
                             logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                         
@@ -4139,7 +4063,6 @@ class TaxiAdminCommands(commands.Cog):
             # === CONFIGURAR CANAL BANCARIO ===
             try:
                 bank_cog = self.bot.get_cog('BankingSystem')
-                logger.info(f"DEBUG: bank_cog encontrado: {bank_cog is not None}")
                 if bank_cog:
                     guild_id = str(interaction.guild.id)
                     try:
@@ -4157,15 +4080,13 @@ class TaxiAdminCommands(commands.Cog):
                         
                         # Limpiar mensajes anteriores del bot
                         try:
-                            logger.info("Limpiando mensajes anteriores en canal bancario...")
                             deleted_count = 0
                             async for message in bank_channel.history(limit=50):
                                 if message.author == self.bot.user:
                                     await message.delete()
                                     deleted_count += 1
                                     await asyncio.sleep(0.1)  # Evitar rate limits
-                            if deleted_count > 0:
-                                logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                         except Exception as cleanup_e:
                             logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                         
@@ -4223,15 +4144,13 @@ class TaxiAdminCommands(commands.Cog):
                         
                         # Limpiar mensajes anteriores del bot
                         try:
-                            logger.info("Limpiando mensajes anteriores en canal de taxi...")
                             deleted_count = 0
                             async for message in taxi_channel.history(limit=50):
                                 if message.author == self.bot.user:
                                     await message.delete()
                                     deleted_count += 1
                                     await asyncio.sleep(0.1)  # Evitar rate limits
-                            if deleted_count > 0:
-                                logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                         except Exception as cleanup_e:
                             logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                         
@@ -4310,15 +4229,13 @@ class TaxiAdminCommands(commands.Cog):
                     
                     # Limpiar mensajes anteriores del bot
                     try:
-                        logger.info("Limpiando mensajes anteriores en canal de escuadrones...")
                         deleted_count = 0
                         async for message in squadron_channel.history(limit=50):
                             if message.author == self.bot.user:
                                 await message.delete()
                                 deleted_count += 1
                                 await asyncio.sleep(0.1)  # Evitar rate limits
-                        if deleted_count > 0:
-                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                     except Exception as cleanup_e:
                         logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                     
@@ -4393,15 +4310,13 @@ class TaxiAdminCommands(commands.Cog):
                     
                     # Limpiar mensajes anteriores del bot
                     try:
-                        logger.info("Limpiando mensajes anteriores en canal de tienda...")
                         deleted_count = 0
                         async for message in shop_channel.history(limit=50):
                             if message.author == self.bot.user:
                                 await message.delete()
                                 deleted_count += 1
                                 await asyncio.sleep(0.1)  # Evitar rate limits
-                        if deleted_count > 0:
-                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                     except Exception as cleanup_e:
                         logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                     
@@ -4459,15 +4374,13 @@ class TaxiAdminCommands(commands.Cog):
                     
                     # Limpiar mensajes anteriores del bot
                     try:
-                        logger.info("Limpiando mensajes anteriores en canal de shop-claimer...")
                         deleted_count = 0
                         async for message in shop_claimer_channel.history(limit=50):
                             if message.author == self.bot.user:
                                 await message.delete()
                                 deleted_count += 1
                                 await asyncio.sleep(0.1)  # Evitar rate limits
-                        if deleted_count > 0:
-                            logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot")
+
                     except Exception as cleanup_e:
                         logger.warning(f"Error limpiando mensajes anteriores: {cleanup_e}")
                     
@@ -4508,7 +4421,6 @@ class TaxiAdminCommands(commands.Cog):
                 
                 # Guardar en memoria (para acceso rápido)
                 self.admin_channels[guild_id_int] = admin_channel.id
-                logger.info(f"Canal admin guardado en memoria para guild {guild_id_int}: {admin_channel.id}")
                 
                 try:
                     # Guardar configuración en la base de datos (para persistencia)
@@ -4572,7 +4484,6 @@ class TaxiAdminCommands(commands.Cog):
                         bunker_panel_success = await setup_bunker_panel(bunker_channel, self.bot)
                         if bunker_panel_success:
                             results[-1] += " + Panel"
-                            logger.info("Panel de bunkers creado exitosamente")
                         else:
                             results[-1] += " ⚠️ (error de panel)"
                     except Exception as panel_e:
@@ -4671,8 +4582,6 @@ class TaxiAdminCommands(commands.Cog):
                 inline=False
             )
             
-            logger.info(f"Configuración completada exitosamente por {interaction.user.display_name}")
-            
             # Editar el mensaje existente en lugar de enviar uno nuevo
             await interaction.edit_original_response(embed=embed)
             
@@ -4744,7 +4653,6 @@ class TaxiAdminCommands(commands.Cog):
             embed.set_footer(text=f"Configurado por {interaction.user.display_name}")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.info(f"Canal de mecánico configurado en {mechanic_channel.name} por {interaction.user.display_name}")
             
         except Exception as e:
             logger.error(f"Error configurando canal de mecánico: {e}")
@@ -5019,7 +4927,6 @@ class TaxiAdminCommands(commands.Cog):
                     color=discord.Color.green()
                 )
                 embed.set_footer(text=f"Recreado por {interaction.user.display_name}")
-                logger.info(f"Panel administrativo recreado manualmente por {interaction.user.display_name} en guild {guild_id}")
             else:
                 embed = discord.Embed(
                     title="⚠️ Error Recreando Panel",
@@ -5107,7 +5014,6 @@ class TaxiAdminCommands(commands.Cog):
             # Iniciar el task de limpieza si no está corriendo
             if not hasattr(self, '_cleanup_task') or self._cleanup_task.done():
                 self._cleanup_task = asyncio.create_task(self._start_cleanup_loop())
-                logger.info("Task de limpieza de solicitudes iniciado")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -5161,8 +5067,6 @@ class TaxiAdminCommands(commands.Cog):
                     expired_requests = await cursor.fetchall()
                     
                     if expired_requests:
-                        logger.info(f"Encontradas {len(expired_requests)} solicitudes expiradas en guild {guild_id}")
-                        
                         for request_id, passenger_id, discord_id, display_name in expired_requests:
                             # Marcar como expirada
                             await db.execute("""
@@ -5190,14 +5094,12 @@ class TaxiAdminCommands(commands.Cog):
                                         
                                         try:
                                             await member.send(embed=embed)
-                                            logger.info(f"Notificación de expiración enviada a {display_name}")
                                         except (discord.Forbidden, discord.HTTPException):
                                             logger.warning(f"No se pudo notificar expiración a {display_name}")
                             except Exception as notify_error:
                                 logger.error(f"Error notificando expiración: {notify_error}")
                         
                         await db.commit()
-                        logger.info(f"Limpiadas {len(expired_requests)} solicitudes expiradas en guild {guild_id}")
                 
         except Exception as e:
             logger.error(f"Error limpiando solicitudes expiradas: {e}")
@@ -5569,7 +5471,6 @@ class TripCompletionConfirmView(discord.ui.View):
                         
                         try:
                             await passenger_member.send(embed=passenger_embed)
-                            logger.info(f"Notificación de viaje completado enviada a {self.trip_data['passenger_name']}")
                         except (discord.Forbidden, discord.HTTPException):
                             logger.warning(f"No se pudo notificar a {self.trip_data['passenger_name']}")
                             
@@ -5674,7 +5575,6 @@ class RequestConfirmedView(discord.ui.View):
             view = TaxiSystemView()
             
             await interaction.response.edit_message(embed=embed, view=view)
-            logger.info(f"✅ Usuario {interaction.user.display_name} volvió al menú principal desde confirmación")
             
         except discord.HTTPException as e:
             if e.status == 429:  # Rate limited
@@ -5777,7 +5677,6 @@ if __name__ == "__main__":
     # También configurar discord.py logging
     discord_logger = logging.getLogger('discord')
     discord_logger.setLevel(logging.INFO)
-    
     logger.info("🚀 INICIANDO BOT DE TAXI CON LOGGING DETALLADO")
     
     load_dotenv()
@@ -5786,48 +5685,6 @@ if __name__ == "__main__":
     if not TOKEN:
         logger.error("❌ No se encontró DISCORD_TOKEN en las variables de entorno")
         exit(1)
-    
-    # === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===
-    # Este código está comentado porque taxi_admin ahora se carga como extensión
-    # en BunkerAdvice_V2.py, no como bot independiente
-    
-    # intents = discord.Intents.default()
-    # intents.message_content = True
-    # intents.guilds = True
-    # # intents.members = True  # Comentado porque es privilegiado y no es necesario para el sistema de taxi
-    
-    # bot = commands.Bot(command_prefix='!', intents=intents)
-    
-    # @bot.event
-    # async def on_ready():
-    #     logger.info(f"✅ Bot conectado como {bot.user}")
-    #     logger.info(f"🔧 Sincronizando comandos...")
-        
-    #     try:
-    #         synced = await bot.tree.sync()
-    #         logger.info(f"✅ EXITO: Sincronizados {len(synced)} comandos con Discord")
-    #     except Exception as e:
-    #         logger.error(f"❌ ERROR sincronizando comandos: {e}")
-    
-    # async def load_extensions():
-    #     try:
-    #         logger.info("🔧 Cargando configuración de taxi...")
-    #         logger.info(f"✅ Sistema de taxi - Configuración cargada")
-    #         logger.info(f"🔧 Zonas PVP disponibles: {len(taxi_config.PVP_ZONES)}")
-    #         logger.info(f"🔧 Paradas de taxi disponibles: {len(taxi_config.TAXI_STOPS)}")
-    #         logger.info(f"🔧 Tipos de vehículos disponibles: {len(taxi_config.VEHICLE_TYPES)}")
-            
-    #         await setup(bot)
-            
-    #     except Exception as e:
-    #         logger.error(f"❌ Error cargando extensiones: {e}")
-    
-    # async def run_bot():
-    #     async with bot:
-    #         await load_extensions()
-    #         await bot.start(TOKEN)
-
-
 # ===============================
 # SISTEMA DE TIENDA DE SUPERVIVENCIA
 # ===============================
@@ -6425,8 +6282,6 @@ class TierShopView(discord.ui.View):
             # Crear vista con botón de confirmar entrega persistente
             view = PersistentDeliveryView()
             await channel.send(embed=embed, view=view)
-            logger.info(f"Notificación enviada al canal shop-claimer para compra de {interaction.user.id}")
-            
         except Exception as e:
             logger.error(f"Error enviando notificación de admin: {e}")
 
@@ -6496,9 +6351,6 @@ class PersistentDeliveryView(discord.ui.View):
                 
                 await interaction.edit_original_response(embed=embed, view=self)
                 await interaction.followup.send(f"✅ Paquete ID #{purchase_id} marcado como entregado", ephemeral=True)
-                
-                logger.info(f"Paquete {purchase_id} marcado como entregado por {interaction.user.id}")
-                
             else:
                 await interaction.followup.send("❌ Error marcando el paquete como entregado", ephemeral=True)
                 
@@ -7445,7 +7297,6 @@ class TripRatingModal(discord.ui.Modal):
                                 
                                 try:
                                     await driver_member.send(embed=driver_embed)
-                                    logger.info(f"Notificación de calificación enviada al conductor {driver_name}")
                                 except (discord.Forbidden, discord.HTTPException):
                                     logger.warning(f"No se pudo notificar al conductor {driver_name}")
                 
@@ -7611,21 +7462,3 @@ async def setup_admin_panel(channel: discord.TextChannel, bot):
     except Exception as e:
         logger.error(f"Error configurando panel administrativo: {e}")
         return False
-
-# === MÓDULO DE ADMINISTRACIÓN DE TAXI SOLAMENTE ===
-# El código de bunkers ha sido movido a BunkerAdvice_V2.py para mantener
-# la arquitectura modular correcta.
-
-# === CÓDIGO COMENTADO - YA NO SE USA COMO BOT INDEPENDIENTE ===
-# Este código está comentado porque taxi_admin ahora se carga como extensión
-# en BunkerAdvice_V2.py, no como bot independiente
-
-# if __name__ == "__main__":
-#     try:
-#         import asyncio
-#         asyncio.run(run_bot())
-#     except KeyboardInterrupt:
-#         logger.info("🛑 Bot detenido por el usuario")
-#     except Exception as e:
-#         logger.error(f"❌ Error ejecutando bot: {e}")
-

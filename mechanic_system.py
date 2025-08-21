@@ -847,6 +847,14 @@ async def is_user_mechanic(discord_id: str, guild_id: str) -> bool:
     """Verificar si un usuario es mecánico registrado"""
     try:
         async with aiosqlite.connect(taxi_db.db_path) as db:
+            # Primero verificar qué registros existen para este usuario
+            cursor_debug = await db.execute("""
+                SELECT discord_id, discord_guild_id, status, ingame_name FROM registered_mechanics 
+                WHERE discord_id = ? AND discord_guild_id = ?
+            """, (discord_id, guild_id))
+            debug_results = await cursor_debug.fetchall()
+            
+            # Verificar específicamente con status = 'active'
             cursor = await db.execute("""
                 SELECT id FROM registered_mechanics 
                 WHERE discord_id = ? AND discord_guild_id = ? AND status = 'active'
@@ -996,7 +1004,6 @@ async def send_mechanic_notifications(bot, guild, insurance_data: dict):
                 # Enviar DM
                 await user.send(embed=personal_embed)
                 notifications_sent += 1
-                logger.info(f"Notificación enviada al mecánico {ingame_name} ({discord_id})")
                 
                 # Pequeña pausa para evitar rate limits
                 await asyncio.sleep(0.5)
@@ -1006,7 +1013,6 @@ async def send_mechanic_notifications(bot, guild, insurance_data: dict):
             except Exception as e:
                 logger.error(f"Error enviando notificación al mecánico {ingame_name}: {e}")
         
-        logger.info(f"Notificaciones de seguro enviadas: {notifications_sent}/{len(mechanics)} mecánicos en {guild.name}")
         
         # NUEVO: Enviar también al canal de notificaciones con botones
         await send_channel_notification(bot, guild, insurance_data)
@@ -1105,7 +1111,6 @@ async def send_channel_notification(bot, guild, insurance_data: dict):
         
         # Enviar mensaje al canal
         await channel.send(embed=embed, view=view)
-        logger.info(f"Notificación enviada al canal {channel.name} en {guild.name}")
         
     except Exception as e:
         logger.error(f"Error enviando notificación al canal: {e}")
@@ -1380,6 +1385,32 @@ class PVPMarkupModal(discord.ui.Modal):
         )
         self.add_item(self.markup_input)
     
+    async def _safe_send(self, interaction: discord.Interaction, **kwargs):
+        """Enviar mensaje de forma segura desde modal"""
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(**kwargs)
+            else:
+                await interaction.followup.send(**kwargs)
+        except discord.errors.NotFound as e:
+            # Interacción expiró - no hay nada que hacer
+            logger.warning(f"Interacción expirada/no encontrada en PVPMarkupModal: {e}")
+        except discord.errors.InteractionResponded as e:
+            # Ya fue respondida, intentar followup
+            logger.warning(f"Interacción ya respondida en PVPMarkupModal, usando followup: {e}")
+            try:
+                await interaction.followup.send(**kwargs)
+            except Exception as followup_error:
+                logger.error(f"Error en followup tras InteractionResponded: {followup_error}")
+        except Exception as e:
+            logger.error(f"Error enviando mensaje seguro en PVPMarkupModal: {e}")
+            # Solo intentar followup si no es un error de interacción expirada
+            if "Unknown interaction" not in str(e) and "10062" not in str(e):
+                try:
+                    await interaction.followup.send(**kwargs)
+                except Exception as final_error:
+                    logger.error(f"Error final enviando mensaje en PVPMarkupModal: {final_error}")
+
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
@@ -1407,15 +1438,15 @@ class PVPMarkupModal(discord.ui.Modal):
                 
                 embed.set_footer(text=f"Configurado por {interaction.user.display_name}")
                 
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
             else:
-                await interaction.followup.send("❌ Error al actualizar el recargo PVP", ephemeral=True)
+                await self._safe_send(interaction, content="❌ Error al actualizar el recargo PVP", ephemeral=True)
                 
         except ValueError as e:
-            await interaction.followup.send(f"❌ Valor inválido: {str(e)}", ephemeral=True)
+            await self._safe_send(interaction, content=f"❌ Valor inválido: {str(e)}", ephemeral=True)
         except Exception as e:
             logger.error(f"Error configurando PVP markup: {e}")
-            await interaction.followup.send("❌ Error interno del sistema", ephemeral=True)
+            await self._safe_send(interaction, content="❌ Error interno del sistema", ephemeral=True)
 
 class MechanicSystemView(discord.ui.View):
     """Vista con botones para el sistema de mecánico"""
@@ -1429,13 +1460,24 @@ class MechanicSystemView(discord.ui.View):
                 await interaction.response.send_message(**kwargs)
             else:
                 await interaction.followup.send(**kwargs)
-        except Exception as e:
-            logger.error(f"Error enviando mensaje seguro: {e}")
-            # Como último recurso, intentar followup
+        except discord.errors.NotFound as e:
+            # Interacción expiró o no se encontró - no hay nada que hacer
+            logger.warning(f"Interacción expirada/no encontrada: {e}")
+        except discord.errors.InteractionResponded as e:
+            # Ya fue respondida, intentar followup
+            logger.warning(f"Interacción ya respondida, usando followup: {e}")
             try:
                 await interaction.followup.send(**kwargs)
-            except Exception as final_error:
-                logger.error(f"Error final enviando mensaje: {final_error}")
+            except Exception as followup_error:
+                logger.error(f"Error en followup tras InteractionResponded: {followup_error}")
+        except Exception as e:
+            logger.error(f"Error enviando mensaje seguro: {e}")
+            # Solo intentar followup si no es un error de interacción expirada
+            if "Unknown interaction" not in str(e) and "10062" not in str(e):
+                try:
+                    await interaction.followup.send(**kwargs)
+                except Exception as final_error:
+                    logger.error(f"Error final enviando mensaje: {final_error}")
     
     @discord.ui.button(label="🔧 Solicitar Seguro", style=discord.ButtonStyle.success, custom_id="request_insurance")
     async def request_insurance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1737,10 +1779,13 @@ class MechanicSystemView(discord.ui.View):
     @discord.ui.button(label="🔧 Panel Mecánico", style=discord.ButtonStyle.danger, custom_id="mechanic_panel")
     async def mechanic_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Panel para mecánicos registrados"""
-        await interaction.response.defer(ephemeral=True)
         
-        # Verificar si es mecánico
-        is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
+        # Verificar si es mecánico (fuera del try-except principal)
+        try:
+            is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
+        except Exception as e:
+            logger.error(f"Error verificando mecánico: {e}")
+            is_mechanic = False
         
         if not is_mechanic:
             embed = discord.Embed(
@@ -1753,14 +1798,18 @@ class MechanicSystemView(discord.ui.View):
                 value="Contacta a un administrador para que te registre como mecánico",
                 inline=False
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            try:
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
+            except Exception as send_error:
+                logger.error(f"Error enviando mensaje de acceso denegado: {send_error}")
             return
         
+        # Solo el procesamiento de seguros debe estar en el try-except principal
         try:
             # Obtener todos los seguros
             all_insurances = await get_all_insurances(str(interaction.guild.id))
             
-            if not all_insurances:
+            if not all_insurances or all_insurances is None:
                 embed = discord.Embed(
                     title="📋 Sin Seguros Registrados",
                     description="No hay seguros de vehículos registrados en este servidor.",
@@ -1777,8 +1826,13 @@ class MechanicSystemView(discord.ui.View):
             )
             
             # Agrupar por estado
-            active_count = sum(1 for ins in all_insurances if ins[11] == 'active')  # status column
-            pending_count = sum(1 for ins in all_insurances if ins[11] == 'pending_payment')
+            try:
+                active_count = sum(1 for ins in all_insurances if len(ins) > 11 and ins[11] == 'active')  # status column
+                pending_count = sum(1 for ins in all_insurances if len(ins) > 11 and ins[11] == 'pending_payment')
+            except Exception as count_error:
+                logger.error(f"Error contando estados: {count_error}")
+                active_count = 0
+                pending_count = 0
             
             embed.add_field(
                 name="📊 Resumen por Estado",
@@ -1794,34 +1848,52 @@ class MechanicSystemView(discord.ui.View):
             )
             
             for i, insurance in enumerate(all_insurances[:5]):
-                status_emoji = "✅" if insurance[11] == 'active' else "⏳"
-                payment_method = insurance[10] if len(insurance) > 10 else 'discord'  # payment_method column
-                embed.add_field(
-                    name=f"{status_emoji} {insurance[3]} - `{insurance[2]}`",  # tipo - vehicle_id
-                    value=f"**Propietario:** {insurance[7]}\n**Ubicación:** {insurance[4]}\n**Costo:** ${insurance[9]:,.0f}\n**Pago:** {payment_method.title()}\n**Fecha:** {insurance[12][:10]}",
-                    inline=True
-                )
+                try:
+                    # Verificar campos obligatorios y manejar None
+                    status = insurance[11] if len(insurance) > 11 and insurance[11] else 'unknown'
+                    status_emoji = "✅" if status == 'active' else "⏳"
+                    payment_method = insurance[10] if len(insurance) > 10 and insurance[10] else 'discord'
+                    
+                    # Campos con manejo seguro de None
+                    vehicle_type = insurance[3] if len(insurance) > 3 and insurance[3] else 'N/A'
+                    vehicle_id = insurance[2] if len(insurance) > 2 and insurance[2] else 'N/A'
+                    owner = insurance[7] if len(insurance) > 7 and insurance[7] else 'N/A'
+                    location = insurance[4] if len(insurance) > 4 and insurance[4] else 'N/A'
+                    cost = insurance[9] if len(insurance) > 9 and insurance[9] else 0
+                    date_field = insurance[12] if len(insurance) > 12 and insurance[12] else None
+                    date_str = date_field[:10] if date_field else 'N/A'
+                    
+                    embed.add_field(
+                        name=f"{status_emoji} {vehicle_type} - `{vehicle_id}`",
+                        value=f"**Propietario:** {owner}\n**Ubicación:** {location}\n**Costo:** ${cost:,.0f}\n**Pago:** {payment_method.title()}\n**Fecha:** {date_str}",
+                        inline=True
+                    )
+                except Exception as field_error:
+                    logger.error(f"Error procesando seguro {i}: {field_error}")
+                    # Continuar con el siguiente seguro
+                    continue
             
             if len(all_insurances) > 5:
                 embed.set_footer(text=f"Mostrando 5 de {len(all_insurances)} seguros • Solo visible para mecánicos")
             else:
                 embed.set_footer(text="Solo visible para mecánicos registrados")
             
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error en panel de mecánico: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error consultando los seguros",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, ephemeral=True)
     
     @discord.ui.button(label="💰 Gestionar Precios", style=discord.ButtonStyle.secondary, custom_id="manage_prices")
     async def manage_prices(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Panel para gestionar precios de vehículos"""
-        await interaction.response.defer(ephemeral=True)
         
         # Verificar si es mecánico o administrador
         is_mechanic = await is_user_mechanic(str(interaction.user.id), str(interaction.guild.id))
@@ -1838,7 +1910,7 @@ class MechanicSystemView(discord.ui.View):
                 value="Contacta a un administrador para que te registre como mecánico",
                 inline=False
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, ephemeral=True)
             return
         
         try:
@@ -1918,7 +1990,7 @@ class MechanicSystemView(discord.ui.View):
             
             # Crear vista de gestión de precios con botones interactivos
             price_management_view = PriceManagementView()
-            await interaction.followup.send(embed=embed, view=price_management_view, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, view=price_management_view, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error en panel de gestión de precios: {e}")
@@ -1927,7 +1999,7 @@ class MechanicSystemView(discord.ui.View):
                 description="Hubo un error consultando los precios",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, ephemeral=True)
     
     @discord.ui.button(label="🚗 Gestionar Mis Vehículos", style=discord.ButtonStyle.primary, custom_id="manage_vehicles")
     async def manage_vehicles(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1964,10 +2036,8 @@ class MechanicSystemView(discord.ui.View):
             
             # Obtener vehículos registrados del usuario
             user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
-            logger.info(f"Usuario {interaction.user.display_name} ({interaction.user.id}) - Vehículos encontrados: {len(user_vehicles) if user_vehicles else 0}")
             
             if user_vehicles:
-                logger.info(f"Primeros vehículos: {user_vehicles[:2]}")  # Log de debug
             
             embed = discord.Embed(
                 title="🚗 Gestión de Vehículos",
@@ -2539,7 +2609,6 @@ class VehicleEditModal(discord.ui.Modal, title="✏️ Editar ID de Vehículo"):
                 )
                 
                 await interaction.followup.send(embed=embed, ephemeral=True)
-                logger.info(f"ID de vehículo actualizado: {self.old_vehicle_id} -> {new_vehicle_id} por {interaction.user.display_name}")
                 
         except Exception as e:
             logger.error(f"Error actualizando ID de vehículo: {e}")
@@ -4140,38 +4209,27 @@ class MechanicSystem(commands.Cog):
                     column_names = [column[1] for column in columns]
                     
                     if 'payment_method' not in column_names:
-                        logger.info("🔄 Ejecutando migración: agregando columna payment_method")
                         await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN payment_method TEXT DEFAULT 'discord'")
-                        logger.info("✅ Migración completada: payment_method agregado")
                     
                     if 'confirmed_by' not in column_names:
-                        logger.info("🔄 Ejecutando migración: agregando columna confirmed_by")
                         await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN confirmed_by TEXT")
-                        logger.info("✅ Migración completada: confirmed_by agregado")
                     
                     if 'confirmed_at' not in column_names:
-                        logger.info("🔄 Ejecutando migración: agregando columna confirmed_at")
                         await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN confirmed_at TEXT")
-                        logger.info("✅ Migración completada: confirmed_at agregado")
                     
                     if 'owner_ingame_name' not in column_names:
-                        logger.info("🔄 Ejecutando migración: agregando columna owner_ingame_name")
                         await db.execute("ALTER TABLE vehicle_insurance ADD COLUMN owner_ingame_name TEXT")
-                        logger.info("✅ Migración completada: owner_ingame_name agregado")
                         
                         # Actualizar registros existentes que no tengan owner_ingame_name
-                        logger.info("🔄 Actualizando registros existentes sin owner_ingame_name")
                         await db.execute("""
                             UPDATE vehicle_insurance 
                             SET owner_ingame_name = 'Usuario-' || substr(owner_discord_id, -4)
                             WHERE owner_ingame_name IS NULL OR owner_ingame_name = ''
                         """)
-                        logger.info("✅ Registros existentes actualizados con nombres temporales")
                 except Exception as e:
                     logger.error(f"Error en migración de columnas: {e}")
                 
                 await db.commit()
-                logger.info("✅ Tablas de sistema de mecánico inicializadas")
                 
         except Exception as e:
             logger.error(f"Error inicializando base de datos de mecánico: {e}")
@@ -4524,7 +4582,6 @@ class MechanicSystem(commands.Cog):
         
         # Enviar mensaje principal
         await channel.send(embed=embed, view=view)
-        logger.info(f"Panel de mecánico configurado exitosamente en canal {channel_id}")
         
         return True
     
@@ -4711,7 +4768,7 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} debe registrarse primero en el sistema usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await self._safe_send(interaction, embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -4721,38 +4778,66 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} necesita configurar su nombre InGame en el canal de welcome",
                     color=discord.Color.red()
                 )
-                await self._safe_send(interaction, embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
-            # Verificar si ya es mecánico
-            is_already_mechanic = await is_user_mechanic(str(user.id), str(interaction.guild.id))
+            # Verificar si ya es mecánico activo
+            is_already_active_mechanic = await is_user_mechanic(str(user.id), str(interaction.guild.id))
             
-            if is_already_mechanic:
+            if is_already_active_mechanic:
                 embed = discord.Embed(
-                    title="⚠️ Ya es Mecánico",
-                    description=f"{user.display_name} ya está registrado como mecánico",
+                    title="⚠️ Ya es Mecánico Activo",
+                    description=f"{user.display_name} ya está registrado como mecánico activo",
                     color=discord.Color.orange()
                 )
-                await self._safe_send(interaction, embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
-            # Registrar como mecánico
+            # Verificar si existe mecánico inactivo para reactivar
             async with aiosqlite.connect(taxi_db.db_path) as db:
-                await db.execute("""
-                    INSERT INTO registered_mechanics (discord_id, discord_guild_id, ingame_name, registered_by, registered_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    str(user.id),
-                    str(interaction.guild.id),
-                    ingame_name,
-                    str(interaction.user.id),
-                    datetime.now().isoformat()
-                ))
+                cursor = await db.execute("""
+                    SELECT id, status FROM registered_mechanics 
+                    WHERE discord_id = ? AND discord_guild_id = ?
+                """, (str(user.id), str(interaction.guild.id)))
+                existing_mechanic = await cursor.fetchone()
+                
+                if existing_mechanic:
+                    # Mecánico existe pero está inactivo, reactivar
+                    await db.execute("""
+                        UPDATE registered_mechanics 
+                        SET status = 'active', 
+                            ingame_name = ?,
+                            registered_by = ?, 
+                            registered_at = ?
+                        WHERE discord_id = ? AND discord_guild_id = ?
+                    """, (
+                        ingame_name,
+                        str(interaction.user.id),
+                        datetime.now().isoformat(),
+                        str(user.id),
+                        str(interaction.guild.id)
+                    ))
+                    action_text = "reactivado"
+                else:
+                    # Mecánico no existe, crear nuevo
+                    await db.execute("""
+                        INSERT INTO registered_mechanics (discord_id, discord_guild_id, ingame_name, registered_by, registered_at, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        str(user.id),
+                        str(interaction.guild.id),
+                        ingame_name,
+                        str(interaction.user.id),
+                        datetime.now().isoformat(),
+                        'active'
+                    ))
+                    action_text = "registrado"
+                
                 await db.commit()
             
             embed = discord.Embed(
-                title="✅ Mecánico Registrado",
-                description=f"**{user.display_name}** ha sido registrado como mecánico exitosamente",
+                title=f"✅ Mecánico {'Reactivado' if action_text == 'reactivado' else 'Registrado'}",
+                description=f"**{user.display_name}** ha sido {action_text} como mecánico exitosamente",
                 color=discord.Color.green()
             )
             
@@ -4769,7 +4854,7 @@ class MechanicSystem(commands.Cog):
             )
             
             embed.add_field(
-                name="📋 Registrado por",
+                name=f"📋 {'Reactivado' if action_text == 'reactivado' else 'Registrado'} por",
                 value=f"{interaction.user.display_name}\n{datetime.now().strftime('%Y-%m-%d %H:%M')}",
                 inline=False
             )
@@ -4777,7 +4862,6 @@ class MechanicSystem(commands.Cog):
             embed.set_footer(text="Sistema de Mecánico SCUM • Registro administrativo")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.info(f"Mecánico registrado: {ingame_name} ({user.id}) por {interaction.user.display_name}")
             
         except Exception as e:
             logger.error(f"Error registrando mecánico: {e}")
@@ -5787,7 +5871,6 @@ class MechanicSystem(commands.Cog):
                     )
                     
                     await user.send(embed=dm_embed)
-                    logger.info(f"DM enviado a {user.id} sobre remoción de escuadrón")
                     
                 except discord.Forbidden:
                     logger.info(f"No se pudo enviar DM a {user.id} (DMs cerrados)")
@@ -6576,7 +6659,6 @@ async def leave_squadron(discord_id: str, guild_id: str, reason: str = 'voluntar
             
             await db.commit()
             
-            logger.info(f"Usuario {discord_id} salió exitosamente del escuadrón {squadron_name} (razón: {reason})")
             return True
             
     except Exception as e:
