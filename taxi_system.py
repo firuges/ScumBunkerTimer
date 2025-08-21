@@ -11,7 +11,8 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from taxi_database import taxi_db
-from taxi_config import taxi_config
+from taxi_config import taxi_config, TaxiConfig
+from core.user_manager import user_manager, get_user_by_discord_id
 import math
 import aiosqlite
 from rate_limiter import rate_limit, rate_limiter
@@ -23,6 +24,27 @@ class TaxiSystem(commands.Cog):
         self.bot = bot
         self.taxi_channels = {}  # {guild_id: channel_id}
         self.active_requests = {}  # {request_id: request_data}
+        self.guild_configs = {}  # {guild_id: TaxiConfig}
+    
+    async def get_guild_config(self, guild_id: int) -> TaxiConfig:
+        """Obtener configuración específica del servidor, crear si no existe"""
+        guild_id_str = str(guild_id)
+        
+        # Si ya está en cache, devolverlo
+        if guild_id in self.guild_configs:
+            return self.guild_configs[guild_id]
+        
+        # Crear nueva configuración para el servidor
+        try:
+            config = await TaxiConfig.create_for_guild(guild_id_str)
+            self.guild_configs[guild_id] = config
+            return config
+        except Exception as e:
+            logger.error(f"Error creando configuración para guild {guild_id}: {e}")
+            # Fallback a configuración por defecto
+            default_config = TaxiConfig.get_default_config()
+            self.guild_configs[guild_id] = default_config
+            return default_config
 
     async def load_channel_configs(self):
         """Cargar configuraciones de canales desde la base de datos y recrear paneles"""
@@ -183,12 +205,13 @@ class TaxiSystem(commands.Cog):
         vehiculo="Tipo de vehículo preferido"
     )
     @app_commands.choices(vehiculo=[
-        app_commands.Choice(name="🚗 Sedán (Básico)", value="sedan"),
-        app_commands.Choice(name="🚙 SUV (+30%)", value="suv"),
-        app_commands.Choice(name="🚚 Camión (+50%)", value="truck"),
-        app_commands.Choice(name="🚐 Furgoneta (+20%)", value="van")
+        app_commands.Choice(name="🚗 Automóvil (Base)", value="auto"),
+        app_commands.Choice(name="🏍️ Motocicleta (-20%)", value="moto"),
+        app_commands.Choice(name="✈️ Avión (+250%)", value="avion"),
+        app_commands.Choice(name="🛩️ Hidroavión (+200%)", value="hidroavion"),
+        app_commands.Choice(name="🚢 Barco (+350%)", value="barco")
     ])
-    async def taxi_solicitar(self, interaction: discord.Interaction, destino: str, vehiculo: str = "sedan"):
+    async def taxi_solicitar(self, interaction: discord.Interaction, destino: str, vehiculo: str = "auto"):
         """Solicitar un taxi"""
         # Verificar rate limiting
         if not await rate_limiter.check_and_record(interaction, "taxi_solicitar"):
@@ -196,8 +219,11 @@ class TaxiSystem(commands.Cog):
         
         await interaction.response.defer()
         
+        # Obtener configuración específica del servidor
+        guild_config = await self.get_guild_config(interaction.guild.id)
+        
         # Verificar si el sistema está habilitado
-        if not taxi_config.TAXI_ENABLED:
+        if not guild_config.TAXI_ENABLED:
             embed = discord.Embed(
                 title="❌ Sistema Deshabilitado",
                 description="El sistema de taxi está temporalmente deshabilitado",
@@ -207,7 +233,7 @@ class TaxiSystem(commands.Cog):
             return
         
         # Verificar si el usuario está registrado
-        user_exists = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        user_exists = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
         if not user_exists:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado",
@@ -231,7 +257,7 @@ class TaxiSystem(commands.Cog):
             return
         
         # Buscar zona de destino válida
-        destination_zone = taxi_config.find_zone_by_name(destino)
+        destination_zone = guild_config.find_zone_by_name(destino)
         if not destination_zone:
             embed = discord.Embed(
                 title="❌ Zona No Encontrada",
@@ -251,17 +277,25 @@ class TaxiSystem(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         
-        # Calcular costo estimado
-        base_cost = taxi_config.TAXI_BASE_RATE
-        distance = destination_zone.get('distance', 10)  # Distancia estimada
-        vehicle_multiplier = {
-            'sedan': 1.0,
-            'suv': 1.3,
-            'truck': 1.5,
-            'van': 1.2
-        }.get(vehiculo, 1.0)
+        # Calcular costo estimado usando el nuevo sistema
+        distance = destination_zone.get('distance', 10)  # Distancia estimada (fallback)
         
-        total_cost = int((base_cost + (distance * taxi_config.TAXI_PER_KM_RATE)) * vehicle_multiplier)
+        # Usar el sistema de tarifas del taxi_config si está disponible
+        if hasattr(guild_config, 'VEHICLE_TYPES') and vehiculo in guild_config.VEHICLE_TYPES:
+            vehicle_multiplier = guild_config.VEHICLE_TYPES[vehiculo].get('cost_multiplier', 1.0)
+        else:
+            # Fallback a valores por defecto para vehículos nuevos
+            vehicle_multiplier = {
+                'auto': 1.0,
+                'moto': 0.8,
+                'avion': 3.5,
+                'hidroavion': 3.0,
+                'barco': 4.5
+            }.get(vehiculo, 1.0)
+        
+        base_cost = guild_config.TAXI_BASE_RATE
+        
+        total_cost = int((base_cost + (distance * guild_config.TAXI_PER_KM_RATE)) * vehicle_multiplier)
         
         # Verificar balance del usuario
         balance = user_exists['balance']
@@ -327,7 +361,7 @@ class TaxiSystem(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         # Buscar solicitud activa  
-        user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
         if not user_data:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado",
@@ -382,7 +416,7 @@ class TaxiSystem(commands.Cog):
         
         # Información del conductor si está asignado
         if active_request.get('driver_id'):
-            driver = await taxi_db.get_user_by_id(active_request['driver_id'])
+            driver = await user_manager.get_user_by_id(active_request['driver_id'])
             embed.add_field(name="👨‍✈️ Conductor", value=driver['username'] if driver else 'Desconocido', inline=True)
         
         embed.set_footer(text="Usa /taxi_cancelar para cancelar la solicitud")
@@ -399,7 +433,7 @@ class TaxiSystem(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         
         # Buscar solicitud activa
-        user_data = await taxi_db.get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
+        user_data = await get_user_by_discord_id(str(interaction.user.id), str(interaction.guild.id))
         if not user_data:
             embed = discord.Embed(
                 title="❌ Usuario No Registrado", 
@@ -642,7 +676,7 @@ class TaxiSystem(commands.Cog):
             
             if action.value == "list":
                 # Obtener información del usuario para timezone
-                user_info = await taxi_db.get_user_by_discord_id(user_id, guild_id)
+                user_info = await get_user_by_discord_id(user_id, guild_id)
                 user_timezone = user_info.get('timezone', 'UTC') if user_info else 'UTC'
                 
                 # Auto-actualizar timezone si es UTC (usuarios existentes antes de la feature)
@@ -1074,7 +1108,7 @@ class TaxiMainView(discord.ui.View):
             return
         
         # Verificar que está registrado
-        user_data = await taxi_db.get_user_by_discord_id(
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id), 
             str(interaction.guild.id)
         )
@@ -1111,7 +1145,7 @@ class TaxiMainView(discord.ui.View):
             return
         
         # Verificar registro
-        user_data = await taxi_db.get_user_by_discord_id(
+        user_data = await get_user_by_discord_id(
             str(interaction.user.id), 
             str(interaction.guild.id)
         )
@@ -1325,10 +1359,10 @@ class TaxiRequestModal(discord.ui.Modal):
         
         self.vehicle_type = discord.ui.TextInput(
             label="Tipo de Vehículo",
-            placeholder="sedan, suv, truck, van",
+            placeholder="auto, moto, avion, hidroavion, barco",
             required=False,
             max_length=20,
-            default="sedan"
+            default="auto"
         )
         
         self.instructions = discord.ui.TextInput(
@@ -1366,7 +1400,7 @@ class TaxiRequestModal(discord.ui.Modal):
             # Validar tipo de vehículo
             vehicle_type = self.vehicle_type.value.lower().strip()
             if vehicle_type not in taxi_config.VEHICLE_TYPES:
-                vehicle_type = "sedan"
+                vehicle_type = "auto"
             
             # Crear solicitud
             success, result = await taxi_db.create_taxi_request(

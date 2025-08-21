@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Interactiva SCUM System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', Arial, sans-serif;
+            background: #23272a;
+            color: #fff;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background: #2c2f33;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px #0006;
+            padding: 32px 24px;
+        }
+        h1 {
+            text-align: center;
+            color: #43b581;
+            margin-bottom: 8px;
+        }
+        .channels {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .channel {
+            background: #23272a;
+            border-radius: 6px;
+            padding: 8px 16px;
+            color: #7289da;
+            font-weight: 700;
+            font-size: 1rem;
+            box-shadow: 0 2px 8px #0003;
+        }
+        .panel {
+            background: #23272a;
+            border-radius: 8px;
+            margin-bottom: 32px;
+            padding: 24px 18px;
+            box-shadow: 0 2px 12px #0004;
+        }
+        .panel h2 {
+            color: #faa61a;
+            margin-top: 0;
+        }
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 16px 0;
+        }
+        button {
+            color: #fff;
+            border: 2px solid rgba(0,0,0,0.08);
+            border-radius: 7px;
+            padding: 10px 22px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            background: #23272a;
+            box-shadow: 0 2px 8px #0002, 0 1px 0 #fff1 inset;
+            transition: background 0.18s, box-shadow 0.18s, transform 0.18s;
+        }
+        button:active {
+            transform: scale(0.97);
+            box-shadow: 0 1px 4px #0003;
+        }
+        button:focus {
+            outline: 2px solid #faa61a;
+            outline-offset: 2px;
+        }
+        }
+        /* Colores por tipo de acción */
+        .btn-primary { background: #7289da; }
+        .btn-primary:hover { background: #5865f2; }
+        .btn-success { background: #43b581; }
+        .btn-success:hover { background: #2ecc71; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-warning { background: #faa61a; color: #23272a; }
+        .btn-warning:hover { background: #f39c12; color: #23272a; }
+        .btn-info { background: #00b8d9; }
+        .btn-info:hover { background: #008c9e; }
+        .btn-neutral { background: #99aab5; color: #23272a; }
+        .btn-neutral:hover { background: #7f8c8d; color: #23272a; }
+    /* Colores extra para sistemas */
+    .btn-taxi { background: #f5b041; color: #23272a; }
+    .btn-taxi:hover { background: #d68910; color: #23272a; }
+    .btn-squad { background: #16a085; }
+    .btn-squad:hover { background: #117864; }
+    .btn-mechanic { background: #af7ac5; }
+    .btn-mechanic:hover { background: #884ea0; }
+    .btn-admin { background: #c0392b; }
+    .btn-admin:hover { background: #922b21; }
+    .btn-shop { background: #00b894; }
+    .btn-shop:hover { background: #00897b; }
+    .btn-bunker { background: #636e72; }
+    .btn-bunker:hover { background: #2d3436; }
+    /* Ajuste de colores y contraste para todos los botones */
+    .btn-primary { background: #5865f2 !important; }
+    .btn-primary:hover { background: #4752c4 !important; box-shadow: 0 4px 16px #5865f2aa; }
+    .btn-success { background: #43b581 !important; }
+    .btn-success:hover { background: #2ecc71 !important; box-shadow: 0 4px 16px #43b581aa; }
+    .btn-danger { background: #e74c3c !important; }
+    .btn-danger:hover { background: #c0392b !important; box-shadow: 0 4px 16px #e74c3c99; }
+    .btn-warning { background: #faa61a !important; color: #23272a !important; }
+    .btn-warning:hover { background: #f39c12 !important; color: #23272a !important; box-shadow: 0 4px 16px #faa61a99; }
+    .btn-info { background: #00b8d9 !important; }
+    .btn-info:hover { background: #008c9e !important; box-shadow: 0 4px 16px #00b8d999; }
+    .btn-neutral { background: #99aab5 !important; color: #23272a !important; }
+    .btn-neutral:hover { background: #7f8c8d !important; color: #23272a !important; box-shadow: 0 4px 16px #99aab599; }
+    .btn-taxi { background: #f5b041 !important; color: #23272a !important; }
+    .btn-taxi:hover { background: #d68910 !important; color: #23272a !important; box-shadow: 0 4px 16px #f5b04199; }
+    .btn-squad { background: #16a085 !important; }
+    .btn-squad:hover { background: #117864 !important; box-shadow: 0 4px 16px #16a08599; }
+    .btn-mechanic { background: #af7ac5 !important; }
+    .btn-mechanic:hover { background: #884ea0 !important; box-shadow: 0 4px 16px #af7ac599; }
+    .btn-admin { background: #c0392b !important; }
+    .btn-admin:hover { background: #922b21 !important; box-shadow: 0 4px 16px #c0392b99; }
+    .btn-shop { background: #00b894 !important; }
+    .btn-shop:hover { background: #00897b !important; box-shadow: 0 4px 16px #00b89499; }
+    .btn-bunker { background: #636e72 !important; }
+    .btn-bunker:hover { background: #2d3436 !important; box-shadow: 0 4px 16px #636e7299; }
+        /* Paneles y modales para bunkers */
+        .bunker-panel-header {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #faa61a;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .bunker-status {
+            font-size: 1.05em;
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 7px;
+            background: #23272a;
+            color: #fff;
+            box-shadow: 0 2px 8px #0002;
+        }
+        .bunker-status.active { background: #43b581; color: #fff; }
+        .bunker-status.expired { background: #faa61a; color: #23272a; }
+        .bunker-status.registered { background: #e74c3c; color: #fff; }
+        .bunker-status.unknown { background: #636e72; color: #fff; }
+        .bunker-select {
+            background: #2c2f33;
+            border-radius: 8px;
+            padding: 10px 0;
+            margin-bottom: 12px;
+        }
+        .bunker-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 18px;
+            cursor: pointer;
+            border-bottom: 1px solid #23272a;
+            transition: background 0.2s;
+        }
+        .bunker-option:last-child { border-bottom: none; }
+        .bunker-option:hover {
+            background: #36393f;
+        }
+        .bunker-icon {
+            font-size: 1.3em;
+        }
+        .bunker-selected {
+            background: #7289da !important;
+            color: #fff;
+        }
+    /* Subbotones internos diferenciados */
+    .btn-confirm { background: #43b581 !important; }
+    .btn-confirm:hover { background: #2ecc71 !important; box-shadow: 0 4px 16px #43b581aa; }
+    .btn-cancel { background: #e74c3c !important; }
+    .btn-cancel:hover { background: #c0392b !important; box-shadow: 0 4px 16px #e74c3c99; }
+    .btn-back { background: #99aab5 !important; color: #23272a !important; }
+    .btn-back:hover { background: #7f8c8d !important; color: #23272a !important; box-shadow: 0 4px 16px #99aab599; }
+    .btn-send { background: #5865f2 !important; }
+    .btn-send:hover { background: #4752c4 !important; box-shadow: 0 4px 16px #5865f2aa; }
+        /* Modales y paneles tipo Discord */
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #23272a;
+            border-radius: 12px;
+            box-shadow: 0 4px 32px #0008;
+            padding: 32px 28px 24px 28px;
+            min-width: 340px;
+            max-width: 420px;
+            z-index: 1000;
+            color: #fff;
+        }
+        .modal-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 12px;
+            color: #faa61a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-close {
+            position: absolute;
+            top: 12px;
+            right: 18px;
+            font-size: 1.3em;
+            color: #aaa;
+            cursor: pointer;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 18px;
+            justify-content: flex-end;
+        }
+        .vehicle-select {
+            background: #2c2f33;
+            border-radius: 8px;
+            padding: 10px 0;
+            margin-bottom: 12px;
+        }
+        .vehicle-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 18px;
+            cursor: pointer;
+            border-bottom: 1px solid #23272a;
+            transition: background 0.2s;
+        }
+        .vehicle-option:last-child { border-bottom: none; }
+        .vehicle-option:hover {
+            background: #36393f;
+        }
+        .vehicle-icon {
+            font-size: 1.3em;
+        }
+        .selected {
+            background: #7289da !important;
+            color: #fff;
+        }
+        .taxi-panel-header {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #faa61a;
+            margin-bottom: 8px;
+        }
+        .output {
+            background: #2c2f33;
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 10px;
+            color: #fff;
+            font-size: 1rem;
+            min-height: 60px;
+            box-shadow: 0 1px 6px #0002;
+        }
+        .section {
+            margin-bottom: 32px;
+        }
+        .footer {
+            text-align: center;
+            color: #aaa;
+            margin-top: 40px;
+            font-size: 0.95rem;
+        }
+        .emoji {
+            font-size: 1.2em;
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Demo Interactiva SCUM System</h1>
+        <div class="channels">
+            <div class="channel">#welcome-register</div>
+            <div class="channel">#bank</div>
+            <div class="channel">#taxi</div>
+            <div class="channel">#taller</div>
+            <div class="channel">#squad-register</div>
+            <div class="channel">#shop</div>
+            <div class="channel">#-inbox-admin</div>
+            <div class="channel">#-administracion</div>
+            <div class="channel">#bunker-timer</div>
+        </div>
+        <div class="panel section" id="welcome-panel">
+            <h2>🎉 Sistema de Bienvenida</h2>
+            <div class="buttons">
+                <button class="btn-primary" onclick="showWelcomeRegister()">Registrarse</button>
+                <button class="btn-info" onclick="showWelcomeStatus()">Mi Estado</button>
+                <button class="btn-warning" onclick="showUpdateInGameName()">Actualizar Nombre InGame</button>
+            </div>
+            <div class="output" id="welcome-output"></div>
+        </div>
+        <div class="panel section" id="bank-panel">
+            <h2>🏦 Sistema Bancario SCUM</h2>
+            <div class="output" id="bank-output">
+                <div style="background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;">
+                    <b style="font-size:1.2em;">🏦 Sistema Bancario SCUM</b><br>
+                    <span style="color:#faa61a;font-weight:700;">Gestiona tu dinero de forma segura y eficiente</span><br><br>
+                    <b>🛠️ Servicios Disponibles:</b><br>
+                    <span style="color:#43b581;">📄 Consultar Saldo</span> – Ver tu balance actual<br>
+                    <span style="color:#43b581;">💸 Transferir Dinero</span> – Enviar dinero a otros jugadores<br>
+                    <span style="color:#43b581;">📋 Historial</span> – Ver tus últimas transacciones<br>
+                    <span style="color:#43b581;">📊 Estadísticas</span> – Análisis de tu actividad financiera<br>
+                    <span style="color:#43b581;">🎁 Canje Diario</span> – Recibe $500 gratis cada día<br><br>
+                    <b>🛡️ Seguridad:</b><br>
+                    <span style="color:#43b581;">✔️ Todas las transacciones son seguras</span><br>
+                    <span style="color:#43b581;">✔️ Historial completo de movimientos</span><br>
+                    <span style="color:#43b581;">✔️ Protección contra fraudes</span><br>
+                    <span style="color:#43b581;">✔️ Soporte 24/7 por administradores</span><br><br>
+                    <b>💡 Consejos:</b><br>
+                    <span style="color:#faa61a;">• Verifica siempre el número de cuenta antes de transferir</span><br>
+                    <span style="color:#faa61a;">• Guarda capturas de transacciones importantes</span><br>
+                    <span style="color:#faa61a;">• Reporta cualquier actividad sospechosa</span><br>
+                    <span style="color:#faa61a;">• Usa descripciones claras en tus transferencias</span><br><br>
+                    <span style="color:#aaa;">Selecciona una opción para comenzar</span><br>
+                    <div class="buttons" style="margin-top:16px;">
+                        <button class="btn-primary" onclick="bankShowBalancePanel()">Ver Saldo</button>
+                        <button class="btn-success" onclick="bankShowTransferPanel()">Transferir</button>
+                        <button class="btn-info" onclick="bankShowHistoryPanel()">Historial</button>
+                        <button class="btn-warning" onclick="bankShowDailyPanel()">Canje Diario</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel section" id="mechanic-panel">
+            <h2>🔧 Taller Mecánico SCUM</h2>
+            <div class="output" id="mechanic-output">
+                <div style="background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;">
+                    <b style="font-size:1.2em;">🔧 Taller Mecánico SCUM</b><br>
+                    <span style="color:#faa61a;font-weight:700;">Protege tus vehículos con nuestro sistema de seguros</span><br><br>
+                    <b>🚗 Servicios Disponibles:</b><br>
+                    • Seguros de Vehículos<br>
+                    • Consulta de Seguros<br>
+                    • Gestión de Precios<br>
+                    <b>💰 Costos de Seguros:</b><br>
+                    Moto: $500<br>Ranger: $1,200<br>Laika: $1,500<br>WW: $900<br>Avión: $3,500<br>Barca: $800<br>Zona PVP: +25%<br>
+                    <b>🎯 Detección Automática:</b> PvP/PvE<br>
+                    <b>💡 Instrucciones:</b><br>
+                    1. Seleccionar Seguro<br>2. Consultar Seguros<br>3. Panel Mecánico<br>4. Gestionar Precios<br>
+                    <div class="buttons" style="margin-top:16px;">
+                        <button class="btn-mechanic" onclick="mechanicSelectInsuranceFlow()">Seleccionar Seguro</button>
+                        <button class="btn-info" onclick="mechanicCheckInsuranceFlow()">Consultar Seguros</button>
+                        <button class="btn-primary" onclick="mechanicPanelFlow()">Panel Mecánico</button>
+                        <button class="btn-warning" onclick="mechanicPriceFlow()">Gestionar Precios</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel section" id="taxi-panel">
+            <h2>🚗 Sistema de Taxi</h2>
+            <div class="buttons" id="taxi-main-buttons">
+                    <button class="btn-taxi" onclick="taxiShowRequest()">🚕 Solicitar Taxi</button>
+                    <button class="btn-info" onclick="taxiShowStatus()">📋 Estado Solicitud</button>
+                    <button class="btn-primary" onclick="taxiShowDriverPanel()">🧑‍✈️ Panel Conductor</button>
+                    <button class="btn-info" onclick="taxiShowZonesModal()">🗺️ Ver Zonas</button>
+                    <button class="btn-warning" onclick="taxiShowRateModal()">⭐ Calificar Viaje</button>
+            </div>
+            <div class="output" id="taxi-output"></div>
+        </div>
+        <div class="panel section" id="squad-panel">
+            <h2>👥 Sistema de Escuadrones</h2>
+            <div class="output" id="squad-output">
+                <div style="background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;">
+                    <b style="font-size:1.2em;">🏆 Registro de Escuadrones SCUM</b><br>
+                    <span style="color:#faa61a;font-weight:700;">¡Únete o crea un escuadrón para dominar SCUM!</span><br><br>
+                    <b>🛡️ Tipos de Escuadrones:</b> PvP (Combate y raids) / PvE (Exploración y supervivencia)<br>
+                    <b>🎯 Beneficios Automáticos:</b> Detección automática de zona, tarifas optimizadas, límites personalizados, coordinación de equipo<br>
+                    <b>📋 Requisitos:</b> Registrado, nombre InGame, no pertenecer a otro escuadrón<br>
+                    <b>¿Cómo empezar?</b><br>
+                    1. Registrarte en el sistema usando <code>/welcome_registro</code><br>
+                    2. Configurar tu nombre InGame<br>
+                    3. Crear o unirte a un escuadrón usando los botones de abajo<br>
+                    <div class="buttons" style="margin-top:16px;">
+                        <button class="btn-squad" onclick="squadCreateFlow()">Crear Escuadrón</button>
+                        <button class="btn-info" onclick="squadMySquadFlow()">Mi Escuadrón</button>
+                        <button class="btn-primary" onclick="squadExploreFlow()">Explorar Escuadrones</button>
+                        <button class="btn-danger" onclick="squadLeaveFlow()">Salir del Escuadrón</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel section" id="shop-panel">
+            <h2>🛒 Sistema de Tienda</h2>
+            <div class="buttons">
+                <button class="btn-shop" onclick="showShopTier(1)">Tier 1 - Básico</button>
+                <button class="btn-shop" onclick="showShopTier(2)">Tier 2 - Intermedio</button>
+                <button class="btn-shop" onclick="showShopTier(3)">Tier 3 - Élite</button>
+                <button class="btn-primary" onclick="showShopBalance()">Mi Saldo</button>
+            </div>
+            <div class="output" id="shop-output"></div>
+        </div>
+        <div class="panel section" id="admin-panel">
+            <h2>⚙️ Panel Administrativo</h2>
+            <div class="buttons">
+                <button class="btn-admin" onclick="showAdminUsers()">Ver Todos los Usuarios</button>
+                <button class="btn-primary" onclick="showAdminDrivers()">Ver Conductores</button>
+                <button class="btn-warning" onclick="showAdminPendingInsurance()">Seguros Pendientes</button>
+                <button class="btn-info" onclick="showAdminCommands()">Comandos Admin</button>
+            </div>
+            <div class="output" id="admin-output"></div>
+        </div>
+        <div class="panel section" id="bunker-panel">
+            <h2>🏢 Sistema de Bunkers</h2>
+            <div class="buttons">
+                <button class="btn-bunker" onclick="bunkerShowListPanel()">📋 Lista de Bunkers</button>
+                <button class="btn-success" onclick="bunkerShowRegisterPanel()">🟢 Registrar Bunker</button>
+                <button class="btn-info" onclick="bunkerShowCheckPanel()">🔍 Verificar Bunker</button>
+                <button class="btn-warning" onclick="bunkerShowMyUsagePanel()">📊 Mi Uso</button>
+            </div>
+            <div class="output" id="bunker-output"></div>
+        </div>
+        <div class="footer">
+            Demo Interactiva SCUM System &copy; 2025 &mdash; Inspirado en la arquitectura modular del bot Discord.<br>
+            <span style="color:#43b581">Desarrollado por firuges</span>
+        </div>
+    </div>
+    <script>
+        // Paneles de Bunkers
+        function bunkerShowListPanel() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>📋 Lista de Bunkers</div>
+                <div class='bunker-status unknown'>No hay bunkers registrados en este servidor.</div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='bunkerShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerShowRegisterPanel() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>🟢 Registrar Bunker</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>Selecciona el sector y servidor para registrar el bunker.</div>
+                <div class='bunker-select'>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "D1")'><span class='bunker-icon'>🏠</span> D1 <span style='color:#aaa;font-size:0.95em;'>Zona Noroeste</span></div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "C4")'><span class='bunker-icon'>🏠</span> C4 <span style='color:#aaa;font-size:0.95em;'>Zona Central</span></div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "A1")'><span class='bunker-icon'>🏠</span> A1 <span style='color:#aaa;font-size:0.95em;'>Zona Noreste</span></div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "A3")'><span class='bunker-icon'>🏠</span> A3 <span style='color:#aaa;font-size:0.95em;'>Zona Sureste</span></div>
+                </div>
+                <div style='margin-bottom:10px;'>
+                    <label for='bunker-server' style='font-weight:700;'>Selecciona el servidor SCUM</label><br>
+                    <select id='bunker-server' style='width:80%;padding:6px;border-radius:5px;border:none;margin:6px 0;'>
+                        <option>Default</option>
+                        <option>Academy</option>
+                        <option>Tartaro</option>
+                    </select>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-confirm' onclick='bunkerShowRegisterStep2()'>Registrar</button>
+                    <button class='btn-back' onclick='bunkerShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerSelectSector(el, name) {
+            let options = document.querySelectorAll('.bunker-option');
+            options.forEach(opt => opt.classList.remove('bunker-selected'));
+            el.classList.add('bunker-selected');
+        }
+        function bunkerShowRegisterStep2() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>🟢 Registrar Bunker - Paso 2</div>
+                <div class='bunker-status active'>Tiempo hasta apertura: 100h 10m</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>Ahora selecciona el sector y servidor:</div>
+                <div class='bunker-select'>
+                    <div class='bunker-option bunker-selected'><span class='bunker-icon'>🏠</span> D1</div>
+                    <div class='bunker-option'><span class='bunker-icon'>🏠</span> Academy</div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-confirm' onclick='bunkerShowListPanel()'>Finalizar Registro</button>
+                    <button class='btn-back' onclick='bunkerShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerShowCheckPanel() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>🔍 Verificar Estado de Bunker</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>Selecciona el sector y servidor para verificar.</div>
+                <div class='bunker-select'>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "D1")'><span class='bunker-icon'>🏠</span> D1</div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "C4")'><span class='bunker-icon'>🏠</span> C4</div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "A1")'><span class='bunker-icon'>🏠</span> A1</div>
+                    <div class='bunker-option' onclick='bunkerSelectSector(this, "A3")'><span class='bunker-icon'>🏠</span> A3</div>
+                </div>
+                <div style='margin-bottom:10px;'>
+                    <label for='bunker-server-check' style='font-weight:700;'>Selecciona el servidor SCUM</label><br>
+                    <select id='bunker-server-check' style='width:80%;padding:6px;border-radius:5px;border:none;margin:6px 0;'>
+                        <option>Default</option>
+                        <option>Academy</option>
+                        <option>Tartaro</option>
+                    </select>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-confirm' onclick='bunkerShowCheckResultPanel()'>Verificar</button>
+                    <button class='btn-back' onclick='bunkerShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerShowCheckResultPanel() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>🔍 Verificar Estado de Bunker</div>
+                <div class='bunker-status registered'>❌ Bunker no encontrado<br><span style='font-size:0.98em;'>No hay información registrada para el sector D1 en el servidor Tartaro.</span></div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='bunkerShowCheckPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerShowMyUsagePanel() {
+            document.getElementById('bunker-output').innerHTML = `
+                <div class='bunker-panel-header'>📊 Mi Uso</div>
+                <div class='bunker-status unknown'>No hay bunkers registrados para tu usuario.</div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='bunkerShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function bunkerShowMainPanel() {
+            document.getElementById('bunker-output').innerHTML = '';
+        }
+        // MODAL helpers
+        function showModal(content) {
+            let modalBg = document.createElement('div');
+            modalBg.id = 'modal-bg';
+            modalBg.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000a;z-index:999;';
+            modalBg.onclick = closeModal;
+            document.body.appendChild(modalBg);
+            let modal = document.createElement('div');
+            modal.className = 'modal';
+            modal.innerHTML = content;
+            document.body.appendChild(modal);
+        }
+        function closeModal() {
+            let modal = document.querySelector('.modal');
+            let modalBg = document.getElementById('modal-bg');
+            if (modal) modal.remove();
+            if (modalBg) modalBg.remove();
+        }
+        // Zonas Modal
+        function taxiShowZonesModal() {
+            showModal(`
+                <div class='modal-header'>🗺️ Mapa de Zonas SCUM - Sistema PAD <span class='modal-close' onclick='closeModal()'>&times;</span></div>
+                <div style='margin-bottom:10px;color:#faa61a;background:#23272a;padding:8px 12px;border-radius:6px;font-size:0.98em;'>Este formulario se enviará a Scum Bunker Timer. No compartas contraseñas ni información confidencial.</div>
+                <div style='max-height:220px;overflow-y:auto;'>
+                    <b style='color:#43b581;'>Zonas y Coordenadas Disponibles</b><br><br>
+                    <b>MAPA DE ZONAS SCUM</b><br>
+                    <b>Sistema Grid + PAD (EP-B5)</b><br>
+                    <b>Layout PAD:</b> 7-8 / 4-5 / 6 / 1-2-3<br>
+                    <b>CIUDADES:</b><br>
+                    <span style='color:#00b8d9;'>B2-5: Ciudad Central</span><br>
+                    <b>PUERTOS:</b><br>
+                    <span style='color:#00b8d9;'>CO-4: Puerto Este</span><br>
+                    <b>PUEBLOS:</b><br>
+                    <span style='color:#00b8d9;'>AO-8: Pueblo Costero Norte</span><br>
+                    <span style='color:#00b8d9;'>C3 4: Villa del Sur</span><br>
+                </div>
+                <div class='modal-actions'>
+                    <button class='btn-neutral' onclick='closeModal()'>Cancelar</button>
+                    <button class='btn-primary' onclick='closeModal()'>Enviar</button>
+                </div>
+            `);
+        }
+        // Calificar Viaje Modal
+        function taxiShowRateModal() {
+            showModal(`
+                <div class='modal-header'>⭐ Calificar Viaje #6 <span class='modal-close' onclick='closeModal()'>&times;</span></div>
+                <div style='margin-bottom:10px;color:#faa61a;background:#23272a;padding:8px 12px;border-radius:6px;font-size:0.98em;'>Este formulario se enviará a Scum Bunker Timer. No compartas contraseñas ni información confidencial.</div>
+                <div>
+                    <label for='rate' style='font-weight:700;'>Calificación (1-5 estrellas)*</label><br>
+                    <input id='rate' type='number' min='1' max='5' style='width:60px;padding:6px;border-radius:5px;border:none;margin:6px 0 12px 0;'>
+                    <br>
+                    <label for='comment' style='font-weight:700;'>Comentario (Opcional)</label><br>
+                    <textarea id='comment' rows='3' maxlength='500' style='width:100%;padding:6px;border-radius:5px;border:none;resize:none;'></textarea>
+                </div>
+                <div class='modal-actions'>
+                    <button class='btn-neutral' onclick='closeModal()'>Cancelar</button>
+                    <button class='btn-primary' onclick='closeModal()'>Enviar</button>
+                </div>
+            `);
+        }
+        // Solicitar Taxi Panel
+        function taxiShowRequest() {
+            document.getElementById('taxi-output').innerHTML = `
+                <div class='taxi-panel-header'>🚕 Solicitar Taxi - Selecciona tu viaje</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>Configura tu viaje seleccionando origen, vehículo y destino.</div>
+                <div class='vehicle-select'>
+                    <div class='vehicle-option' onclick='taxiSelectVehicle(this, "Automóvil")'><span class='vehicle-icon'>🚗</span> Automóvil <span style='color:#aaa;font-size:0.95em;'>Vehículo terrestre estándar</span></div>
+                    <div class='vehicle-option' onclick='taxiSelectVehicle(this, "Motocicleta")'><span class='vehicle-icon'>🏍️</span> Motocicleta <span style='color:#aaa;font-size:0.95em;'>Vehículo rápido y ágil</span></div>
+                    <div class='vehicle-option' onclick='taxiSelectVehicle(this, "Avión")'><span class='vehicle-icon'>✈️</span> Avión <span style='color:#aaa;font-size:0.95em;'>Transporte aéreo rápido</span></div>
+                    <div class='vehicle-option' onclick='taxiSelectVehicle(this, "Hidroavión")'><span class='vehicle-icon'>🛩️</span> Hidroavión <span style='color:#aaa;font-size:0.95em;'>Avión que aterriza en agua</span></div>
+                    <div class='vehicle-option' onclick='taxiSelectVehicle(this, "Barco")'><span class='vehicle-icon'>🚤</span> Barco <span style='color:#aaa;font-size:0.95em;'>Transporte marítimo</span></div>
+                </div>
+                <div style='margin-bottom:10px;'>
+                    <label for='origin' style='font-weight:700;'>Selecciona la parada de origen</label><br>
+                    <input id='origin' type='text' style='width:80%;padding:6px;border-radius:5px;border:none;margin:6px 0;'>
+                </div>
+                <div style='margin-bottom:10px;'>
+                    <label for='destination' style='font-weight:700;'>Selecciona la parada de destino</label><br>
+                    <input id='destination' type='text' style='width:80%;padding:6px;border-radius:5px;border:none;margin:6px 0;'>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-cancel' onclick='taxiShowMainPanel()'>Cancelar y Volver</button>
+                    <button class='btn-confirm' onclick='taxiShowStatus()'>Solicitar</button>
+                </div>
+            `;
+        }
+        function taxiSelectVehicle(el, name) {
+            let options = document.querySelectorAll('.vehicle-option');
+            options.forEach(opt => opt.classList.remove('selected'));
+            el.classList.add('selected');
+        }
+        // Estado de Solicitud
+        function taxiShowStatus() {
+            document.getElementById('taxi-output').innerHTML = `
+                <div class='taxi-panel-header'>📋 Estado de Solicitud</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>Puedes crear una nueva solicitud desde el panel principal.</div>
+                <div style='background:#2c2f33;border-radius:8px;padding:12px 14px;margin-bottom:10px;'>
+                    <b>Viajes activos:</b><br>
+                    <span style='color:#43b581;'>No tienes viajes activos.</span>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='taxiShowMainPanel()'>Volver al Panel Principal</button>
+                </div>
+            `;
+        }
+        // Panel de Conductor
+        function taxiShowDriverPanel() {
+            document.getElementById('taxi-output').innerHTML = `
+                <div class='taxi-panel-header'>🧑‍✈️ Panel de Conductor</div>
+                <div style='color:#faa61a;font-size:0.98em;margin-bottom:8px;'>No estás registrado como conductor. ¿Te gustaría registrarte?</div>
+                <div class='buttons'>
+                    <button class='btn-send' onclick='taxiShowDriverDescPanel()'>Agregar Descripción</button>
+                    <button class='btn-confirm' onclick='taxiShowDriverRegisterPanel()'>Registrarse</button>
+                    <button class='btn-back' onclick='taxiShowMainPanel()'>Volver al Panel Principal</button>
+                </div>
+                <div style='margin-top:12px;'>
+                    <label for='driver-vehicles' style='font-weight:700;'>Selecciona tus vehículos...</label>
+                    <select id='driver-vehicles' multiple style='width:80%;padding:6px;border-radius:5px;border:none;margin:6px 0;'>
+                        <option>🚗 Automóvil</option>
+                        <option>🏍️ Motocicleta</option>
+                        <option>✈️ Avión</option>
+                        <option>🛩️ Hidroavión</option>
+                        <option>🚤 Barco</option>
+                    </select>
+                </div>
+            `;
+        }
+        function taxiShowDriverDescPanel() {
+            document.getElementById('taxi-output').innerHTML = `
+                <div class='taxi-panel-header'>📝 Agregar Descripción</div>
+                <textarea rows='3' maxlength='200' style='width:100%;padding:6px;border-radius:5px;border:none;resize:none;'></textarea>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='taxiShowDriverPanel()'>Volver</button>
+                    <button class='btn-confirm' onclick='taxiShowDriverRegisterPanel()'>Registrar</button>
+                </div>
+            `;
+        }
+        function taxiShowDriverRegisterPanel() {
+            document.getElementById('taxi-output').innerHTML = `
+                <div class='taxi-panel-header'>🧑‍✈️ Registro de Conductor</div>
+                <div style='background:#23272a;border-radius:8px;padding:10px 14px;margin-bottom:10px;'>
+                    <b style='color:#43b581;'>Vehículos Seleccionados</b><br>
+                    🚗 Automóvil<br>
+                    🏍️ Motocicleta<br>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-send' onclick='taxiShowDriverDescPanel()'>Agregar Descripción</button>
+                    <button class='btn-confirm' onclick='taxiShowMainPanel()'>Registrarse</button>
+                    <button class='btn-back' onclick='taxiShowMainPanel()'>Volver al Panel Principal</button>
+                </div>
+            `;
+        }
+        function taxiShowMainPanel() {
+            document.getElementById('taxi-output').innerHTML = '';
+        }
+        // Bienvenida
+        function showWelcomeRegister() {
+            document.getElementById('welcome-output').innerHTML = `✅ <b>¡Registro exitoso!</b><br>Tu cuenta bancaria ha sido creada.<br>Welcome Pack reclamado.<br>Acceso completo a todos los sistemas.`;
+        }
+        function showWelcomeStatus() {
+            document.getElementById('welcome-output').innerHTML = `👤 <b>Tu Estado:</b><br>Usuario: <b>firuges</b><br>Cuenta: ACC-000002<br>Balance: $0<br>Welcome Pack: Reclamado<br>Estado: Active`;
+        }
+        function showUpdateInGameName() {
+            document.getElementById('welcome-output').innerHTML = `🎮 <b>Actualiza tu nombre InGame</b><br>Ingresa tu nuevo nombre para el sistema.`;
+        }
+        // Banco - Panel principal y flujos visuales
+        function bankShowBalancePanel() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>💰 Estado de Cuenta</b><br>
+                    <span style='color:#faa61a;'>Titular de la Cuenta:</span> El Firu<br>
+                    <span style='color:#faa61a;'>Número de Cuenta:</span> ACC-000002<br>
+                    <span style='color:#43b581;'>Saldo Disponible: $0.00</span><br>
+                    <span style='color:#e74c3c;'>🔴 Estado Financiero: Bajo</span><br>
+                    <span style='color:#e74c3c;'>¡Urgente! Busca maneras de generar ingresos</span><br><br>
+                    <span style='color:#aaa;'>Miembro desde: 15 de agosto de 2025</span><br>
+                    <span style='color:#aaa;'>Última actividad: hace 14 horas</span><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-success" onclick='bankShowTransferPanel()'>Transferir</button>
+                        <button class="btn-info" onclick='bankShowHistoryPanel()'>Historial</button>
+                        <button class="btn-warning" onclick='bankShowDailyPanel()'>Canje Diario</button>
+                        <button class="btn-neutral" onclick='bankShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankShowHistoryPanel() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>📋 Historial de Transacciones</b><br>
+                    <span style='color:#faa61a;'>Últimas transacciones de firuges</span><br>
+                    <span style='color:#aaa;'>Últimos 30 días</span><br>
+                    <div style='background:#2c2f33;border-radius:6px;padding:8px;margin:8px 0;'>No hay transacciones recientes</div>
+                    <span style='color:#faa61a;'>💡 Consejo: Usa el sistema de taxi para generar más actividad financiera</span><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-primary" onclick='bankShowBalancePanel()'>Ver Saldo</button>
+                        <button class="btn-neutral" onclick='bankShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankShowTransferPanel() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>� Transferir Dinero</b><br>
+                    Usa el botón de abajo para abrir el formulario de transferencia<br>
+                    <span style='color:#43b581;'>Tu Balance: $4,779</span><br>
+                    <span style='color:#e74c3c;'>⚠️ Importante</span><br>
+                    <span style='color:#faa61a;'>• Verifica bien el destinatario</span><br>
+                    <span style='color:#faa61a;'>• Las transferencias no se pueden revertir</span><br>
+                    <span style='color:#faa61a;'>• Se aplicará una comisión del 2%</span><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-success" onclick='bankShowTransferForm()'>Abrir Formulario</button>
+                        <button class="btn-primary" onclick='bankShowBalancePanel()'>Ver Saldo</button>
+                        <button class="btn-neutral" onclick='bankShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankShowTransferForm() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>📝 Transferir Dinero</b><br>
+                    <div style='background:#2c2f33;border-radius:6px;padding:8px;margin:8px 0;color:#faa61a;'>Este formulario se enviará a Scum Bunker Timer. No compartas contraseñas ni ningún tipo de información confidencial.</div>
+                    <label>Número de Cuenta Destino *</label><br>
+                    <input type='text' placeholder='TAX123456' style='width:180px;margin-bottom:8px;'><br>
+                    <label>Cantidad a Transferir *</label><br>
+                    <input type='number' min='1' max='10000' value='100.00' style='width:120px;margin-bottom:8px;'><br>
+                    <label>Descripción (Opcional)</label><br>
+                    <input type='text' maxlength='100' placeholder='Pago por servicios, préstamo, etc.' style='width:220px;margin-bottom:8px;'><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-success" onclick='bankConfirmTransferForm()'>Enviar</button>
+                        <button class="btn-danger" onclick='bankShowTransferPanel()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankConfirmTransferForm() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Transferencia realizada</b><br>
+                    El monto ha sido transferido.<br>
+                    <span style='color:#43b581;'>Comisión aplicada: $2</span><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-primary" onclick='bankShowBalancePanel()'>Ver Saldo</button>
+                        <button class="btn-info" onclick='bankShowHistoryPanel()'>Ver Historial</button>
+                        <button class="btn-neutral" onclick='bankShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankShowDailyPanel() {
+            document.getElementById('bank-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🎁 Canje Diario</b><br>
+                    ¡Has recibido $500 gratis por tu canje diario!<br>
+                    <span style='color:#43b581;'>Tu nuevo saldo: $500</span><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button class="btn-primary" onclick='bankShowBalancePanel()'>Ver Saldo</button>
+                        <button class="btn-neutral" onclick='bankShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function bankShowMainPanel() {
+            // Recarga el panel principal del banco
+            document.getElementById('bank-output').innerHTML = `
+                <div style="background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;">
+                    <b style="font-size:1.2em;">🏦 Sistema Bancario SCUM</b><br>
+                    <span style="color:#faa61a;font-weight:700;">Gestiona tu dinero de forma segura y eficiente</span><br><br>
+                    <b>�️ Servicios Disponibles:</b><br>
+                    <span style="color:#43b581;">📄 Consultar Saldo</span> – Ver tu balance actual<br>
+                    <span style="color:#43b581;">💸 Transferir Dinero</span> – Enviar dinero a otros jugadores<br>
+                    <span style="color:#43b581;">📋 Historial</span> – Ver tus últimas transacciones<br>
+                    <span style="color:#43b581;">📊 Estadísticas</span> – Análisis de tu actividad financiera<br>
+                    <span style="color:#43b581;">🎁 Canje Diario</span> – Recibe $500 gratis cada día<br><br>
+                    <b>🛡️ Seguridad:</b><br>
+                    <span style="color:#43b581;">✔️ Todas las transacciones son seguras</span><br>
+                    <span style="color:#43b581;">✔️ Historial completo de movimientos</span><br>
+                    <span style="color:#43b581;">✔️ Protección contra fraudes</span><br>
+                    <span style="color:#43b581;">✔️ Soporte 24/7 por administradores</span><br><br>
+                    <b>💡 Consejos:</b><br>
+                    <span style="color:#faa61a;">• Verifica siempre el número de cuenta antes de transferir</span><br>
+                    <span style="color:#faa61a;">• Guarda capturas de transacciones importantes</span><br>
+                    <span style="color:#faa61a;">• Reporta cualquier actividad sospechosa</span><br>
+                    <span style="color:#faa61a;">• Usa descripciones claras en tus transferencias</span><br><br>
+                    <span style="color:#aaa;">Selecciona una opción para comenzar</span><br>
+                    <div class="buttons" style="margin-top:16px;">
+                        <button class="btn-primary" onclick="bankShowBalancePanel()">Ver Saldo</button>
+                        <button class="btn-success" onclick="bankShowTransferPanel()">Transferir</button>
+                        <button class="btn-info" onclick="bankShowHistoryPanel()">Historial</button>
+                        <button class="btn-warning" onclick="bankShowDailyPanel()">Canje Diario</button>
+                    </div>
+                </div>
+            `;
+        }
+        // Mecánico/Seguros - Flujo completo y visual
+        function mechanicSelectInsuranceFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🛡️ Seleccionar Vehículo para Asegurar</b><br>
+                    Vehículos disponibles para asegurar: 1<br>
+                    <b>Validación Sin Seguros:</b> <span style='color:#43b581;'>Activo</span><br>
+                    <label>Selecciona el vehículo a asegurar:</label><br>
+                    <select style='width:220px;margin-bottom:8px;'>
+                        <option>Laika - 49251</option>
+                    </select><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicConfirmInsurance()'>Solicitar Seguro</button>
+                        <button onclick='mechanicShowMainPanel()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicConfirmInsurance() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Seguro solicitado</b><br>
+                    Tu seguro para Laika ha sido solicitado.<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicCheckInsuranceFlow()'>Consultar Seguros</button>
+                        <button onclick='mechanicShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicCheckInsuranceFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>📋 Seguros Activos</b><br>
+                    Seguro: INS-000123<br>Vehículo: Ranger<br>Estado: Activo<br>Vence: 2025-09-20<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicSelectInsuranceFlow()'>Asegurar otro vehículo</button>
+                        <button onclick='mechanicShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicPanelFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🛠️ Panel Mecánico</b><br>
+                    <b>Opciones:</b><br>
+                    <button onclick='mechanicPriceFlow()'>Gestionar Precios</button>
+                    <button onclick='mechanicShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        function mechanicPriceFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>💰 Gestión de Precios Vehiculares</b><br>
+                    <b>Precios Personalizados:</b><br>
+                    Moto: $500 (PvE), $625 (PvP)<br>Ranger: $1,200 (PvE), $1,500 (PvP)<br>Laika: $1,500 (PvE), $1,875 (PvP)<br>WW: $900 (PvE), $1,125 (PvP)<br>Avión: $3,500 (PvE), $4,375 (PvP)<br>Barca: $800 (PvE), $1,000 (PvP)<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicSetPriceFlow()'>Establecer Precio</button>
+                        <button onclick='mechanicViewPricesFlow()'>Ver Precios</button>
+                        <button onclick='mechanicConfigPVPFlow()'>Configurar PVP</button>
+                        <button onclick='mechanicShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicSetPriceFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>� Establecer Precio Personalizado</b><br>
+                    Selecciona tipo de vehículo:<br>
+                    <select style='width:220px;margin-bottom:8px;'>
+                        <option>Moto</option><option>Ranger</option><option>Laika</option><option>WW</option><option>Avión</option><option>Barca</option>
+                    </select><br>
+                    <label>Precio:</label><br>
+                    <input type='number' min='100' max='10000' value='500' style='width:120px;margin-bottom:8px;'><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicConfirmSetPrice()'>Establecer</button>
+                        <button onclick='mechanicPriceFlow()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicConfirmSetPrice() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Precio establecido</b><br>
+                    El precio personalizado ha sido guardado.<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicViewPricesFlow()'>Ver Precios</button>
+                        <button onclick='mechanicPriceFlow()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicViewPricesFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>📊 Lista Completa de Precios</b><br>
+                    Recargo zona PVP: +25%<br>
+                    Moto: $500/$625<br>Ranger: $1,200/$1,500<br>Laika: $1,500/$1,875<br>WW: $900/$1,125<br>Avión: $3,500/$4,375<br>Barca: $800/$1,000<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicConfigPVPFlow()'>Configurar PVP</button>
+                        <button onclick='mechanicPriceFlow()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicConfigPVPFlow() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>⚙️ Configurar Recargo PVP</b><br>
+                    <div style='background:#2c2f33;border-radius:6px;padding:8px;margin:8px 0;color:#faa61a;'>Este formulario se enviará a Scum Bunker Timer. No compartas contraseñas ni ningún tipo de información confidencial.</div>
+                    <label>Recargo PVP (%):</label><br>
+                    <input type='number' min='0' max='100' value='25' style='width:80px;margin-bottom:8px;'><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicConfirmConfigPVP()'>Enviar</button>
+                        <button onclick='mechanicPriceFlow()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicConfirmConfigPVP() {
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Recargo PVP configurado</b><br>
+                    El recargo PVP ha sido actualizado.<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='mechanicViewPricesFlow()'>Ver Precios</button>
+                        <button onclick='mechanicPriceFlow()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function mechanicShowMainPanel() {
+            // Recarga el panel principal del taller
+            document.getElementById('mechanic-output').innerHTML = `
+                <div style=\"background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;\">
+                    <b style=\"font-size:1.2em;\">🔧 Taller Mecánico SCUM</b><br>
+                    <span style=\"color:#faa61a;font-weight:700;\">Protege tus vehículos con nuestro sistema de seguros</span><br><br>
+                    <b>🚗 Servicios Disponibles:</b><br>
+                    • Seguros de Vehículos<br>
+                    • Consulta de Seguros<br>
+                    • Gestión de Precios<br>
+                    <b>💰 Costos de Seguros:</b><br>
+                    Moto: $500<br>Ranger: $1,200<br>Laika: $1,500<br>WW: $900<br>Avión: $3,500<br>Barca: $800<br>Zona PVP: +25%<br>
+                    <b>🎯 Detección Automática:</b> PvP/PvE<br>
+                    <b>💡 Instrucciones:</b><br>
+                    1. Seleccionar Seguro<br>2. Consultar Seguros<br>3. Panel Mecánico<br>4. Gestionar Precios<br>
+                    <div class=\"buttons\" style=\"margin-top:16px;\">
+                        <button onclick=\"mechanicSelectInsuranceFlow()\">Seleccionar Seguro</button>
+                        <button onclick=\"mechanicCheckInsuranceFlow()\">Consultar Seguros</button>
+                        <button onclick=\"mechanicPanelFlow()\">Panel Mecánico</button>
+                        <button onclick=\"mechanicPriceFlow()\">Gestionar Precios</button>
+                    </div>
+                </div>
+            `;
+        }
+        // Taxi
+        // Taxi - Flujos completos
+        function taxiShowRequest() {
+            document.getElementById('taxi-output').innerHTML = `🚕 <b>Solicitar Taxi</b><br>Origen:<select><option>Centro</option><option>Aeropuerto</option></select><br>Destino:<select><option>Comercial</option><option>Suburbios</option></select><br><div class='buttons'><button onclick='taxiShowFare()'>Calcular Tarifa</button><button onclick='taxiShowStatus()'>Ver Estado</button></div>`;
+        }
+        function taxiShowFare() {
+            document.getElementById('taxi-output').innerHTML = `💸 <b>Tarifa Calculada:</b> $15<br><div class='buttons'><button onclick='taxiConfirmRequest()'>Confirmar Viaje</button><button onclick='taxiShowRequest()'>Volver</button></div>`;
+        }
+        function taxiConfirmRequest() {
+            document.getElementById('taxi-output').innerHTML = `✅ <b>Viaje solicitado</b><br>Tu taxi está en camino.<br><div class='buttons'><button onclick='taxiShowStatus()'>Ver Estado</button></div>`;
+        }
+        function taxiShowStatus() {
+            document.getElementById('taxi-output').innerHTML = `📊 <b>Estado de Viaje</b><br>Taxi en camino.<br><div class='buttons'><button onclick='taxiShowCancel()'>Cancelar Viaje</button><button onclick='taxiShowDriverPanel()'>Panel Conductor</button></div>`;
+        }
+        function taxiShowCancel() {
+            document.getElementById('taxi-output').innerHTML = `❌ <b>Viaje cancelado</b><br>Tu viaje ha sido cancelado.<br><div class='buttons'><button onclick='taxiShowRequest()'>Solicitar Nuevo Taxi</button></div>`;
+        }
+        function taxiShowDriverPanel() {
+            document.getElementById('taxi-output').innerHTML = `🧑‍✈️ <b>Panel de Conductor</b><br>Licencia: DRV00002<br>Estado: Disponible<br>Ganancias: $29.03<br>Vehículos: Automóvil<br><div class='buttons'><button onclick='taxiShowManageVehicles()'>Gestionar Vehículos</button><button onclick='taxiShowRequest()'>Solicitar Taxi</button></div>`;
+        }
+        function taxiShowManageVehicles() {
+            document.getElementById('taxi-output').innerHTML = `🚗 <b>Gestionar Vehículos</b><br>Automóvil, Motocicleta, Avión, Hidroavión, Barco<br><div class='buttons'><button onclick='taxiShowAddVehicle()'>Registrar Vehículo</button><button onclick='taxiShowDriverPanel()'>Volver al Panel</button></div>`;
+        }
+        function taxiShowAddVehicle() {
+            document.getElementById('taxi-output').innerHTML = `📝 <b>Registrar Vehículo</b><br>Tipo:<select><option>Automóvil</option><option>Motocicleta</option><option>Avión</option></select><br><div class='buttons'><button onclick='taxiConfirmAddVehicle()'>Registrar</button><button onclick='taxiShowManageVehicles()'>Volver</button></div>`;
+        }
+        function taxiConfirmAddVehicle() {
+            document.getElementById('taxi-output').innerHTML = `✅ <b>Vehículo registrado</b><br>Tu vehículo ha sido agregado.<br><div class='buttons'><button onclick='taxiShowManageVehicles()'>Gestionar Vehículos</button></div>`;
+        }
+        // Escuadrones
+        // Escuadrones - Flujo completo y visual
+        function squadCreateFlow() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🏆 Crear Escuadrón</b><br>
+                    Selecciona tipo:<select><option>PvE</option><option>PvP</option></select><br>
+                    Nombre:<input type='text' placeholder='Nombre del escuadrón' style='width:180px;margin-bottom:8px;'><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadConfirmCreate()'>Crear</button>
+                        <button onclick='squadShowMainPanel()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadConfirmCreate() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Escuadrón creado</b><br>
+                    Ahora eres líder del escuadrón <b>Scum Interactive Bot</b> (PvE)<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadMySquadFlow()'>Ver Mi Escuadrón</button>
+                        <button onclick='squadShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadMySquadFlow() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>👥 Ya Perteneces a un Escuadrón</b><br>
+                    Actualmente eres <b>Member</b> del escuadrón <b>Scum Interactive Bot</b> (PvE)<br>
+                    <b>¿Qué puedes hacer?</b><br>
+                    • Mi Escuadrón – Ver detalles y gestionar tu equipo<br>
+                    • Salir del Escuadrón – Si quieres cambiar de equipo<br>
+                    • Ver info de otros – Solo disponible sin escuadrón<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadLeaveFlow()'>Salir del Escuadrón</button>
+                        <button onclick='squadShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadLeaveFlow() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Has Salido del Escuadrón</b><br>
+                    Has salido exitosamente del escuadrón <b>Scum Interactive Bot</b><br>
+                    <b>Detalles:</b><br>
+                    • Escuadrón: Scum Interactive Bot<br>
+                    • Fecha: 20/08/2025 18:06<br>
+                    • Razón: Salida voluntaria<br>
+                    <b style='color:#e74c3c;'>⏳ Período de Enfriamiento</b><br>
+                    No podrás unirte a otro escuadrón por <b>24 horas</b><br>
+                    <b>Próximos Pasos:</b><br>
+                    • Puedes crear tu propio escuadrón inmediatamente<br>
+                    • Para unirte a otro, espera 24 horas<br>
+                    • Los administradores pueden override este período<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadConfirmLeave()'>Confirmar Salida</button>
+                        <button onclick='squadShowMainPanel()'>Cancelar</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadConfirmLeave() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🚫 Sin Escuadrón</b><br>
+                    No perteneces a ningún escuadrón actualmente.<br>
+                    <b>¿Quieres crear uno?</b><br>
+                    Usa el botón <b>🏆 Crear Escuadrón</b> para formar tu propio equipo<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadCreateFlow()'>Crear Escuadrón</button>
+                        <button onclick='squadExploreFlow()'>Explorar Escuadrones</button>
+                        <button onclick='squadShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadExploreFlow() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>🔎 Escuadrones Disponibles</b><br>
+                    <span style='color:#43b581;'>2 escuadrón(es) disponible(s) en Cross-Ocean Survivors</span><br>
+                    <div style='background:#2c2f33;border-radius:6px;padding:8px;margin:8px 0;'>
+                        <b>🛡️ Scum Interactive Bot</b><br>Tipo: PvE<br>Líder: RamAnth<br>Miembros: 2/10<br><br>
+                        <b>🛡️ Academia Scum</b><br>Tipo: PvE<br>Líder: Keynar<br>Miembros: 5/10<br>
+                    </div>
+                    <label>Selecciona un escuadrón para unirte:</label><br>
+                    <select style='width:220px;margin-bottom:8px;'>
+                        <option>Scum Interactive Bot</option>
+                        <option>Academia Scum</option>
+                    </select><br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadConfirmJoin()'>Unirse</button>
+                        <button onclick='squadShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadConfirmJoin() {
+            document.getElementById('squad-output').innerHTML = `
+                <div style='background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;'>
+                    <b>✅ Te has unido al escuadrón</b><br>
+                    Ahora eres miembro de <b>Scum Interactive Bot</b> (PvE)<br>
+                    <div class='buttons' style='margin-top:16px;'>
+                        <button onclick='squadMySquadFlow()'>Ver Mi Escuadrón</button>
+                        <button onclick='squadShowMainPanel()'>Volver</button>
+                    </div>
+                </div>
+            `;
+        }
+        function squadShowMainPanel() {
+            // Recarga el panel principal de escuadrones
+            document.getElementById('squad-output').innerHTML = `
+                <div style="background:#23272a;border-radius:8px;padding:18px 14px;box-shadow:0 2px 8px #0003;">
+                    <b style="font-size:1.2em;">🏆 Registro de Escuadrones SCUM</b><br>
+                    <span style="color:#faa61a;font-weight:700;">¡Únete o crea un escuadrón para dominar SCUM!</span><br><br>
+                    <b>🛡️ Tipos de Escuadrones:</b> PvP (Combate y raids) / PvE (Exploración y supervivencia)<br>
+                    <b>🎯 Beneficios Automáticos:</b> Detección automática de zona, tarifas optimizadas, límites personalizados, coordinación de equipo<br>
+                    <b>📋 Requisitos:</b> Registrado, nombre InGame, no pertenecer a otro escuadrón<br>
+                    <b>¿Cómo empezar?</b><br>
+                    1. Registrarte en el sistema usando <code>/welcome_registro</code><br>
+                    2. Configurar tu nombre InGame<br>
+                    3. Crear o unirte a un escuadrón usando los botones de abajo<br>
+                    <div class="buttons" style="margin-top:16px;">
+                        <button onclick="squadCreateFlow()">Crear Escuadrón</button>
+                        <button onclick="squadMySquadFlow()">Mi Escuadrón</button>
+                        <button onclick="squadExploreFlow()">Explorar Escuadrones</button>
+                        <button onclick="squadLeaveFlow()">Salir del Escuadrón</button>
+                    </div>
+                </div>
+            `;
+        }
+        // Tienda
+        function showShopTier(tier) {
+            let packs = {
+                1: 'Pack Básico: Agua, Comida, Kit de Primeros Auxilios',
+                2: 'Pack Intermedio: Herramientas, Munición, Chaleco',
+                3: 'Pack Élite: Rifle, Armadura, Mochila Grande'
+            };
+            document.getElementById('shop-output').innerHTML = `🛒 <b>Tier ${tier}</b><br>${packs[tier]}`;
+        }
+        function showShopBalance() {
+            document.getElementById('shop-output').innerHTML = `💳 <b>Mi Saldo</b><br>$0 disponible para compras.`;
+        }
+        // Admin
+        function showAdminUsers() {
+            document.getElementById('admin-output').innerHTML = `👥 <b>Usuarios Registrados</b><br>firuges, El Firu, ...`;
+        }
+        function showAdminDrivers() {
+            document.getElementById('admin-output').innerHTML = `🚗 <b>Conductores</b><br>El Firu, Laika, Ranger ...`;
+        }
+        function showAdminPendingInsurance() {
+            document.getElementById('admin-output').innerHTML = `🔍 <b>Seguros Pendientes</b><br>Seguro: INS-000124<br>Vehículo: Laika<br>Estado: Pendiente de Confirmación`;
+        }
+        function showAdminCommands() {
+            document.getElementById('admin-output').innerHTML = `🔧 <b>Comandos Admin</b><br>/mechanic_admin_register, /mechanic_admin_set_price, /taxi_admin_stats, ...`;
+        }
+        // Bunkers
+        function showBunkerCheck() {
+            document.getElementById('bunker-output').innerHTML = `🔍 <b>Consultar Bunker</b><br>Estado: Activo<br>Responsable: firuges`;
+        }
+        function showBunkerStatusAll() {
+            document.getElementById('bunker-output').innerHTML = `📊 <b>Estado General</b><br>Activos: 3, Cerrados: 1, Expirados: 0`;
+        }
+        function showBunkerMyUsage() {
+            document.getElementById('bunker-output').innerHTML = `🎯 <b>Mi Uso</b><br>Bunkers registrados: 2<br>Participación: 100%`;
+        }
+    </script>
+</body>
+</html>

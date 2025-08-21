@@ -163,7 +163,7 @@ copy "reset_alerts_admin.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 
 echo ✅ Sistema de alertas copiado
 
-:: ===========================================
+::  ===========================================
 ::   UTILIDADES Y HERRAMIENTAS
 :: ===========================================
 echo.
@@ -186,6 +186,18 @@ copy "test_bot_integration.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 :: Scripts de migración críticos
 copy "migrate_system_tables.py" "%BUILD_FULL_DIR%\" >nul 2>&1
 copy "migrate_user_languages.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+:: ===========================================
+::   TESTS DE CORRECCIONES CRÍTICAS (NUEVO)
+:: ===========================================
+echo.
+echo 🧪 Copiando tests de correcciones críticas...
+
+:: Tests de correcciones de botones
+copy "test_button_fixes.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+copy "test_architecture_fix.py" "%BUILD_FULL_DIR%\" >nul 2>&1
+
+echo ✅ Tests de correcciones copiados
 
 :: Archivos esenciales
 copy "requirements.txt" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -242,6 +254,9 @@ copy "docs\TAXI_TUTORIAL.html" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
 copy "docs\BOT_STATUS_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
 copy "docs\PREMIUM_SYSTEM_DOCS.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
 copy "docs\MULTIPLE_SERVERS_GUIDE.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
+
+:: Documentación de correcciones críticas (NUEVO)
+copy "BOTONES_CORREGIDOS.md" "%BUILD_FULL_DIR%\docs\" >nul 2>&1
 
 :: Archivos HTML
 copy "guide.html" "%BUILD_FULL_DIR%\" >nul 2>&1
@@ -550,6 +565,14 @@ echo - **NUEVO:** Gestión de precios con botones interactivos >> "%BUILD_FULL_D
 echo - **NUEVO:** Selectores visuales para tipos de vehículos >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo - **NUEVO:** Precios dinámicos que se actualizan automáticamente >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### 🛠️ Correcciones Críticas ^(AGOSTO 2025^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **RESUELTO:** Error 404 "Unknown interaction" en botones de bunkers >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **RESUELTO:** Error 400 "Interaction already acknowledged" >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **MEJORADO:** Arquitectura modular ^(bunkers separados de taxi^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **AÑADIDO:** Manejo robusto de errores de Discord >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - **AÑADIDO:** Tests automatizados para verificar correcciones >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo - Ver: `docs/BOTONES_CORREGIDOS.md` para detalles técnicos >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ### 🏆 Sistema de Escuadrones ^(NUEVO^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo - Creación de escuadrones con selector PvP/PvE visual >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo - Unión a escuadrones existentes con confirmación >> "%BUILD_FULL_DIR%\README_BUILD.md"
@@ -665,6 +688,13 @@ echo python test_rate_limiting.py    # Probar sistema de rate limiting >> "%BUIL
 echo python test_bot_integration.py  # Verificar integración completa >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
 echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ### Tests de Correcciones Críticas ^(NUEVO^) >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ```python >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python test_button_fixes.py     # Verificar correcciones de botones >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo python test_architecture_fix.py # Verificar arquitectura modular >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo ``` >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo **Estos tests verifican que las correcciones críticas funcionan correctamente** >> "%BUILD_FULL_DIR%\README_BUILD.md"
+echo. >> "%BUILD_FULL_DIR%\README_BUILD.md"
 
 echo ✅ README_BUILD.md creado
 
@@ -720,6 +750,8 @@ echo    ✅ Scripts de instalación automática
 echo    ✅ Compatible con Python 3.13
 echo    ✅ Sistema de escuadrones con detección automática
 echo    ✅ Gestión de precios con interfaz interactiva
+echo    ✅ **NUEVO:** Errores críticos de botones resueltos
+echo    ✅ **NUEVO:** Arquitectura modular corregida
 echo.
 if defined DISCORD_TOKEN_VALUE (
     echo 🔑 Token: ✅ Configurado automáticamente
@@ -776,6 +808,10 @@ echo    ✅ Pool de conexiones de base de datos para mejor rendimiento
 echo    ✅ Comandos administrativos para gestión de límites
 echo    ✅ Estadísticas de uso en tiempo real
 echo    ✅ Prevención automática de spam y sobrecarga
+echo    ✅ **NUEVO:** Correcciones críticas de interacciones de botones
+echo    ✅ **NUEVO:** Arquitectura modular mejorada ^(bunkers separados^)
+echo    ✅ **NUEVO:** Manejo robusto de errores Discord ^(404/400 resueltos^)
+echo    ✅ **NUEVO:** Tests automatizados para verificar correcciones
 echo.
 echo ===============================================
 echo.

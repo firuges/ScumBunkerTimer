@@ -251,7 +251,7 @@ class BunkerBotV2(commands.Bot):
             
             # Agregar vistas persistentes para bunkers
             try:
-                from taxi_admin import BunkerPanelView
+                # BunkerPanelView está definida en este mismo archivo
                 self.add_view(BunkerPanelView())
                 logger.info("✅ Vista de bunkers agregada para persistencia")
             except Exception as e:
@@ -487,16 +487,15 @@ class BunkerBotV2(commands.Bot):
             except Exception as cleanup_e:
                 logger.warning(f"Error limpiando mensajes de bunkers anteriores: {cleanup_e}")
             
-            # Importar y usar la función setup_bunker_panel
+            # Usar la función setup_bunker_panel local
             try:
-                from taxi_admin import setup_bunker_panel
                 success = await setup_bunker_panel(channel, self)
                 if success:
                     logger.info(f"Panel de bunkers recreado exitosamente en canal {channel_id}")
                 else:
                     logger.warning(f"Error recreando panel de bunkers en canal {channel_id}")
-            except ImportError as ie:
-                logger.error(f"Error importando setup_bunker_panel: {ie}")
+            except Exception as setup_e:
+                logger.error(f"Error ejecutando setup_bunker_panel: {setup_e}")
             
         except Exception as e:
             logger.error(f"Error recreando panel de bunkers para canal {channel_id}: {e}")
@@ -3093,92 +3092,41 @@ async def shutdown_handler():
 
 # === FUNCIONES INTERNAS PARA BOTONES DE BUNKERS ===
 
-async def register_bunker_internal(interaction: discord.Interaction, sector: str, hours: float, server: str):
-    """Función interna para registrar bunker desde botones"""
-    await interaction.response.defer(ephemeral=True)
-    
-    try:
-        # Usar la misma lógica que el comando slash
-        guild_id = str(interaction.guild.id)
-        user_id = str(interaction.user.id)
-        username = interaction.user.display_name
-        
-        # Validaciones
-        if not sector or sector.strip() == "":
-            await interaction.followup.send("❌ Debes especificar un sector válido (D1, C4, A1, A3)", ephemeral=True)
-            return
-        
-        sector = sector.upper()
-        valid_sectors = ["D1", "C4", "A1", "A3"]
-        if sector not in valid_sectors:
-            await interaction.followup.send(f"❌ Sector inválido. Usa uno de estos: {', '.join(valid_sectors)}", ephemeral=True)
-            return
-        
-        if hours <= 0 or hours > 300:
-            await interaction.followup.send("❌ Las horas deben estar entre 0.1 y 300.0", ephemeral=True)
-            return
-        
-        # Convertir horas decimales a horas y minutos
-        hours_int = int(hours)
-        minutes_int = int((hours - hours_int) * 60)
-        
-        # Verificar si el usuario ya tiene un bunker registrado en las últimas 72 horas
-        last_registration = await bot.db.get_last_user_registration(guild_id, user_id)
-        
-        if last_registration:
-            from datetime import datetime, timedelta
-            last_time = datetime.fromisoformat(last_registration["registered_at"])
-            time_since = datetime.now() - last_time
-            
-            if time_since < timedelta(hours=72):
-                remaining = timedelta(hours=72) - time_since
-                hours_left = int(remaining.total_seconds() // 3600)
-                minutes_left = int((remaining.total_seconds() % 3600) // 60)
-                
-                embed = discord.Embed(
-                    title="⏳ Límite de 72 horas",
-                    description=f"Debes esperar **{hours_left}h {minutes_left}m** antes de registrar otro bunker.\n\n🔓 **Última registro:** {last_registration['sector']} en {last_registration['server_name']}",
-                    color=0xff9900
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-        
-        # Registrar el bunker
-        success = await bot.db.register_bunker(guild_id, user_id, username, sector, hours_int, minutes_int, server)
-        
-        if success:
-            # Calcular tiempo de apertura
-            from datetime import datetime, timedelta
-            open_time = datetime.now() + timedelta(hours=hours_int, minutes=minutes_int)
-            timestamp = int(open_time.timestamp())
-            
-            embed = discord.Embed(
-                title="✅ Bunker Registrado",
-                description=f"**Sector:** {sector}\n**Servidor:** {server}\n**Se abre:** <t:{timestamp}:R>\n**Fecha exacta:** <t:{timestamp}:F>",
-                color=0x00ff00
-            )
-            embed.set_footer(text=f"Registrado por {username}")
-            
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            await interaction.followup.send("❌ Error registrando el bunker. Inténtalo de nuevo.", ephemeral=True)
-            
-    except Exception as e:
-        logger.error(f"Error en register_bunker_internal: {e}")
-        await interaction.followup.send("❌ Error inesperado registrando bunker", ephemeral=True)
+# Función register_bunker_internal eliminada - ya no es necesaria
+# El registro ahora se maneja directamente en _proceed_registration
 
 async def check_bunker_internal(interaction: discord.Interaction, sector: str, server: str):
     """Función interna para verificar bunker desde botones"""
-    await interaction.response.defer(ephemeral=True)
-    
     try:
+        await interaction.response.defer(ephemeral=True)
+        logger.info(f"Verificando bunker: sector={sector}, server={server}, guild={interaction.guild.id}")
+        
         guild_id = str(interaction.guild.id)
         sector = sector.upper()
         
+        logger.info(f"Parámetros de búsqueda: guild_id={guild_id}, sector={sector}, server={server}")
+        
         # Buscar el bunker
         bunker = await bot.db.get_bunker_status(guild_id, sector, server)
+        logger.info(f"Resultado de búsqueda: {bunker}")
         
         if not bunker:
+            logger.warning(f"Bunker no encontrado - guild_id: {guild_id}, sector: {sector}, server: {server}")
+            
+            # Buscar cualquier bunker en este sector para debug
+            try:
+                all_bunkers = await bot.db.get_bunkers(guild_id)
+                logger.info(f"Todos los bunkers en el guild: {all_bunkers}")
+                
+                sector_bunkers = [b for b in all_bunkers if b.get('sector') == sector]
+                logger.info(f"Bunkers en sector {sector}: {sector_bunkers}")
+                
+                server_bunkers = [b for b in all_bunkers if b.get('server_name') == server]
+                logger.info(f"Bunkers en servidor {server}: {server_bunkers}")
+                
+            except Exception as debug_error:
+                logger.error(f"Error en debug de bunkers: {debug_error}")
+            
             embed = discord.Embed(
                 title="❌ Bunker no encontrado",
                 description=f"No hay información registrada para el sector **{sector}** en el servidor **{server}**.",
@@ -3249,6 +3197,10 @@ async def check_bunker_internal(interaction: discord.Interaction, sector: str, s
 async def list_bunkers(interaction: discord.Interaction):
     """Función interna para listar bunkers desde botones"""
     await interaction.response.defer(ephemeral=True)
+    await list_bunkers_internal(interaction)
+
+async def list_bunkers_internal(interaction: discord.Interaction):
+    """Función interna para listar bunkers (usa followup)"""
     
     try:
         guild_id = str(interaction.guild.id)
@@ -3323,6 +3275,10 @@ async def list_bunkers(interaction: discord.Interaction):
 async def my_usage(interaction: discord.Interaction):
     """Función interna para ver uso personal desde botones"""
     await interaction.response.defer(ephemeral=True)
+    await my_usage_internal(interaction)
+
+async def my_usage_internal(interaction: discord.Interaction):
+    """Función interna para ver uso personal (usa followup)"""
     
     try:
         guild_id = str(interaction.guild.id)
@@ -3389,6 +3345,671 @@ async def my_usage(interaction: discord.Interaction):
     except Exception as e:
         logger.error(f"Error en my_usage: {e}")
         await interaction.followup.send("❌ Error obteniendo información de uso", ephemeral=True)
+
+# === CLASES DE UI PARA BUNKERS ===
+
+class BunkerPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="📋 Lista de Bunkers", style=discord.ButtonStyle.primary, custom_id="bunker_list")
+    async def list_bunkers(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver todos los bunkers del servidor"""
+        try:
+            # Defer la interacción AQUÍ, no en la función importada
+            await interaction.response.defer(ephemeral=True)
+            
+            # Llamar función interna que usa followup
+            await list_bunkers_internal(interaction)
+        except Exception as e:
+            logger.error(f"Error en botón lista bunkers: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Error obteniendo lista de bunkers", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Error obteniendo lista de bunkers", ephemeral=True)
+    
+    @discord.ui.button(label="🔒 Registrar Bunker", style=discord.ButtonStyle.success, custom_id="bunker_register")
+    async def register_bunker(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Registrar un nuevo bunker"""
+        try:
+            modal = BunkerRegisterModal()
+            await interaction.response.send_modal(modal)
+        except Exception as e:
+            logger.error(f"Error en botón registrar bunker: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Error abriendo formulario de registro", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Error abriendo formulario de registro", ephemeral=True)
+    
+    @discord.ui.button(label="🔍 Verificar Bunker", style=discord.ButtonStyle.secondary, custom_id="bunker_check")
+    async def check_bunker(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Verificar estado de un bunker"""
+        try:
+            view = BunkerCheckSelectView(str(interaction.guild.id))
+            
+            # Configurar selector de servidor dinámicamente
+            await view.setup_server_select()
+            
+            embed = discord.Embed(
+                title="🔍 Verificar Estado de Bunker",
+                description="Selecciona el sector y servidor del bunker que quieres verificar:",
+                color=0x0099ff
+            )
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error en botón verificar bunker: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Error abriendo selector de verificación", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Error abriendo selector de verificación", ephemeral=True)
+    
+    @discord.ui.button(label="⚡ Mi Uso", style=discord.ButtonStyle.secondary, custom_id="bunker_usage")
+    async def my_usage(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver mi uso del sistema"""
+        # DEFER INMEDIATAMENTE para evitar timeout
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            logger.info(f"Showing usage info for user: {interaction.user.display_name}")
+            
+            guild_id = str(interaction.guild.id)
+            user_id = str(interaction.user.id)
+            
+            # Obtener última registro del usuario
+            last_registration = await bot.db.get_last_user_registration(guild_id, user_id)
+            
+            embed = discord.Embed(
+                title="⚡ Mi Uso del Sistema",
+                description=f"**Usuario:** {interaction.user.display_name}",
+                color=0x0099ff
+            )
+            
+            if not last_registration:
+                embed.add_field(
+                    name="📊 Estado",
+                    value="✅ **Disponible para registrar**\n\nNo tienes registros previos.",
+                    inline=False
+                )
+                embed.add_field(
+                    name="⏰ Límite",
+                    value="72 horas entre registros",
+                    inline=True
+                )
+                embed.add_field(
+                    name="🎯 Próximo registro",
+                    value="Disponible ahora",
+                    inline=True
+                )
+            else:
+                from datetime import datetime, timedelta
+                last_time = datetime.fromisoformat(last_registration["registered_at"])
+                time_since = datetime.now() - last_time
+                
+                if time_since < timedelta(hours=72):
+                    remaining = timedelta(hours=72) - time_since
+                    hours_left = int(remaining.total_seconds() // 3600)
+                    minutes_left = int((remaining.total_seconds() % 3600) // 60)
+                    
+                    embed.add_field(
+                        name="📊 Estado",
+                        value=f"⏳ **Esperando cooldown**\n\nEspera **{hours_left}h {minutes_left}m** para el próximo registro.",
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="🔓 Último registro",
+                        value=f"**Sector:** {last_registration['sector']}\n**Servidor:** {last_registration['server_name']}\n**Registrado:** <t:{int(last_time.timestamp())}:R>",
+                        inline=False
+                    )
+                else:
+                    embed.add_field(
+                        name="📊 Estado", 
+                        value="✅ **Disponible para registrar**\n\nPuedes registrar un nuevo bunker.",
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="🔓 Último registro",
+                        value=f"**Sector:** {last_registration['sector']}\n**Servidor:** {last_registration['server_name']}\n**Registrado:** <t:{int(last_time.timestamp())}:R>",
+                        inline=False
+                    )
+            
+            # Agregar estadísticas adicionales si están disponibles
+            try:
+                usage_stats = await bot.db.get_user_bunker_stats(guild_id, user_id)
+                if usage_stats:
+                    embed.add_field(
+                        name="📈 Estadísticas",
+                        value=f"**Total registrados:** {usage_stats.get('total_registrations', 0)}\n**Esta semana:** {usage_stats.get('this_week', 0)}",
+                        inline=False
+                    )
+            except Exception as stats_error:
+                logger.error(f"Error obteniendo estadísticas: {stats_error}")
+            
+            logger.info(f"Usage info displayed successfully for user: {interaction.user.display_name}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en botón mi uso: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            try:
+                await interaction.followup.send("❌ Error obteniendo información de uso", ephemeral=True)
+            except Exception as followup_error:
+                logger.error(f"Error enviando mensaje de error: {followup_error}")
+
+class BunkerRegisterModal(discord.ui.Modal, title="🔒 Registrar Bunker"):
+    def __init__(self):
+        super().__init__()
+    
+    hours = discord.ui.TextInput(
+        label="Horas",
+        placeholder="0-300",
+        required=True,
+        max_length=3
+    )
+    
+    minutes = discord.ui.TextInput(
+        label="Minutos",
+        placeholder="0-59",
+        required=False,
+        max_length=2
+    )
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Validar horas
+            hours_val = int(self.hours.value.strip()) if self.hours.value.strip() else 0
+            minutes_val = int(self.minutes.value.strip()) if self.minutes.value.strip() else 0
+            
+            if hours_val < 0 or hours_val > 300:
+                await interaction.response.send_message("❌ Las horas deben estar entre 0 y 300", ephemeral=True)
+                return
+            
+            if minutes_val < 0 or minutes_val > 59:
+                await interaction.response.send_message("❌ Los minutos deben estar entre 0 y 59", ephemeral=True)
+                return
+            
+            # Convertir a horas decimales
+            total_hours = hours_val + (minutes_val / 60.0)
+            
+            if total_hours <= 0:
+                await interaction.response.send_message("❌ Debes especificar al menos algunos minutos", ephemeral=True)
+                return
+            
+            # Mostrar la vista de selección
+            view = BunkerRegisterSelectView(total_hours, str(interaction.guild.id))
+            
+            # Configurar selector de servidor dinámicamente
+            await view.setup_server_select()
+            
+            embed = discord.Embed(
+                title="🔒 Registrar Bunker - Paso 2",
+                description=f"**Tiempo hasta apertura:** {hours_val}h {minutes_val}m\n\nAhora selecciona el sector y servidor:",
+                color=0x00ff00
+            )
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            
+        except ValueError:
+            await interaction.response.send_message("❌ Error: Ingresa solo números válidos", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error en modal registrar bunker: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ Error procesando registro", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Error procesando registro", ephemeral=True)
+
+class BunkerRegisterSelectView(discord.ui.View):
+    def __init__(self, hours: float, guild_id: str):
+        super().__init__(timeout=60)
+        self.hours = hours
+        self.guild_id = guild_id
+        self.selected_sector = None
+        self.selected_server = None
+        
+        # Configurar selectores
+        self.setup_selectors()
+    
+    def setup_selectors(self):
+        """Configurar selectores estáticos y dinámicos"""
+        # Selector de sector (estático)
+        sector_options = [
+            discord.SelectOption(label="D1", description="Zona Norte-Este", emoji="🔒"),
+            discord.SelectOption(label="C4", description="Zona Central", emoji="🔒"),
+            discord.SelectOption(label="A1", description="Zona Sur-Oeste", emoji="🔒"),
+            discord.SelectOption(label="A3", description="Zona Sur-Este", emoji="🔒"),
+        ]
+        
+        sector_select = discord.ui.Select(
+            placeholder="Selecciona el sector del bunker...",
+            options=sector_options,
+            custom_id="sector_select_register"
+        )
+        sector_select.callback = self.sector_select_callback
+        self.add_item(sector_select)
+    
+    async def setup_server_select(self):
+        """Configurar selector de servidor dinámicamente"""
+        try:
+            # Obtener servidores registrados para este guild
+            servers = await bot.db.get_servers(self.guild_id)
+            
+            # Crear opciones dinámicamente
+            options = []
+            
+            # Siempre incluir Default
+            options.append(discord.SelectOption(
+                label="Default", 
+                description="Servidor por defecto", 
+                emoji="🏴"
+            ))
+            
+            # Agregar servidores registrados
+            for server in servers:
+                # Limitar descripción a 100 caracteres
+                description = server.get('description', 'Servidor personalizado')[:100]
+                if not description:
+                    description = 'Servidor personalizado'
+                
+                options.append(discord.SelectOption(
+                    label=server['name'][:100],  # Discord limit
+                    description=description,
+                    emoji="🎮"
+                ))
+            
+            # Crear selector dinámico
+            server_select = discord.ui.Select(
+                placeholder="Selecciona el servidor SCUM...",
+                options=options,
+                custom_id="server_select_register"
+            )
+            server_select.callback = self.server_select_callback
+            self.add_item(server_select)
+            
+        except Exception as e:
+            logger.error(f"Error configurando selector de servidor: {e}")
+            # Fallback con servidor por defecto
+            options = [discord.SelectOption(label="Default", description="Servidor por defecto", emoji="🏴")]
+            server_select = discord.ui.Select(
+                placeholder="Selecciona el servidor SCUM...",
+                options=options,
+                custom_id="server_select_register"
+            )
+            server_select.callback = self.server_select_callback
+            self.add_item(server_select)
+    
+    async def sector_select_callback(self, interaction: discord.Interaction):
+        select = interaction.data['values'][0]
+        self.selected_sector = select
+        
+        # Si ya tiene servidor seleccionado, proceder al registro
+        if self.selected_server:
+            await self._proceed_registration(interaction)
+        else:
+            await interaction.response.send_message(f"✅ Sector **{self.selected_sector}** seleccionado. Ahora selecciona el servidor.", ephemeral=True)
+    
+    async def server_select_callback(self, interaction: discord.Interaction):
+        select = interaction.data['values'][0]
+        self.selected_server = select
+        
+        # Si ya tiene sector seleccionado, proceder al registro
+        if self.selected_sector:
+            await self._proceed_registration(interaction)
+        else:
+            await interaction.response.send_message(f"✅ Servidor **{self.selected_server}** seleccionado. Ahora selecciona el sector.", ephemeral=True)
+    
+    async def _proceed_registration(self, interaction: discord.Interaction):
+        """Proceder con el registro usando la lógica del comando original"""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            logger.info(f"Proceeding with bunker registration: sector={self.selected_sector}, hours={self.hours}, server={self.selected_server}")
+            
+            # Convertir horas decimales a enteros para el comando original
+            hours_int = int(self.hours)
+            minutes_int = int((self.hours - hours_int) * 60)
+            
+            # Llamar al comando original de registro, adaptado para botones
+            # Simular los parámetros del comando slash
+            guild_id = str(interaction.guild.id)
+            user_id = str(interaction.user.id)
+            username = interaction.user.display_name
+            
+            # Validaciones básicas
+            if not self.selected_sector or not self.selected_server:
+                await interaction.followup.send("❌ Debes seleccionar sector y servidor", ephemeral=True)
+                return
+                
+            # Validar sector
+            sector = self.selected_sector.upper()
+            valid_sectors = ["D1", "C4", "A1", "A3"]
+            if sector not in valid_sectors:
+                await interaction.followup.send(f"❌ Sector inválido. Usa uno de estos: {', '.join(valid_sectors)}", ephemeral=True)
+                return
+            
+            # Validar tiempo
+            if hours_int == 0 and minutes_int == 0:
+                await interaction.followup.send("❌ El tiempo debe ser mayor a 0", ephemeral=True)
+                return
+            
+            # Verificar límite de 72 horas
+            try:
+                last_registration = await bot.db.get_last_user_registration(guild_id, user_id)
+                if last_registration:
+                    from datetime import datetime, timedelta
+                    last_time = datetime.fromisoformat(last_registration["registered_at"])
+                    time_since = datetime.now() - last_time
+                    
+                    if time_since < timedelta(hours=72):
+                        remaining = timedelta(hours=72) - time_since
+                        hours_left = int(remaining.total_seconds() // 3600)
+                        minutes_left = int((remaining.total_seconds() % 3600) // 60)
+                        
+                        embed = discord.Embed(
+                            title="⏳ Límite de 72 horas",
+                            description=f"Debes esperar **{hours_left}h {minutes_left}m** antes de registrar otro bunker.\n\n🔓 **Último registro:** {last_registration['sector']} en {last_registration['server_name']}",
+                            color=0xff9900
+                        )
+                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        return
+            except Exception as limit_error:
+                logger.error(f"Error verificando límite de 72h: {limit_error}")
+                # Continuar con el registro
+            
+            # Registrar el bunker
+            success = await bot.db.register_bunker(guild_id, user_id, username, sector, hours_int, minutes_int, self.selected_server)
+            
+            if success:
+                # Calcular tiempo de apertura
+                from datetime import datetime, timedelta
+                open_time = datetime.now() + timedelta(hours=hours_int, minutes=minutes_int)
+                timestamp = int(open_time.timestamp())
+                
+                embed = discord.Embed(
+                    title="✅ Bunker Registrado",
+                    description=f"**Sector:** {sector}\n**Servidor:** {self.selected_server}\n**Se abre:** <t:{timestamp}:R>\n**Fecha exacta:** <t:{timestamp}:F>",
+                    color=0x00ff00
+                )
+                embed.set_footer(text=f"Registrado por {username}")
+                
+                logger.info(f"Bunker registrado exitosamente: {sector} en {self.selected_server} por {username}")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                logger.warning(f"Registro falló para bunker {sector} en {self.selected_server}")
+                await interaction.followup.send("❌ Error registrando el bunker. Inténtalo de nuevo.", ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error en registro de bunker: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Error registrando bunker", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Error registrando bunker", ephemeral=True)
+            except Exception as followup_error:
+                logger.error(f"Error enviando mensaje de error: {followup_error}")
+
+class BunkerCheckSelectView(discord.ui.View):
+    def __init__(self, guild_id: str):
+        super().__init__(timeout=60)
+        self.guild_id = guild_id
+        self.selected_sector = None
+        self.selected_server = None
+        
+        # Configurar selectores
+        self.setup_selectors()
+    
+    def setup_selectors(self):
+        """Configurar selectores estáticos y dinámicos"""
+        # Selector de sector (estático)
+        sector_options = [
+            discord.SelectOption(label="D1", description="Zona Norte-Este", emoji="🔍"),
+            discord.SelectOption(label="C4", description="Zona Central", emoji="🔍"),
+            discord.SelectOption(label="A1", description="Zona Sur-Oeste", emoji="🔍"),
+            discord.SelectOption(label="A3", description="Zona Sur-Este", emoji="🔍"),
+        ]
+        
+        sector_select = discord.ui.Select(
+            placeholder="Selecciona el sector del bunker...",
+            options=sector_options,
+            custom_id="sector_select_check"
+        )
+        sector_select.callback = self.sector_select_callback
+        self.add_item(sector_select)
+    
+    async def setup_server_select(self):
+        """Configurar selector de servidor dinámicamente"""
+        try:
+            # Obtener servidores registrados para este guild
+            servers = await bot.db.get_servers(self.guild_id)
+            
+            # Crear opciones dinámicamente
+            options = []
+            
+            # Siempre incluir Default
+            options.append(discord.SelectOption(
+                label="Default", 
+                description="Servidor por defecto", 
+                emoji="🏴"
+            ))
+            
+            # Agregar servidores registrados
+            for server in servers:
+                # Limitar descripción a 100 caracteres
+                description = server.get('description', 'Servidor personalizado')[:100]
+                if not description:
+                    description = 'Servidor personalizado'
+                
+                options.append(discord.SelectOption(
+                    label=server['name'][:100],  # Discord limit
+                    description=description,
+                    emoji="🎮"
+                ))
+            
+            # Crear selector dinámico
+            server_select = discord.ui.Select(
+                placeholder="Selecciona el servidor SCUM...",
+                options=options,
+                custom_id="server_select_check"
+            )
+            server_select.callback = self.server_select_callback
+            self.add_item(server_select)
+            
+        except Exception as e:
+            logger.error(f"Error configurando selector de servidor: {e}")
+            # Fallback con servidor por defecto
+            options = [discord.SelectOption(label="Default", description="Servidor por defecto", emoji="🏴")]
+            server_select = discord.ui.Select(
+                placeholder="Selecciona el servidor SCUM...",
+                options=options,
+                custom_id="server_select_check"
+            )
+            server_select.callback = self.server_select_callback
+            self.add_item(server_select)
+    
+    async def sector_select_callback(self, interaction: discord.Interaction):
+        """Callback para la selección de sector"""
+        self.selected_sector = interaction.data['values'][0]
+        
+        # Si ya tiene servidor seleccionado, proceder a la verificación
+        if self.selected_server:
+            await self._proceed_check(interaction)
+        else:
+            await interaction.response.send_message(f"✅ Sector **{self.selected_sector}** seleccionado. Ahora selecciona el servidor.", ephemeral=True)
+    
+    async def server_select_callback(self, interaction: discord.Interaction):
+        """Callback para la selección de servidor"""
+        self.selected_server = interaction.data['values'][0]
+        
+        # Si ya tiene sector seleccionado, proceder a la verificación
+        if self.selected_sector:
+            await self._proceed_check(interaction)
+        else:
+            await interaction.response.send_message(f"✅ Servidor **{self.selected_server}** seleccionado. Ahora selecciona el sector.", ephemeral=True)
+    
+    async def _proceed_check(self, interaction: discord.Interaction):
+        """Proceder con la verificación usando lógica adaptada para botones"""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            logger.info(f"Proceeding with bunker check: sector={self.selected_sector}, server={self.selected_server}")
+            
+            guild_id = str(interaction.guild.id)
+            sector = self.selected_sector.upper()
+            server = self.selected_server
+            
+            logger.info(f"Parámetros de búsqueda: guild_id={guild_id}, sector={sector}, server={server}")
+            
+            # Buscar el bunker (orden correcto: sector, guild_id, server_name)
+            bunker = await bot.db.get_bunker_status(sector, guild_id, server)
+            logger.info(f"Resultado de búsqueda: {bunker}")
+            
+            if not bunker:
+                logger.warning(f"Bunker no encontrado - guild_id: {guild_id}, sector: {sector}, server: {server}")
+                
+                # Buscar cualquier bunker en este servidor para debug
+                try:
+                    all_bunkers = await bot.db.get_all_bunkers_status(guild_id, server)
+                    logger.info(f"Todos los bunkers en el guild {guild_id} para servidor {server}: {all_bunkers}")
+                    
+                    # También probar con servidor por defecto
+                    default_bunkers = await bot.db.get_all_bunkers_status(guild_id, "Default")
+                    logger.info(f"Bunkers en servidor Default: {default_bunkers}")
+                    
+                except Exception as debug_error:
+                    logger.error(f"Error en debug de bunkers: {debug_error}")
+                
+                embed = discord.Embed(
+                    title="❌ Bunker no encontrado",
+                    description=f"No hay información registrada para el sector **{sector}** en el servidor **{server}**.",
+                    color=0xff0000
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # El método get_bunker_status ya devuelve el estado calculado
+            # Usar los campos que realmente están disponibles
+            status = bunker.get("status", "unknown")
+            status_text = bunker.get("status_text", "DESCONOCIDO")
+            time_remaining = bunker.get("time_remaining", "N/A")
+            expiry_time = bunker.get("expiry_time")
+            
+            # Determinar color y título basado en el estado
+            if status == "closed":
+                color = 0xff0000
+                title = "🔒 Bunker Cerrado"
+                if expiry_time:
+                    timestamp = int(expiry_time.timestamp())
+                    description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Se abre en:** {time_remaining}\n**Apertura:** <t:{timestamp}:R>\n**Fecha exacta:** <t:{timestamp}:F>"
+                else:
+                    description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Estado:** {status_text}\n**Tiempo restante:** {time_remaining}"
+                    
+            elif status == "open":
+                color = 0x00ff00
+                title = "🔓 Bunker Abierto"
+                if expiry_time:
+                    timestamp = int(expiry_time.timestamp())
+                    description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Se cierra en:** {time_remaining}\n**Cierre:** <t:{timestamp}:R>\n**Fecha exacta:** <t:{timestamp}:F>"
+                else:
+                    description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Estado:** {status_text}\n**Tiempo restante:** {time_remaining}"
+                    
+            elif status == "expired":
+                color = 0x666666
+                title = "🔒 Bunker Cerrado"
+                description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Estado:** Bunker ya se cerró\n**Necesita nuevo registro**"
+                
+            else:
+                color = 0xffaa00
+                title = "❓ Estado Desconocido"
+                description = f"**Sector:** {sector}\n**Servidor:** {server}\n**Estado:** {status_text}\n**Información:** {time_remaining}"
+            
+            embed = discord.Embed(
+                title=title,
+                description=description,
+                color=color
+            )
+            embed.set_footer(text=f"Registrado por {bunker['registered_by']}")
+            
+            logger.info(f"Bunker verificado exitosamente: {sector} en {server}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en verificación de bunker: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Error verificando bunker", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ Error verificando bunker", ephemeral=True)
+            except Exception as followup_error:
+                logger.error(f"Error enviando mensaje de error: {followup_error}")
+
+async def setup_bunker_panel(channel: discord.TextChannel, bot):
+    """Configurar panel de bunkers con botones interactivos en un canal"""
+    try:
+        # Limpiar mensajes anteriores del bot en el canal
+        logger.info(f"Limpiando mensajes anteriores en canal de bunkers {channel.id}...")
+        deleted_count = 0
+        async for message in channel.history(limit=50):
+            if message.author == bot.user:
+                try:
+                    await message.delete()
+                    deleted_count += 1
+                except Exception as e:
+                    logger.warning(f"Error eliminando mensaje {message.id}: {e}")
+        
+        logger.info(f"Eliminados {deleted_count} mensajes anteriores del bot en canal de bunkers")
+        
+        # Crear embed del panel
+        embed = discord.Embed(
+            title="⏰ Panel de Control de Bunkers",
+            description="**Sistema de gestión de bunkers para SCUM**\n\nUtiliza los botones de abajo para registrar, verificar y gestionar los bunkers del servidor.",
+            color=0xe74c3c
+        )
+        
+        embed.add_field(
+            name="🔒 Registrar Bunker",
+            value="Registra cuando encuentres un bunker cerrado. El bot calculará automáticamente cuándo se abrirá.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🔍 Verificar Estado",
+            value="Consulta el estado actual de cualquier bunker con tiempo restante exacto.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📋 Lista Completa",
+            value="Ve todos los bunkers del servidor con sus estados actuales y estadísticas.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="⚡ Mi Uso",
+            value="Verifica tu uso personal del sistema y límites de registro.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📊 Estados de Bunkers",
+            value="🔴 **CERRADO** - Esperando apertura\n🟢 **ACTIVO** - Abierto por 24h\n🟡 **EXPIRADO** - Necesita nuevo registro",
+            inline=False
+        )
+        
+        embed.set_footer(text="Panel de bunkers • Persistente y actualizado automáticamente")
+        embed.set_thumbnail(url=channel.guild.icon.url if channel.guild.icon else None)
+        
+        # Enviar mensaje con botones
+        view = BunkerPanelView()
+        message = await channel.send(embed=embed, view=view)
+        
+        logger.info(f"✅ Panel de bunkers configurado exitosamente en canal {channel.id}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error configurando panel de bunkers: {e}")
+        return False
 
 async def main():
     """Función principal con manejo de señales"""

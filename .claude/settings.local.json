@@ -6,7 +6,9 @@
       "Bash(timeout 25 python BunkerAdvice_V2.py)",
       "Bash(timeout 30 python BunkerAdvice_V2.py)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(rm:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []

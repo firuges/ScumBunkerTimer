@@ -6,9 +6,26 @@ Compatible con servidores PVE/PVP con restricciones de zona
 
 from typing import Dict, List, Tuple
 import json
+import aiosqlite
+import asyncio
 
 class TaxiConfig:
-    def __init__(self):
+    def __init__(self, guild_id: str = None):
+        self.guild_id = guild_id
+        self.db_path = "taxi_system.db"
+        
+        # Initialize with default values first
+        self._initialize_defaults()
+        
+        # If guild_id is provided, try to load from database
+        if guild_id:
+            try:
+                asyncio.run(self.load_server_config(guild_id))
+            except Exception as e:
+                print(f"Error loading server config for {guild_id}: {e}")
+                # Continue with defaults
+    
+    def _initialize_defaults(self):
         # === CONFIGURACIÓN GENERAL ===
         self.FEATURE_ENABLED = True  # Master switch para todo el sistema
         self.TAXI_ENABLED = True     # Switch específico para taxi
@@ -17,8 +34,8 @@ class TaxiConfig:
         
         # === CONFIGURACIÓN ECONÓMICA ===
         self.WELCOME_BONUS = 7500.0  # Dinero inicial (optimizado +50%)
-        self.TAXI_BASE_RATE = 15.0   # Tarifa base
-        self.TAXI_PER_KM_RATE = 3.5  # Por kilómetro
+        self.TAXI_BASE_RATE = 500.0   # Tarifa base
+        self.TAXI_PER_KM_RATE = 20.5  # Por kilómetro
         self.TAXI_WAIT_RATE = 2.0    # Por minuto de espera
         self.DRIVER_COMMISSION = 0.85  # 85% para el conductor (optimizado +10%)
         self.PLATFORM_FEE = 0.15      # 15% para la plataforma
@@ -510,9 +527,81 @@ class TaxiConfig:
         }
 
     def calculate_distance(self, x1: float, y1: float, x2: float, y2: float) -> float:
-        """Calcular distancia entre dos puntos"""
+        """Calcular distancia entre dos puntos usando coordenadas directas (fallback)"""
         import math
         return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    
+    def grid_to_coordinates(self, grid: str) -> tuple:
+        """Convertir grid (ej: 'B2') a coordenadas numéricas para cálculo"""
+        # Mapeo de letras a números (D=4, C=3, B=2, A=1, Z=0)
+        row_map = {'D': 4, 'C': 3, 'B': 2, 'A': 1, 'Z': 0}
+        
+        if len(grid) != 2:
+            return (0, 0)
+        
+        row_letter = grid[0].upper()
+        col_number = int(grid[1])
+        
+        if row_letter not in row_map or col_number < 0 or col_number > 4:
+            return (0, 0)
+        
+        return (row_map[row_letter], col_number)
+    
+    def pad_to_subgrid_coords(self, pad: int) -> tuple:
+        """Convertir PAD (1-9) a coordenadas dentro del grid"""
+        # PAD Layout: 7-8-9
+        #             4-5-6  
+        #             1-2-3
+        pad_coords = {
+            1: (0, 0), 2: (0, 1), 3: (0, 2),
+            4: (1, 0), 5: (1, 1), 6: (1, 2),
+            7: (2, 0), 8: (2, 1), 9: (2, 2)
+        }
+        return pad_coords.get(pad, (1, 1))  # Default centro si pad inválido
+    
+    def calculate_grid_distance(self, origin_grid: str, origin_pad: int, dest_grid: str, dest_pad: int) -> float:
+        """Calcular distancia realista entre grids usando caminos del juego"""
+        
+        # Obtener coordenadas de grids
+        origin_coords = self.grid_to_coordinates(origin_grid)
+        dest_coords = self.grid_to_coordinates(dest_grid)
+        
+        # Obtener coordenadas de pads dentro del grid
+        origin_subgrid = self.pad_to_subgrid_coords(origin_pad)
+        dest_subgrid = self.pad_to_subgrid_coords(dest_pad)
+        
+        # Coordenadas finales (cada grid = 3km, cada pad = 1km)
+        origin_x = origin_coords[1] * 3 + origin_subgrid[1]
+        origin_y = origin_coords[0] * 3 + origin_subgrid[0] 
+        dest_x = dest_coords[1] * 3 + dest_subgrid[1]
+        dest_y = dest_coords[0] * 3 + dest_subgrid[0]
+        
+        # Calcular distancia Manhattan (más realista para caminos)
+        manhattan_distance = abs(dest_x - origin_x) + abs(dest_y - origin_y)
+        
+        # Aplicar factor de caminos tortuosos (1.4x para simular carreteras no rectas)
+        road_factor = 1.4
+        
+        # Distancia final en kilómetros
+        realistic_distance = manhattan_distance * road_factor
+        
+        return realistic_distance
+    
+    def calculate_zone_distance(self, origin_zone: dict, dest_zone: dict) -> float:
+        """Calcular distancia entre dos zonas usando el sistema de grids"""
+        
+        # Verificar que ambas zonas tengan información de grid y pad
+        if not all(key in origin_zone for key in ['grid', 'pad']):
+            return 10.0  # Distancia por defecto
+        if not all(key in dest_zone for key in ['grid', 'pad']):
+            return 10.0  # Distancia por defecto
+        
+        origin_grid = origin_zone['grid']
+        origin_pad = origin_zone['pad']
+        dest_grid = dest_zone['grid']
+        dest_pad = dest_zone['pad']
+        
+        return self.calculate_grid_distance(origin_grid, origin_pad, dest_grid, dest_pad)
 
     def get_zone_at_location(self, x: float, y: float) -> Dict:
         """Obtener zona en ubicación específica - Busca primero en TAXI_STOPS, luego en PVP_ZONES"""
@@ -648,20 +737,24 @@ class TaxiConfig:
         message = zone["rules"]["message"]
         return can_dropoff, message
 
-    def calculate_fare(self, distance_meters: float, vehicle_type: str = "sedan") -> float:
-        """Calcular tarifa del viaje"""
+    def calculate_fare(self, distance_km: float, vehicle_type: str = "auto") -> float:
+        """Calcular tarifa del viaje (distancia ya en kilómetros)"""
         if not self.TAXI_ENABLED:
             return 0.0
-            
-        distance_km = distance_meters / 1000
+        
         base_fare = self.TAXI_BASE_RATE
         distance_fare = distance_km * self.TAXI_PER_KM_RATE
         
         # Aplicar multiplicador de vehículo
-        vehicle_multiplier = self.VEHICLE_TYPES.get(vehicle_type, {}).get("multiplier", 1.0)
+        vehicle_multiplier = self.VEHICLE_TYPES.get(vehicle_type, {}).get("cost_multiplier", 1.0)
         
         total_fare = (base_fare + distance_fare) * vehicle_multiplier
         return round(total_fare, 2)
+    
+    def calculate_fare_between_zones(self, origin_zone: dict, dest_zone: dict, vehicle_type: str = "auto") -> float:
+        """Calcular tarifa entre dos zonas usando distancia realista"""
+        distance_km = self.calculate_zone_distance(origin_zone, dest_zone)
+        return self.calculate_fare(distance_km, vehicle_type)
 
     def get_driver_level(self, total_rides: int) -> Dict:
         """Obtener nivel del conductor basado en viajes completados"""
@@ -905,5 +998,143 @@ class TaxiConfig:
             print(f"Error convirtiendo coordenadas a Grid-Pad: {e}")
             return ""
 
-# Instancia global
+    async def load_server_config(self, guild_id: str):
+        """Cargar configuración específica del servidor desde la base de datos"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Buscar configuración específica del servidor
+                cursor = await db.execute("""
+                    SELECT * FROM taxi_server_config WHERE guild_id = ?
+                """, (guild_id,))
+                server_config = await cursor.fetchone()
+                
+                if server_config:
+                    # Mapear columnas a valores
+                    columns = [desc[0] for desc in cursor.description]
+                    config_dict = dict(zip(columns, server_config))
+                    
+                    # Aplicar configuración del servidor
+                    self._apply_server_config(config_dict)
+                    print(f"Configuración cargada para servidor {guild_id}")
+                else:
+                    # No hay configuración específica, crear una nueva con defaults
+                    await self._create_default_server_config(guild_id)
+                    print(f"Configuración por defecto creada para servidor {guild_id}")
+                    
+        except Exception as e:
+            print(f"Error cargando configuración del servidor {guild_id}: {e}")
+            # Continuar con configuración por defecto
+    
+    def _apply_server_config(self, config_dict: dict):
+        """Aplicar configuración de servidor a las propiedades de la clase"""
+        try:
+            # Configuración general
+            if config_dict.get('feature_enabled') is not None:
+                self.FEATURE_ENABLED = bool(config_dict['feature_enabled'])
+            if config_dict.get('taxi_enabled') is not None:
+                self.TAXI_ENABLED = bool(config_dict['taxi_enabled'])
+            if config_dict.get('bank_enabled') is not None:
+                self.BANK_ENABLED = bool(config_dict['bank_enabled'])
+            if config_dict.get('welcome_pack_enabled') is not None:
+                self.WELCOME_PACK_ENABLED = bool(config_dict['welcome_pack_enabled'])
+            
+            # Configuración económica
+            if config_dict.get('welcome_bonus') is not None:
+                self.WELCOME_BONUS = float(config_dict['welcome_bonus'])
+            if config_dict.get('taxi_base_rate') is not None:
+                self.TAXI_BASE_RATE = float(config_dict['taxi_base_rate'])
+            if config_dict.get('taxi_per_km_rate') is not None:
+                self.TAXI_PER_KM_RATE = float(config_dict['taxi_per_km_rate'])
+            if config_dict.get('taxi_wait_rate') is not None:
+                self.TAXI_WAIT_RATE = float(config_dict['taxi_wait_rate'])
+            if config_dict.get('driver_commission') is not None:
+                self.DRIVER_COMMISSION = float(config_dict['driver_commission'])
+            if config_dict.get('platform_fee') is not None:
+                self.PLATFORM_FEE = float(config_dict['platform_fee'])
+            
+            # Configuración JSON
+            if config_dict.get('vehicle_types'):
+                self.VEHICLE_TYPES = json.loads(config_dict['vehicle_types'])
+            if config_dict.get('taxi_stops'):
+                self.TAXI_STOPS = json.loads(config_dict['taxi_stops'])
+            if config_dict.get('pvp_zones'):
+                self.PVP_ZONES = json.loads(config_dict['pvp_zones'])
+            if config_dict.get('driver_levels'):
+                self.DRIVER_LEVELS = json.loads(config_dict['driver_levels'])
+                
+        except Exception as e:
+            print(f"Error aplicando configuración del servidor: {e}")
+    
+    async def _create_default_server_config(self, guild_id: str, guild_name: str = None):
+        """Crear configuración por defecto para un nuevo servidor"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Insertar configuración por defecto
+                await db.execute("""
+                    INSERT OR REPLACE INTO taxi_server_config 
+                    (guild_id, guild_name, vehicle_types, driver_levels, taxi_stops, pvp_zones, last_modified_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    guild_id,
+                    guild_name or f"Servidor {guild_id}",
+                    json.dumps(self.VEHICLE_TYPES, ensure_ascii=False),
+                    json.dumps(self.DRIVER_LEVELS, ensure_ascii=False),
+                    json.dumps(self.TAXI_STOPS, ensure_ascii=False),
+                    json.dumps(self.PVP_ZONES, ensure_ascii=False),
+                    'system_auto'
+                ))
+                await db.commit()
+                
+        except Exception as e:
+            print(f"Error creando configuración por defecto: {e}")
+    
+    async def save_server_config(self, guild_id: str, guild_name: str = None, modified_by: str = None):
+        """Guardar configuración actual del servidor en la base de datos"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("""
+                    INSERT OR REPLACE INTO taxi_server_config 
+                    (guild_id, guild_name, feature_enabled, taxi_enabled, bank_enabled, welcome_pack_enabled,
+                     welcome_bonus, taxi_base_rate, taxi_per_km_rate, taxi_wait_rate, driver_commission, platform_fee,
+                     vehicle_types, taxi_stops, pvp_zones, driver_levels, updated_at, last_modified_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """, (
+                    guild_id,
+                    guild_name or f"Servidor {guild_id}",
+                    self.FEATURE_ENABLED,
+                    self.TAXI_ENABLED,
+                    self.BANK_ENABLED,
+                    self.WELCOME_PACK_ENABLED,
+                    self.WELCOME_BONUS,
+                    self.TAXI_BASE_RATE,
+                    self.TAXI_PER_KM_RATE,
+                    self.TAXI_WAIT_RATE,
+                    self.DRIVER_COMMISSION,
+                    self.PLATFORM_FEE,
+                    json.dumps(self.VEHICLE_TYPES, ensure_ascii=False),
+                    json.dumps(self.TAXI_STOPS, ensure_ascii=False),
+                    json.dumps(self.PVP_ZONES, ensure_ascii=False),
+                    json.dumps(self.DRIVER_LEVELS, ensure_ascii=False),
+                    modified_by or 'system'
+                ))
+                await db.commit()
+                print(f"Configuración guardada para servidor {guild_id}")
+                
+        except Exception as e:
+            print(f"Error guardando configuración del servidor: {e}")
+    
+    @classmethod
+    async def create_for_guild(cls, guild_id: str, guild_name: str = None):
+        """Método estático para crear configuración para un guild específico"""
+        config = cls()
+        config.guild_id = guild_id
+        await config.load_server_config(guild_id)
+        return config
+    
+    @classmethod
+    def get_default_config(cls):
+        """Obtener configuración por defecto sin base de datos"""
+        return cls()
+
+# Instancia global con configuración por defecto
 taxi_config = TaxiConfig()

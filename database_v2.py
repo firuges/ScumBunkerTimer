@@ -791,3 +791,152 @@ class BunkerDatabaseV2:
                         }
             
             return servers_bunkers
+
+    async def get_last_user_registration(self, guild_id: str, user_id: str) -> Optional[Dict]:
+        """Obtener el último registro de bunker de un usuario específico en un guild"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT sector, server_name, registered_time, expiry_time, registered_by, discord_user_id
+                FROM bunkers 
+                WHERE discord_guild_id = ? AND discord_user_id = ? 
+                AND registered_time IS NOT NULL
+                ORDER BY registered_time DESC
+                LIMIT 1
+            """, (guild_id, user_id))
+            
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            
+            sector, server_name, registered_time_str, expiry_time_str, registered_by, discord_user_id = row
+            
+            try:
+                # Parse registered_time
+                if '.' in registered_time_str:
+                    registered_time = datetime.fromisoformat(registered_time_str)
+                else:
+                    registered_time = datetime.fromisoformat(registered_time_str)
+                
+                return {
+                    "sector": sector,
+                    "server_name": server_name,
+                    "registered_at": registered_time.isoformat(),
+                    "registered_by": registered_by,
+                    "discord_user_id": discord_user_id
+                }
+            except Exception as e:
+                logger.error(f"Error parsing registration timestamp: {e}")
+                return None
+
+    async def get_user_bunker_stats(self, guild_id: str, user_id: str) -> Optional[Dict]:
+        """Obtener estadísticas de bunkers registrados por un usuario en un guild"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Total de bunkers registrados por el usuario (basado en daily_usage)
+            cursor = await db.execute("""
+                SELECT SUM(bunkers_registered) FROM daily_usage 
+                WHERE discord_guild_id = ? AND discord_user_id = ?
+            """, (guild_id, user_id))
+            
+            result = await cursor.fetchone()
+            total_registered = result[0] if result and result[0] else 0
+            
+            if total_registered == 0:
+                return None
+            
+            # Bunkers registrados este mes
+            from datetime import date
+            first_day_this_month = date.today().replace(day=1)
+            cursor = await db.execute("""
+                SELECT SUM(bunkers_registered) FROM daily_usage 
+                WHERE discord_guild_id = ? AND discord_user_id = ? 
+                AND usage_date >= ?
+            """, (guild_id, user_id, first_day_this_month))
+            
+            result = await cursor.fetchone()
+            this_month = result[0] if result and result[0] else 0
+            
+            # Último registro timestamp
+            cursor = await db.execute("""
+                SELECT last_bunker_timestamp FROM daily_usage 
+                WHERE discord_guild_id = ? AND discord_user_id = ? 
+                AND last_bunker_timestamp IS NOT NULL
+                ORDER BY last_bunker_timestamp DESC
+                LIMIT 1
+            """, (guild_id, user_id))
+            
+            result = await cursor.fetchone()
+            last_registration = None
+            if result and result[0]:
+                try:
+                    last_time = datetime.fromisoformat(result[0])
+                    last_registration = f"<t:{int(last_time.timestamp())}:R>"
+                except:
+                    last_registration = "Fecha inválida"
+            
+            # Para sectores favoritos, necesitamos usar la tabla bunkers
+            # ya que daily_usage no guarda información de sectores
+            cursor = await db.execute("""
+                SELECT sector, COUNT(*) as count 
+                FROM bunkers 
+                WHERE discord_guild_id = ? AND discord_user_id = ? 
+                AND registered_time IS NOT NULL
+                GROUP BY sector 
+                ORDER BY count DESC
+                LIMIT 3
+            """, (guild_id, user_id))
+            
+            favorite_sectors = []
+            async for row in cursor:
+                favorite_sectors.append(f"{row[0]} ({row[1]}x)")
+            
+            return {
+                "total_registered": total_registered,
+                "this_month": this_month,
+                "last_registration": last_registration,
+                "favorite_sectors": ", ".join(favorite_sectors[:3]) if favorite_sectors else "Ninguno"
+            }
+
+    async def register_bunker(self, guild_id: str, user_id: str, username: str, 
+                             sector: str, hours: int, minutes: int, server: str) -> bool:
+        """Registrar un nuevo bunker con tiempo específico (método simplificado)"""
+        try:
+            current_time = datetime.now()
+            expiry_time = current_time + timedelta(hours=hours, minutes=minutes)
+            
+            async with aiosqlite.connect(self.db_path) as db:
+                # Verificar si el bunker existe, si no, crearlo
+                cursor = await db.execute("""
+                    SELECT sector FROM bunkers 
+                    WHERE sector = ? AND server_name = ? AND discord_guild_id = ?
+                """, (sector, server, guild_id))
+                
+                if not await cursor.fetchone():
+                    # Crear bunker si no existe
+                    await db.execute("""
+                        INSERT INTO bunkers (sector, name, server_name, discord_guild_id) 
+                        VALUES (?, ?, ?, ?)
+                    """, (sector, f"Bunker Abandonado {sector}", server, guild_id))
+                
+                # Actualizar el bunker con el tiempo registrado
+                await db.execute("""
+                    UPDATE bunkers 
+                    SET registered_time = ?, expiry_time = ?, registered_by = ?, 
+                        discord_user_id = ?, last_updated = ?
+                    WHERE sector = ? AND server_name = ? AND discord_guild_id = ?
+                """, (current_time, expiry_time, username, user_id, 
+                      current_time, sector, server, guild_id))
+                
+                await db.commit()
+                
+                # Programar notificaciones
+                await self._schedule_notifications(sector, expiry_time, server, guild_id)
+                
+                # Incrementar contador de uso diario
+                await self.increment_daily_usage(guild_id, user_id)
+                
+                logger.info(f"Bunker {sector} registrado por {username} en servidor {server}, guild {guild_id}: {hours}h {minutes}m")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error registrando bunker: {e}")
+            return False

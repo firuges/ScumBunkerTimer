@@ -901,7 +901,7 @@ class TaxiDatabase:
                     if not route_valid:
                         return False, {"error": route_message}
                     
-                    distance = taxi_config.calculate_distance(pickup_x, pickup_y, destination_x, destination_y)
+                    distance = taxi_config.calculate_zone_distance(pickup_zone, destination_zone)
                     estimated_cost = taxi_config.calculate_fare(distance, vehicle_type)
                 
                 # Crear solicitud

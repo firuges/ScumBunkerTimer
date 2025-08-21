@@ -397,7 +397,7 @@ class VehicleInsuranceSelectView(BaseView):
                     description="Debes registrarte en el sistema primero usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -407,7 +407,7 @@ class VehicleInsuranceSelectView(BaseView):
                     description="Necesitas tener un nombre InGame configurado. Usa el botón 'Actualizar Nombre InGame' en el canal de welcome.",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si el vehículo ya tiene seguro
@@ -424,7 +424,7 @@ class VehicleInsuranceSelectView(BaseView):
                     value=f"**Propietario:** {existing_insurance['owner_ingame_name']}\\n**Tipo:** {existing_insurance['vehicle_type']}\\n**Fecha:** {existing_insurance['created_at'][:10]}",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Calcular costo del seguro con zona - usar precio personalizado si existe
@@ -1422,10 +1422,33 @@ class MechanicSystemView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
+    async def _safe_send(self, interaction: discord.Interaction, **kwargs):
+        """Enviar mensaje de forma segura usando response o followup según disponibilidad"""
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(**kwargs)
+            else:
+                await interaction.followup.send(**kwargs)
+        except Exception as e:
+            logger.error(f"Error enviando mensaje seguro: {e}")
+            # Como último recurso, intentar followup
+            try:
+                await interaction.followup.send(**kwargs)
+            except Exception as final_error:
+                logger.error(f"Error final enviando mensaje: {final_error}")
+    
     @discord.ui.button(label="🔧 Solicitar Seguro", style=discord.ButtonStyle.success, custom_id="request_insurance")
     async def request_insurance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Botón para solicitar seguro de vehículo"""
-        await interaction.response.defer(ephemeral=True)
+        # DEFER INMEDIATAMENTE para evitar timeout y conflictos
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.InteractionResponded:
+            # La interacción ya fue respondida, usar followup
+            pass
+        except Exception as defer_error:
+            logger.error(f"Error al hacer defer en request_insurance_button: {defer_error}")
+            return
         
         # Verificar si el sistema está habilitado
         if not taxi_config.FEATURE_ENABLED:
@@ -1434,7 +1457,7 @@ class MechanicSystemView(discord.ui.View):
                 description="El sistema de mecánico está temporalmente deshabilitado",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, ephemeral=True)
             return
         
         try:
@@ -1447,7 +1470,7 @@ class MechanicSystemView(discord.ui.View):
                     description="Debes registrarte en el sistema primero usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -1462,7 +1485,7 @@ class MechanicSystemView(discord.ui.View):
                     value="Ve al canal de **welcome** y usa el botón **'🎮 Actualizar Nombre InGame'**",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener vehículos registrados del usuario
@@ -1484,7 +1507,7 @@ class MechanicSystemView(discord.ui.View):
                     value="• Vehículo **NO** en respawn\n• Todas las **ruedas** funcionales\n• **Asiento de conductor** disponible\n• **ID único** correcto",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Filtrar vehículos que no tienen seguro activo
@@ -1506,7 +1529,7 @@ class MechanicSystemView(discord.ui.View):
                     value="Usa el botón **'📋 Consultar Seguros'** para ver el estado de tus seguros activos",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear embed de selección de vehículo
@@ -1544,16 +1567,23 @@ class MechanicSystemView(discord.ui.View):
             
             # Crear vista de selección de vehículo
             view = VehicleInsuranceSelectionView(vehicles_without_insurance)
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            await self._safe_send(interaction, embed=embed, view=view, ephemeral=True)
             
         except Exception as e:
             logger.error(f"Error en solicitud de seguro: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error procesando tu solicitud",
                 color=discord.Color.red()
             )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            try:
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
+            except Exception as final_error:
+                logger.error(f"Error final enviando mensaje de error: {final_error}")
     
     @discord.ui.button(label="📋 Consultar Seguros", style=discord.ButtonStyle.primary, custom_id="check_insurance")
     async def check_insurance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1736,7 +1766,7 @@ class MechanicSystemView(discord.ui.View):
                     description="No hay seguros de vehículos registrados en este servidor.",
                     color=discord.Color.blue()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear embed con información de seguros
@@ -1914,7 +1944,7 @@ class MechanicSystemView(discord.ui.View):
                     description="Debes registrarte en el sistema primero usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -1929,7 +1959,7 @@ class MechanicSystemView(discord.ui.View):
                     value="Ve al canal de **welcome** y usa el botón **'🎮 Actualizar Nombre InGame'**",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener vehículos registrados del usuario
@@ -2208,7 +2238,7 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
                     description="El ID del vehículo debe tener al menos 3 caracteres",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar usuario registrado
@@ -2219,7 +2249,7 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
                     description="Usuario no registrado o sin nombre InGame",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar límites
@@ -2274,7 +2304,7 @@ class VehicleRegistrationModal(discord.ui.Modal, title="🚗 Registrar Nuevo Veh
                         inline=False
                     )
                 
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener squadron_id del usuario si pertenece a uno
@@ -2677,7 +2707,7 @@ class SquadronSystemView(discord.ui.View):
                     description="Debes registrarte en el sistema primero",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener escuadrón del usuario
@@ -2694,7 +2724,7 @@ class SquadronSystemView(discord.ui.View):
                     value="Usa el botón **'🏆 Crear Escuadrón'** para formar tu propio equipo",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Mostrar detalles del escuadrón
@@ -2790,7 +2820,7 @@ class SquadronSystemView(discord.ui.View):
                     inline=False
                 )
                 
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si el usuario está registrado
@@ -2802,7 +2832,7 @@ class SquadronSystemView(discord.ui.View):
                     description="Debes registrarte en el sistema primero usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -2817,7 +2847,7 @@ class SquadronSystemView(discord.ui.View):
                     value="Ve al canal de **welcome** y usa el botón **'🎮 Actualizar Nombre InGame'**",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener escuadrones activos
@@ -2845,7 +2875,7 @@ class SquadronSystemView(discord.ui.View):
                     value="Usa el botón **'🏆 Crear Escuadrón'** para formar el primer equipo",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear vista con selector de escuadrones para unirse
@@ -2925,7 +2955,7 @@ class SquadronSystemView(discord.ui.View):
                     inline=False
                 )
                 
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Si llegamos aquí, el usuario SÍ pertenece a un escuadrón
@@ -2941,7 +2971,7 @@ class SquadronSystemView(discord.ui.View):
                     value="• **Transfiere el liderazgo** a otro miembro primero\n• Contacta a un **administrador** para disolución\n• Los admins pueden removerte sin restricciones",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar período de enfriamiento
@@ -2966,7 +2996,7 @@ class SquadronSystemView(discord.ui.View):
                     value="• **Administradores** pueden removerte sin restricciones\n• Espera el tiempo restante para salir voluntariamente",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear embed de confirmación
@@ -3341,7 +3371,7 @@ class CreateSquadronModal(discord.ui.Modal, title="🏆 Crear Nuevo Escuadrón")
                     description="El nombre del escuadrón debe tener al menos 3 caracteres",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar que el nombre no esté en uso
@@ -3431,7 +3461,7 @@ class SquadronTypeSelectView(discord.ui.View):
                     description="Usuario no registrado o sin nombre InGame",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear escuadrón
@@ -3615,7 +3645,7 @@ class InsuranceConfirmationView(BaseView):
                     description="Solo mecánicos registrados o administradores pueden confirmar seguros",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si el seguro aún existe y está pendiente
@@ -3766,7 +3796,7 @@ class InsuranceConfirmationView(BaseView):
                     description="Solo mecánicos registrados o administradores pueden rechazar seguros",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si el seguro aún existe y está pendiente
@@ -4586,7 +4616,7 @@ class MechanicSystem(commands.Cog):
                     description="Debes registrarte en el sistema primero usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -4601,7 +4631,7 @@ class MechanicSystem(commands.Cog):
                     value="Ve al canal de **welcome** y usa el botón **'🎮 Actualizar Nombre InGame'**",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             async with aiosqlite.connect(taxi_db.db_path) as db:
@@ -4681,7 +4711,7 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} debe registrarse primero en el sistema usando `/welcome_registro`",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             ingame_name = user_data.get('ingame_name')
@@ -4691,7 +4721,7 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} necesita configurar su nombre InGame en el canal de welcome",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si ya es mecánico
@@ -4703,7 +4733,7 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} ya está registrado como mecánico",
                     color=discord.Color.orange()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Registrar como mecánico
@@ -4780,7 +4810,7 @@ class MechanicSystem(commands.Cog):
                     description=f"{user.display_name} no está registrado como mecánico",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Eliminar mecánico (cambiar status a 'inactive')
@@ -4858,7 +4888,7 @@ class MechanicSystem(commands.Cog):
                     description="No hay mecánicos registrados en este servidor",
                     color=discord.Color.blue()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             embed = discord.Embed(
@@ -4938,7 +4968,7 @@ class MechanicSystem(commands.Cog):
                     description="Este comando es solo para mecánicos registrados",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Guardar preferencia
@@ -5016,7 +5046,7 @@ class MechanicSystem(commands.Cog):
                     description="El porcentaje debe estar entre 0 y 100",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Guardar configuración en la base de datos
@@ -5091,7 +5121,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo mecánicos registrados o administradores pueden cambiar precios",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             if price <= 0:
@@ -5100,7 +5130,7 @@ class MechanicSystem(commands.Cog):
                     description="El precio debe ser mayor a 0",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Validar tipo de vehículo
@@ -5113,7 +5143,7 @@ class MechanicSystem(commands.Cog):
                     description=f"Tipos válidos: {', '.join(valid_types[:5])}...",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Establecer precio personalizado
@@ -5199,7 +5229,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo mecánicos registrados o administradores pueden ver precios",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener precios personalizados
@@ -5294,7 +5324,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo mecánicos registrados o administradores pueden cambiar límites",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             if limit_per_member < 0 or limit_per_member > 10:
@@ -5303,7 +5333,7 @@ class MechanicSystem(commands.Cog):
                     description="El límite debe estar entre 0 y 10 vehículos por miembro",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Validar tipo de vehículo
@@ -5316,7 +5346,7 @@ class MechanicSystem(commands.Cog):
                     description=f"Tipos válidos: {', '.join(valid_types)}",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Establecer límite
@@ -5407,7 +5437,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo mecánicos registrados o administradores pueden ver límites",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener límites configurados
@@ -5520,7 +5550,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo administradores pueden configurar límites de escuadrones",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Validar valores
@@ -5596,7 +5626,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo administradores o mecánicos pueden ver esta configuración",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener configuración actual
@@ -5692,7 +5722,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo administradores pueden remover miembros de escuadrones",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Verificar si el usuario está en un escuadrón
@@ -5704,7 +5734,7 @@ class MechanicSystem(commands.Cog):
                     description=f"**{user.display_name}** no pertenece a ningún escuadrón",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Ejecutar remoción (sin restricciones de tiempo para admins)
@@ -5801,7 +5831,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo administradores o mecánicos pueden ver información de miembros",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Obtener información del escuadrón
@@ -5921,7 +5951,7 @@ class MechanicSystem(commands.Cog):
                     description="Solo administradores pueden ejecutar la limpieza manual",
                     color=discord.Color.red()
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Validar límite
@@ -6634,7 +6664,7 @@ class SquadronLeaderManagementView(discord.ui.View):
                     value="Invita a otros usuarios a tu escuadrón primero antes de transferir el liderazgo.",
                     inline=False
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await self._safe_send(interaction, embed=embed, ephemeral=True)
                 return
             
             # Crear embed informativo
