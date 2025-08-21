@@ -3496,6 +3496,418 @@ class BunkerPanelView(discord.ui.View):
                 await interaction.followup.send("❌ Error obteniendo información de uso", ephemeral=True)
             except Exception as followup_error:
                 logger.error(f"Error enviando mensaje de error: {followup_error}")
+    
+    @discord.ui.button(label="🔔 Configurar Notificaciones", style=discord.ButtonStyle.secondary, custom_id="bunker_notifications")
+    async def configure_notifications(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Configurar notificaciones de bunkers"""
+        try:
+            # Verificar permisos de administrador o premium
+            is_admin = interaction.user.guild_permissions.administrator
+            
+            # TODO: Verificar premium cuando esté implementado
+            # is_premium = await check_premium_status(interaction.user.id)
+            is_premium = True  # Temporal para testing
+            
+            if not is_admin and not is_premium:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Esta función requiere permisos de **Administrador** o **Premium**.",
+                    color=0xff0000
+                )
+                embed.add_field(
+                    name="🎯 ¿Cómo obtener acceso?",
+                    value="• **Administradores**: Ya tienes acceso\n• **Premium**: Usa `/ba_plans` para ver opciones",
+                    inline=False
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+            
+            # Mostrar vista de configuración de notificaciones
+            view = BunkerNotificationConfigView(str(interaction.guild.id))
+            await view.setup_server_select()
+            
+            embed = discord.Embed(
+                title="🔔 Configurar Notificaciones de Bunkers",
+                description="Configura las notificaciones automáticas para bunkers usando los selectores de abajo:",
+                color=0x0099ff
+            )
+            embed.add_field(
+                name="📋 Pasos",
+                value="1. **Servidor**: Selecciona el servidor SCUM\n2. **Sector**: Elige el sector específico o todos\n3. **Tipo**: Selecciona qué notificaciones quieres\n4. **Estado**: Activar o desactivar",
+                inline=False
+            )
+            embed.add_field(
+                name="💡 Tipos de Notificación",
+                value="• **⏰ Expirando**: 30 min antes de cerrar\n• **🔴 Expirado**: Cuando el bunker se cierra\n• **🆕 Nuevo**: Cuando alguien registra uno nuevo\n• **📊 Resumen**: Reporte diario\n• **🔔 Todas**: Todas las anteriores",
+                inline=False
+            )
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en botón configurar notificaciones: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            try:
+                await interaction.response.send_message("❌ Error abriendo configuración de notificaciones", ephemeral=True)
+            except Exception as followup_error:
+                logger.error(f"Error enviando mensaje de error: {followup_error}")
+
+class BunkerNotificationConfigView(discord.ui.View):
+    """Vista para configurar notificaciones de bunkers con selectores"""
+    
+    def __init__(self, guild_id: str):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        self.selected_server = None
+        self.selected_sector = None
+        self.selected_type = None
+        self.selected_enabled = None
+
+    async def setup_server_select(self):
+        """Configurar selector de servidor dinámicamente"""
+        try:
+            db = BunkerDatabaseV2()
+            servers = await db.get_unique_servers(self.guild_id)
+            
+            if servers:
+                # Crear opciones para el selector de servidor
+                options = []
+                for server in servers[:25]:  # Discord limita a 25 opciones
+                    options.append(discord.SelectOption(
+                        label=server,
+                        value=server,
+                        description=f"Configurar notificaciones para {server}"
+                    ))
+                
+                # Agregar selector de servidor
+                server_select = ServerNotificationSelect(options)
+                self.add_item(server_select)
+            else:
+                # Si no hay servidores, agregar uno por defecto
+                default_options = [discord.SelectOption(
+                    label="Default",
+                    value="Default",
+                    description="Servidor por defecto"
+                )]
+                server_select = ServerNotificationSelect(default_options)
+                self.add_item(server_select)
+            
+            # Agregar selectores estáticos
+            self.add_item(SectorNotificationSelect())
+            self.add_item(TypeNotificationSelect())
+            self.add_item(EnabledNotificationSelect())
+            self.add_item(SaveNotificationButton())
+            
+        except Exception as e:
+            logger.error(f"Error configurando selector de servidor para notificaciones: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            
+            # Agregar selector por defecto si hay error
+            try:
+                default_options = [discord.SelectOption(
+                    label="Default",
+                    value="Default", 
+                    description="Servidor por defecto"
+                )]
+                server_select = ServerNotificationSelect(default_options)
+                self.add_item(server_select)
+            except Exception as fallback_error:
+                logger.error(f"Error agregando selector por defecto: {fallback_error}")
+            
+            # Agregar selectores estáticos
+            self.add_item(SectorNotificationSelect())
+            self.add_item(TypeNotificationSelect())
+            self.add_item(EnabledNotificationSelect())
+            self.add_item(SaveNotificationButton())
+
+    async def on_timeout(self):
+        """Manejar timeout de la vista"""
+        for item in self.children:
+            item.disabled = True
+
+class ServerNotificationSelect(discord.ui.Select):
+    """Selector de servidor para notificaciones"""
+    
+    def __init__(self, options):
+        super().__init__(
+            placeholder="🖥️ Selecciona el servidor...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="server_notification_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        view.selected_server = self.values[0]
+        
+        embed = discord.Embed(
+            title="✅ Servidor Seleccionado",
+            description=f"**Servidor:** {self.values[0]}",
+            color=0x00ff00
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class SectorNotificationSelect(discord.ui.Select):
+    """Selector de sector para notificaciones"""
+    
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="🏢 Sector D1",
+                value="D1",
+                description="Notificaciones para bunkers en D1"
+            ),
+            discord.SelectOption(
+                label="🏢 Sector C4", 
+                value="C4",
+                description="Notificaciones para bunkers en C4"
+            ),
+            discord.SelectOption(
+                label="🏢 Sector A1",
+                value="A1", 
+                description="Notificaciones para bunkers en A1"
+            ),
+            discord.SelectOption(
+                label="🏢 Sector A3",
+                value="A3",
+                description="Notificaciones para bunkers en A3"
+            ),
+            discord.SelectOption(
+                label="🌍 Todos los sectores",
+                value="all_sectors",
+                description="Notificaciones para todos los sectores"
+            )
+        ]
+        
+        super().__init__(
+            placeholder="📍 Selecciona el sector...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="sector_notification_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        view.selected_sector = self.values[0]
+        
+        sector_name = next(opt.label for opt in self.options if opt.value == self.values[0])
+        embed = discord.Embed(
+            title="✅ Sector Seleccionado",
+            description=f"**Sector:** {sector_name}",
+            color=0x00ff00
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class TypeNotificationSelect(discord.ui.Select):
+    """Selector de tipo de notificación"""
+    
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="⏰ Expirando (30 min antes)",
+                value="expiring",
+                description="Notificaciones 30 minutos antes de cerrar"
+            ),
+            discord.SelectOption(
+                label="🔴 Expirado",
+                value="expired",
+                description="Notificaciones cuando el bunker se cierra"
+            ),
+            discord.SelectOption(
+                label="🆕 Nuevo bunker",
+                value="new_bunker",
+                description="Notificaciones cuando alguien registra uno nuevo"
+            ),
+            discord.SelectOption(
+                label="📊 Resumen diario",
+                value="daily_summary",
+                description="Reporte diario de actividad"
+            ),
+            discord.SelectOption(
+                label="🔔 Todas las notificaciones",
+                value="all",
+                description="Todas las notificaciones anteriores"
+            )
+        ]
+        
+        super().__init__(
+            placeholder="🔔 Selecciona el tipo de notificación...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="type_notification_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        view.selected_type = self.values[0]
+        
+        type_name = next(opt.label for opt in self.options if opt.value == self.values[0])
+        embed = discord.Embed(
+            title="✅ Tipo Seleccionado",
+            description=f"**Tipo:** {type_name}",
+            color=0x00ff00
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class EnabledNotificationSelect(discord.ui.Select):
+    """Selector de estado enabled/disabled"""
+    
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="✅ Activar notificaciones",
+                value="true",
+                description="Habilitar las notificaciones configuradas"
+            ),
+            discord.SelectOption(
+                label="❌ Desactivar notificaciones",
+                value="false",
+                description="Deshabilitar las notificaciones"
+            )
+        ]
+        
+        super().__init__(
+            placeholder="⚙️ Selecciona el estado...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="enabled_notification_select"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        view.selected_enabled = self.values[0] == "true"
+        
+        status_text = "✅ Activadas" if view.selected_enabled else "❌ Desactivadas"
+        embed = discord.Embed(
+            title="✅ Estado Seleccionado",
+            description=f"**Estado:** {status_text}",
+            color=0x00ff00
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+class SaveNotificationButton(discord.ui.Button):
+    """Botón para guardar la configuración de notificaciones"""
+    
+    def __init__(self):
+        super().__init__(
+            label="💾 Guardar Configuración",
+            style=discord.ButtonStyle.primary,
+            custom_id="save_notification_config"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            view = self.view
+            
+            # Validar que todos los campos estén seleccionados
+            if not all([view.selected_server, view.selected_sector, view.selected_type, view.selected_enabled is not None]):
+                missing = []
+                if not view.selected_server:
+                    missing.append("Servidor")
+                if not view.selected_sector:
+                    missing.append("Sector")
+                if not view.selected_type:
+                    missing.append("Tipo de notificación")
+                if view.selected_enabled is None:
+                    missing.append("Estado")
+                
+                embed = discord.Embed(
+                    title="❌ Configuración Incompleta",
+                    description=f"Faltan seleccionar: **{', '.join(missing)}**",
+                    color=0xff0000
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Guardar configuración usando la función existente
+            db = BunkerDatabaseV2()
+            guild_id = str(interaction.guild.id) if interaction.guild else "default"
+            channel_id = str(interaction.channel.id)
+            
+            # Determinar automáticamente si usar DM personal
+            try:
+                from config import BOT_CREATOR_ID
+            except ImportError:
+                BOT_CREATOR_ID = 123456789012345678  # Fallback
+                
+            # Lógica para determinar DM personal (copiada del comando original)
+            use_personal_dm = True  # Por defecto DM personal
+            if interaction.user.id == BOT_CREATOR_ID:
+                use_personal_dm = False  # Creador del bot usa canal público
+            elif interaction.guild and interaction.user.id == interaction.guild.owner_id:
+                use_personal_dm = False  # Owner del Discord usa canal público
+            
+            # Guardar configuración en base de datos
+            await db.save_notification_config(
+                guild_id=guild_id,
+                channel_id=channel_id,
+                server_name=view.selected_server,
+                bunker_sector=view.selected_sector,
+                notification_type=view.selected_type,
+                role_id=None,  # Sin rol según solicitud
+                enabled=view.selected_enabled,
+                personal_dm=use_personal_dm,
+                created_by=str(interaction.user.id)
+            )
+            
+            # Crear texto de configuración
+            config_text = []
+            config_text.append(f"🖥️ **Servidor:** {view.selected_server}")
+            config_text.append(f"📍 **Sector:** {view.selected_sector}")
+            config_text.append(f"🔔 **Tipo:** {view.selected_type}")
+            config_text.append(f"✅ **Estado:** {'Activado' if view.selected_enabled else 'Desactivado'}")
+            
+            # Mostrar tipo de notificación basado en el usuario
+            if interaction.user.id == BOT_CREATOR_ID:
+                config_text.append(f"👑 **Modo:** Canal Público (Eres el creador del bot)")
+            elif interaction.guild and interaction.user.id == interaction.guild.owner_id:
+                config_text.append(f"👑 **Modo:** Canal Público (Eres el owner del Discord)")
+            else:
+                config_text.append(f"💎 **Modo:** DM Personal (Usuario premium)")
+            
+            embed = discord.Embed(
+                title="✅ Configuración Guardada",
+                description="Las notificaciones han sido configuradas exitosamente",
+                color=0x00ff00 if view.selected_enabled else 0xff6b6b
+            )
+            
+            embed.add_field(
+                name="⚙️ Configuración Aplicada",
+                value="\n".join(config_text),
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📋 Siguiente Paso",
+                value="Las notificaciones se activarán automáticamente según la configuración.",
+                inline=False
+            )
+            
+            # Deshabilitar la vista
+            for item in view.children:
+                item.disabled = True
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error guardando configuración de notificaciones: {e}")
+            import traceback
+            logger.error(f"Traceback completo: {traceback.format_exc()}")
+            
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Error al guardar la configuración de notificaciones",
+                color=0xff0000
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 class BunkerRegisterModal(discord.ui.Modal, title="🔒 Registrar Bunker"):
     def __init__(self):
