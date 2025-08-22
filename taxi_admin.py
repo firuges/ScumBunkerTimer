@@ -3980,7 +3980,9 @@ class TaxiAdminCommands(commands.Cog):
         admin_channel="Canal para panel de administración (gestión usuarios/conductores)",
         bunker_channel="Canal para sistema de bunkers con botones interactivos",
         mechanic_notifications_channel="Canal para notificaciones de seguros pendientes (mecánicos)",
-        ticket_channel="Canal para sistema de tickets de soporte"
+        ticket_channel="Canal para sistema de tickets de soporte",
+        fame_rewards_channel="Canal para sistema de Fame Point Rewards (ranking y reclamaciones)",
+        fame_notifications_channel="Canal para notificaciones de reclamaciones de fama (solo admins)"
     )
     @app_commands.default_permissions(administrator=True)
     async def setup_all_channels(self, interaction: discord.Interaction, 
@@ -3994,7 +3996,9 @@ class TaxiAdminCommands(commands.Cog):
                                  admin_channel: discord.TextChannel,
                                  bunker_channel: discord.TextChannel,
                                  mechanic_notifications_channel: discord.TextChannel,
-                                 ticket_channel: discord.TextChannel):
+                                 ticket_channel: discord.TextChannel,
+                                 fame_rewards_channel: discord.TextChannel,
+                                 fame_notifications_channel: discord.TextChannel):
         """Configurar todos los canales de una vez con limpieza de paneles anteriores"""
         await interaction.response.defer(ephemeral=True)
         
@@ -4631,6 +4635,163 @@ class TaxiAdminCommands(commands.Cog):
                     results.append("🎫 Tickets: ❌ Cog no encontrado")
             except Exception as e:
                 results.append(f"🎫 Tickets: ❌ Error - {str(e)}")
+            
+            # === CONFIGURAR CANAL DE FAME POINT REWARDS ===
+            try:
+                fame_cog = self.bot.get_cog('FameRewardsSystem')
+                if fame_cog:
+                    guild_id = str(interaction.guild.id)
+                    try:
+                        # Guardar configuración del canal principal de Fame Rewards
+                        async with aiosqlite.connect(taxi_db.db_path) as db:
+                            await db.execute(
+                                """INSERT OR REPLACE INTO channel_config 
+                                (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                                VALUES (?, ?, ?, ?, ?)""",
+                                (guild_id, 'fame_rewards', str(fame_rewards_channel.id), 
+                                 datetime.now().isoformat(), str(interaction.user.id))
+                            )
+                            await db.commit()
+                        
+                        # Guardar configuración del canal de notificaciones
+                        async with aiosqlite.connect(taxi_db.db_path) as db:
+                            await db.execute(
+                                """INSERT OR REPLACE INTO channel_config 
+                                (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                                VALUES (?, ?, ?, ?, ?)""",
+                                (guild_id, 'fame_notifications', str(fame_notifications_channel.id), 
+                                 datetime.now().isoformat(), str(interaction.user.id))
+                            )
+                            await db.commit()
+                        
+                        results.append(f"🏆 Fame Rewards: ✅ {fame_rewards_channel.mention}")
+                        results.append(f"🔔 Fame Notifications: ✅ {fame_notifications_channel.mention}")
+                        
+                        # Configurar en memoria del sistema
+                        fame_cog.fame_channels[interaction.guild.id] = fame_rewards_channel.id
+                        fame_cog.notification_channels[interaction.guild.id] = fame_notifications_channel.id
+                        
+                        # Limpiar mensajes anteriores del bot en canal principal
+                        try:
+                            deleted_count = 0
+                            async for message in fame_rewards_channel.history(limit=50):
+                                if message.author == self.bot.user:
+                                    await message.delete()
+                                    deleted_count += 1
+                                    await asyncio.sleep(0.1)  # Evitar rate limits
+                        except Exception as cleanup_e:
+                            logger.warning(f"Error limpiando mensajes de fame rewards: {cleanup_e}")
+                        
+                        # Crear panel de Fame Rewards usando el sistema
+                        try:
+                            panel_success = await fame_cog._create_fame_rewards_panel(fame_rewards_channel)
+                            if panel_success:
+                                results[-2] += " + Panel"
+                                logger.info(f"Panel de Fame Rewards configurado en {fame_rewards_channel.name}")
+                            else:
+                                results[-2] += " ⚠️ (error de panel)"
+                        except Exception as panel_e:
+                            logger.error(f"Error creando panel de Fame Rewards: {panel_e}")
+                            results[-2] += " ⚠️ (error de panel)"
+                        
+                    except Exception as db_e:
+                        logger.error(f"Error guardando configuración de Fame Rewards: {db_e}")
+                        results.append(f"🏆 Fame Rewards: ⚠️ {fame_rewards_channel.mention} (sin persistencia)")
+                        results.append(f"🔔 Fame Notifications: ⚠️ {fame_notifications_channel.mention} (sin persistencia)")
+                else:
+                    results.append("🏆 Fame Rewards: ❌ Cog no encontrado")
+            except Exception as e:
+                results.append(f"🏆 Fame Rewards: ❌ Error - {str(e)}")
+            
+            # === VERIFICAR Y ACTUALIZAR CANALES COMPARTIDOS ===
+            try:
+                # Mapear canales por ID para detectar duplicados
+                channel_usage = {}
+                
+                # Recopilar todos los canales usados
+                if 'shop_claimer_channel' in locals():
+                    channel_usage.setdefault(shop_claimer_channel.id, []).append('shop_claimer')
+                if 'fame_notifications_channel' in locals():
+                    channel_usage.setdefault(fame_notifications_channel.id, []).append('fame_notifications')
+                if 'mechanic_notifications_channel' in locals():
+                    channel_usage.setdefault(mechanic_notifications_channel.id, []).append('mechanic_notifications')
+                
+                # Verificar si hay canales compartidos
+                for channel_id, systems in channel_usage.items():
+                    if len(systems) > 1:
+                        # Este canal se usa para múltiples sistemas
+                        channel = interaction.guild.get_channel(channel_id)
+                        if channel:
+                            try:
+                                # Limpiar mensajes anteriores del bot
+                                deleted_count = 0
+                                async for message in channel.history(limit=20):
+                                    if message.author == self.bot.user:
+                                        await message.delete()
+                                        deleted_count += 1
+                                        await asyncio.sleep(0.1)
+                                
+                                # Crear mensaje informativo combinado
+                                systems_info = {
+                                    'shop_claimer': {
+                                        'emoji': '🛒',
+                                        'name': 'Notificaciones de Compras',
+                                        'description': 'Notificaciones automáticas cuando los usuarios compran packs en la tienda'
+                                    },
+                                    'fame_notifications': {
+                                        'emoji': '🏆',
+                                        'name': 'Notificaciones de Fame Rewards',
+                                        'description': 'Notificaciones de reclamaciones de puntos de fama pendientes'
+                                    },
+                                    'mechanic_notifications': {
+                                        'emoji': '🔧',
+                                        'name': 'Notificaciones de Seguros',
+                                        'description': 'Notificaciones de seguros de vehículos pendientes de confirmación'
+                                    }
+                                }
+                                
+                                # Crear embed combinado
+                                shared_embed = discord.Embed(
+                                    title="🔔 Canal de Notificaciones Múltiples",
+                                    description=f"Este canal está configurado para recibir notificaciones de **{len(systems)} sistemas diferentes**:",
+                                    color=discord.Color.purple()
+                                )
+                                
+                                # Agregar información de cada sistema
+                                systems_text = ""
+                                for system in systems:
+                                    if system in systems_info:
+                                        info = systems_info[system]
+                                        systems_text += f"{info['emoji']} **{info['name']}**\n   • {info['description']}\n\n"
+                                
+                                shared_embed.add_field(
+                                    name="📋 Sistemas Configurados:",
+                                    value=systems_text.strip(),
+                                    inline=False
+                                )
+                                
+                                shared_embed.add_field(
+                                    name="👨‍💼 Acceso:",
+                                    value="Solo administradores pueden ver este canal y gestionar las notificaciones",
+                                    inline=False
+                                )
+                                
+                                shared_embed.add_field(
+                                    name="ℹ️ Información:",
+                                    value="Todas las notificaciones de estos sistemas aparecerán en este canal. Puedes usar el panel de administración para gestionarlas.",
+                                    inline=False
+                                )
+                                
+                                shared_embed.set_footer(text=f"Canal compartido configurado para {len(systems)} sistemas • BunkerAdvice Bot")
+                                
+                                await channel.send(embed=shared_embed)
+                                logger.info(f"Canal compartido actualizado: {channel.name} para sistemas: {', '.join(systems)}")
+                                
+                            except Exception as shared_e:
+                                logger.error(f"Error actualizando canal compartido {channel_id}: {shared_e}")
+                
+            except Exception as e:
+                logger.error(f"Error verificando canales compartidos: {e}")
             
             # Resultado final
             embed = discord.Embed(
@@ -7144,6 +7305,331 @@ class AdminPanelView(BaseView):
             embed = discord.Embed(
                 title="❌ Error del Sistema",
                 description="Hubo un error obteniendo los seguros pendientes",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🏆 Fame Rewards Pendientes", style=discord.ButtonStyle.secondary, custom_id="admin_pending_fame")
+    async def pending_fame_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Ver y gestionar reclamaciones de Fame Point Rewards pendientes"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos de administrador
+            if not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado",
+                    description="Solo administradores pueden ver las reclamaciones de Fame Rewards pendientes",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener sistema de Fame Rewards
+            fame_cog = interaction.client.get_cog('FameRewardsSystem')
+            if not fame_cog:
+                embed = discord.Embed(
+                    title="❌ Sistema No Disponible",
+                    description="El sistema de Fame Point Rewards no está cargado",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener reclamaciones pendientes
+            pending_claims = await fame_cog.fame_db.get_pending_claims(str(interaction.guild.id))
+            
+            if not pending_claims:
+                embed = discord.Embed(
+                    title="🏆 Fame Rewards Pendientes",
+                    description="No hay reclamaciones de Fame Point Rewards pendientes en este momento.",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="💡 Información",
+                    value="Las reclamaciones aparecen aquí cuando los usuarios solicitan premios de fama y están esperando confirmación de un administrador.",
+                    inline=False
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear embed con la lista
+            embed = discord.Embed(
+                title="🏆 Fame Rewards Pendientes de Confirmación",
+                description=f"**{len(pending_claims)} reclamaciones** esperando confirmación en **{interaction.guild.name}**",
+                color=discord.Color.gold()
+            )
+            
+            # Crear selector con las reclamaciones pendientes
+            options = []
+            for claim in pending_claims[:25]:  # Límite de Discord
+                claim_id = claim['claim_id']
+                discord_id = claim['discord_id']
+                ingame_name = claim['ingame_name'] or 'Nombre InGame Desconocido'
+                fame_amount = claim['fame_amount']
+                claimed_at = claim['claimed_at']
+                
+                # Formatear información
+                try:
+                    import datetime
+                    claimed_date = datetime.datetime.fromisoformat(claimed_at).strftime('%d/%m/%Y %H:%M')
+                except:
+                    claimed_date = "Fecha desconocida"
+                
+                # Preparar descripción del selector
+                selector_description = f"🏆 {fame_amount:,} FP | 🎮 {ingame_name} | 📅 {claimed_date}"
+                if len(selector_description) > 100:  # Límite de Discord
+                    selector_description = f"🏆 {fame_amount:,} FP | 🎮 {ingame_name[:20]}..."
+                
+                options.append(discord.SelectOption(
+                    label=f"#{claim_id:04d} - {fame_amount:,} Fame Points",
+                    description=selector_description,
+                    value=str(claim_id),
+                    emoji="⭐"
+                ))
+            
+            embed.add_field(
+                name="📋 Instrucciones",
+                value="• Selecciona una reclamación del menú desplegable\n• Se mostrará la información completa\n• Podrás confirmar o rechazar directamente",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📊 Resumen",
+                value=f"• **Total pendientes:** {len(pending_claims)}\n• **Mostrando:** {min(len(pending_claims), 25)}",
+                inline=True
+            )
+            
+            if len(pending_claims) > 25:
+                embed.add_field(
+                    name="⚠️ Nota",
+                    value=f"Solo se muestran las primeras 25 reclamaciones. Hay {len(pending_claims) - 25} más.",
+                    inline=True
+                )
+            
+            embed.set_footer(text=f"Panel administrativo • {interaction.user.display_name}")
+            
+            # Crear vista con selector
+            view = PendingFameRewardsView(options, interaction.client)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error obteniendo reclamaciones de Fame Rewards pendientes: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error obteniendo las reclamaciones de Fame Rewards pendientes",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    @discord.ui.button(label="🕐 Detectar Zona Horaria", style=discord.ButtonStyle.secondary, custom_id="admin_detect_timezone")
+    async def detect_timezone_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Detectar y mostrar la zona horaria del servidor/admin"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar permisos de administrador
+            if not interaction.user.guild_permissions.administrator:
+                embed = discord.Embed(
+                    title="❌ Acceso Denegado", 
+                    description="Solo administradores pueden usar esta función",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            from taxi_database import detect_user_timezone, convert_time_to_user_timezone
+            import datetime
+            import platform
+            
+            # Detectar zona horaria
+            detected_timezone = detect_user_timezone(interaction)
+            current_time = datetime.datetime.now()
+            
+            # Información del sistema
+            system_info = {
+                'platform': platform.system(),
+                'timezone_detected': detected_timezone,
+                'local_time': current_time.strftime('%H:%M:%S'),
+                'local_date': current_time.strftime('%Y-%m-%d'),
+                'utc_time': datetime.datetime.utcnow().strftime('%H:%M:%S UTC')
+            }
+            
+            embed = discord.Embed(
+                title="🕐 Información de Zona Horaria Detectada",
+                description="Información del servidor y zona horaria detectada automáticamente",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="🌍 Zona Horaria Detectada",
+                value=f"`{detected_timezone}`",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📅 Fecha y Hora Local",
+                value=f"**Fecha:** {system_info['local_date']}\n**Hora:** {system_info['local_time']}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🌐 Hora UTC",
+                value=f"`{system_info['utc_time']}`",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💻 Sistema",
+                value=f"`{system_info['platform']}`",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="ℹ️ Uso",
+                value="Esta zona horaria se asigna automáticamente a nuevos usuarios. Los administradores pueden ver esta información para configurar alertas y sistemas de tiempo.",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="⚙️ Funciones Relacionadas",
+                value="• Alertas de reinicio de servidor\n• Sistema de bunkers\n• Registros de tiempo en base de datos\n• Conversiones automáticas de horarios",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error en detección de zona horaria: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="No se pudo detectar la zona horaria del servidor",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class PendingFameRewardsView(BaseView):
+    """Vista para seleccionar y gestionar reclamaciones de Fame Rewards pendientes"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(timeout=300)  # 5 minutos
+        self.bot = bot
+        
+        if options:
+            # Agregar selector con las opciones
+            select = PendingFameRewardsSelect(options, bot)
+            self.add_item(select)
+
+
+class PendingFameRewardsSelect(discord.ui.Select):
+    """Selector para elegir reclamación de Fame Rewards pendiente"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(
+            placeholder="Selecciona una reclamación para revisar...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.bot = bot
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Callback cuando se selecciona una reclamación"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            claim_id = int(self.values[0])
+            
+            # Obtener sistema de Fame Rewards
+            fame_cog = self.bot.get_cog('FameRewardsSystem')
+            if not fame_cog:
+                embed = discord.Embed(
+                    title="❌ Sistema No Disponible",
+                    description="El sistema de Fame Point Rewards no está disponible",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener información completa de la reclamación
+            claim_data = await fame_cog.fame_db.get_claim_by_id(claim_id)
+            
+            if not claim_data or claim_data['status'] != 'pending':
+                embed = discord.Embed(
+                    title="❌ Reclamación No Encontrada",
+                    description="La reclamación seleccionada ya no está pendiente o fue eliminada.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Obtener información del usuario desde Discord
+            try:
+                user = interaction.guild.get_member(int(claim_data['discord_id']))
+                if not user:
+                    user = await interaction.guild.fetch_member(int(claim_data['discord_id']))
+            except:
+                user = None
+            
+            # Crear embed detallado
+            embed = discord.Embed(
+                title=f"🏆 Reclamación #{claim_id:04d} - Fame Point Rewards",
+                description=f"**Cantidad:** {claim_data['fame_amount']:,} Fame Points",
+                color=discord.Color.gold()
+            )
+            
+            # Información del usuario
+            if user:
+                embed.add_field(
+                    name="👤 Usuario",
+                    value=f"**Discord:** {user.mention}\n**Nombre:** {user.display_name}\n**ID:** {user.id}",
+                    inline=True
+                )
+                embed.set_thumbnail(url=user.display_avatar.url)
+            else:
+                embed.add_field(
+                    name="👤 Usuario",
+                    value=f"**ID:** {claim_data['discord_id']}\n*(Usuario no encontrado)*",
+                    inline=True
+                )
+            
+            # Información de la reclamación
+            try:
+                from datetime import datetime
+                claimed_date = datetime.fromisoformat(claim_data['claimed_at'])
+                timestamp = int(claimed_date.timestamp())
+                date_str = f"<t:{timestamp}:F>"
+            except:
+                date_str = "Fecha desconocida"
+            
+            embed.add_field(
+                name="📅 Información",
+                value=f"**Fecha:** {date_str}\n**Estado:** Pendiente",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Recompensa",
+                value=f"**{claim_data['fame_amount']:,}** Fame Points",
+                inline=True
+            )
+            
+            embed.set_footer(text=f"Reclamación ID: {claim_id}")
+            
+            # Crear vista con botones de acción (reutilizar la vista existente)
+            from fame_rewards_views import AdminFameNotificationView
+            view = AdminFameNotificationView(fame_cog, claim_data)
+            
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error procesando selección de reclamación Fame Rewards: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="Hubo un error al procesar la reclamación seleccionada",
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)

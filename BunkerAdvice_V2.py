@@ -118,6 +118,12 @@ class BunkerBotV2(commands.Bot):
             except Exception as ticket_error:
                 logger.error(f"❌ Error cargando sistema de tickets: {ticket_error}")
             
+            log_progress("Cargando sistema de Fame Point Rewards...")
+            try:
+                await self.load_extension('fame_rewards_system')
+            except Exception as fame_error:
+                logger.error(f"❌ Error cargando sistema de Fame Point Rewards: {fame_error}")
+            
             log_progress("Registrando vistas persistentes...")
             try:
                 from taxi_admin import DeliveryConfirmationView, PersistentDeliveryView
@@ -246,6 +252,11 @@ class BunkerBotV2(commands.Bot):
             ticket_cog = self.get_cog('TicketSystem')
             if ticket_cog:
                 await ticket_cog.load_channel_configs()
+            
+            # Cargar configuraciones de fame rewards
+            fame_cog = self.get_cog('FameRewardsSystem')
+            if fame_cog:
+                await fame_cog.load_channel_configs()
             
             # Cargar configuraciones de shop (no tiene cog dedicado)
             await self._load_shop_configs()

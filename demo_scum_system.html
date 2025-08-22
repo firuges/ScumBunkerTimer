@@ -78,7 +78,6 @@
             outline: 2px solid #faa61a;
             outline-offset: 2px;
         }
-        }
         /* Colores por tipo de acción */
         .btn-primary { background: #7289da; }
         .btn-primary:hover { background: #5865f2; }
@@ -281,6 +280,106 @@
             font-size: 1.2em;
             margin-right: 4px;
         }
+        
+        /* Estilos para Fame Point Rewards */
+        .btn-fame { background: #ffd700 !important; color: #23272a !important; }
+        .btn-fame:hover { background: #e6c200 !important; color: #23272a !important; box-shadow: 0 4px 16px #ffd70099; }
+        
+        .fame-ranking {
+            background: #2c2f33;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 4px solid #ffd700;
+        }
+        
+        .fame-ranking-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #36393f;
+        }
+        
+        .fame-ranking-item:last-child {
+            border-bottom: none;
+        }
+        
+        .fame-ranking-medal {
+            font-size: 1.4em;
+            margin-right: 8px;
+        }
+        
+        .fame-ranking-name {
+            font-weight: bold;
+            color: #ffd700;
+        }
+        
+        .fame-ranking-points {
+            color: #43b581;
+            font-weight: bold;
+        }
+        
+        .fame-select-dropdown {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            background: #23272a;
+            color: #fff;
+            border: 2px solid #36393f;
+            margin: 8px 0;
+            font-size: 1rem;
+        }
+        
+        .fame-select-dropdown:focus {
+            outline: none;
+            border-color: #ffd700;
+        }
+        
+        .fame-claim-form {
+            background: #2c2f33;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+        }
+        
+        .fame-claim-form textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 8px;
+            border-radius: 6px;
+            background: #23272a;
+            color: #fff;
+            border: 1px solid #36393f;
+            resize: vertical;
+            font-family: inherit;
+        }
+        
+        .fame-claim-form textarea:focus {
+            outline: none;
+            border-color: #ffd700;
+        }
+        
+        .fame-notification {
+            background: #2c2f33;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 4px solid #faa61a;
+        }
+        
+        .fame-pending-item {
+            background: #23272a;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 8px 0;
+            border-left: 3px solid #faa61a;
+        }
+        
+        .fame-pending-item:hover {
+            background: #2c2f33;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -296,6 +395,7 @@
             <div class="channel">#-inbox-admin</div>
             <div class="channel">#-administracion</div>
             <div class="channel">#bunker-timer</div>
+            <div class="channel">#fame-rewards</div>
         </div>
         <div class="panel section" id="welcome-panel">
             <h2>🎉 Sistema de Bienvenida</h2>
@@ -425,6 +525,16 @@
             </div>
             <div class="output" id="bunker-output"></div>
         </div>
+        <div class="panel section" id="fame-panel">
+            <h2>🏆 Fame Point Rewards</h2>
+            <div class="buttons">
+                <button class="btn-fame" onclick="fameShowRanking()">🏆 Ver Ranking Top 10</button>
+                <button class="btn-success" onclick="fameShowClaim()">⭐ Reclamar Premio</button>
+                <button class="btn-info" onclick="fameShowMyHistory()">📊 Mi Historial</button>
+                <button class="btn-warning" onclick="fameShowAdminPending()">👨‍💼 [Admin] Pendientes</button>
+            </div>
+            <div class="output" id="fame-output"></div>
+        </div>
         <div class="footer">
             Demo Interactiva SCUM System &copy; 2025 &mdash; Inspirado en la arquitectura modular del bot Discord.<br>
             <span style="color:#43b581">Desarrollado por firuges</span>
@@ -457,6 +567,7 @@
                         <option>Default</option>
                         <option>Academy</option>
                         <option>Tartaro</option>
+                        <option>Condenados</option>
                     </select>
                 </div>
                 <div class='buttons'>
@@ -1183,6 +1294,364 @@
         }
         function showBunkerMyUsage() {
             document.getElementById('bunker-output').innerHTML = `🎯 <b>Mi Uso</b><br>Bunkers registrados: 2<br>Participación: 100%`;
+        }
+        
+        // === SISTEMA FAME POINT REWARDS ===
+        function fameShowRanking() {
+            document.getElementById('fame-output').innerHTML = `
+                <div class='fame-ranking'>
+                    <h3 style='color:#ffd700;margin:0 0 16px 0;'>🏆 Top 10 Reclamaciones Confirmadas</h3>
+                    <div class='fame-ranking-item'>
+                        <div>
+                            <span class='fame-ranking-medal'>🥇</span>
+                            <span class='fame-ranking-name'>DragonSlayer_Pro</span>
+                        </div>
+                        <div>
+                            <span class='fame-ranking-points'>15,000 FP</span>
+                            <span style='color:#aaa;margin-left:8px;'>(20/08/2025)</span>
+                        </div>
+                    </div>
+                    <div class='fame-ranking-item'>
+                        <div>
+                            <span class='fame-ranking-medal'>🥈</span>
+                            <span class='fame-ranking-name'>SurvivalMaster</span>
+                        </div>
+                        <div>
+                            <span class='fame-ranking-points'>10,000 FP</span>
+                            <span style='color:#aaa;margin-left:8px;'>(19/08/2025)</span>
+                        </div>
+                    </div>
+                    <div class='fame-ranking-item'>
+                        <div>
+                            <span class='fame-ranking-medal'>🥉</span>
+                            <span class='fame-ranking-name'>ZombieHunter_X</span>
+                        </div>
+                        <div>
+                            <span class='fame-ranking-points'>5,000 FP</span>
+                            <span style='color:#aaa;margin-left:8px;'>(21/08/2025)</span>
+                        </div>
+                    </div>
+                    <div class='fame-ranking-item'>
+                        <div>
+                            <span class='fame-ranking-medal'>🏅</span>
+                            <span class='fame-ranking-name'>CraftingKing</span>
+                        </div>
+                        <div>
+                            <span class='fame-ranking-points'>2,000 FP</span>
+                            <span style='color:#aaa;margin-left:8px;'>(22/08/2025)</span>
+                        </div>
+                    </div>
+                    <div class='fame-ranking-item'>
+                        <div>
+                            <span class='fame-ranking-medal'>🏅</span>
+                            <span class='fame-ranking-name'>BaseBuilder_Elite</span>
+                        </div>
+                        <div>
+                            <span class='fame-ranking-points'>1,000 FP</span>
+                            <span style='color:#aaa;margin-left:8px;'>(18/08/2025)</span>
+                        </div>
+                    </div>
+                </div>
+                <div style='color:#aaa;font-size:0.9em;text-align:center;margin-top:12px;'>
+                    Ranking actualizado automáticamente cuando se confirman nuevas reclamaciones
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='fameShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        
+        function fameShowClaim() {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='color:#ffd700;font-weight:bold;font-size:1.1em;margin-bottom:12px;'>⭐ Reclamar Premio de Fama</div>
+                <div style='color:#aaa;margin-bottom:16px;'>
+                    Selecciona la cantidad de puntos de fama que obtuviste y proporciona evidencia de tu logro.
+                </div>
+                <label style='font-weight:bold;margin-bottom:8px;display:block;'>Cantidad de Fame Points:</label>
+                <select class='fame-select-dropdown' id='fame-amount' onchange='fameUpdateClaimForm()'>
+                    <option value=''>🏆 Selecciona la cantidad de fama a reclamar...</option>
+                    <option value='100'>⭐ 100 Fame Points</option>
+                    <option value='500'>⭐ 500 Fame Points</option>
+                    <option value='1000'>⭐ 1,000 Fame Points</option>
+                    <option value='2000'>⭐ 2,000 Fame Points</option>
+                    <option value='5000'>⭐ 5,000 Fame Points</option>
+                    <option value='10000'>⭐ 10,000 Fame Points</option>
+                    <option value='15000'>⭐ 15,000 Fame Points</option>
+                </select>
+                <div id='fame-claim-details' style='display:none;'>
+                    <div class='fame-claim-form'>
+                        <label style='font-weight:bold;margin-bottom:8px;display:block;'>Razón de la Reclamación:</label>
+                        <textarea placeholder='Explica brevemente por qué mereces estos puntos de fama...' maxlength='500'></textarea>
+                        <label style='font-weight:bold;margin-bottom:8px;display:block;margin-top:12px;'>Evidencia (URLs, Screenshots, etc.):</label>
+                        <textarea placeholder='Enlaces a pruebas, screenshots, videos, etc. (opcional)' maxlength='1000'></textarea>
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-success' onclick='fameSubmitClaim()' id='submit-claim-btn' disabled>🏆 Enviar Reclamación</button>
+                    <button class='btn-back' onclick='fameShowMainPanel()'>Cancelar</button>
+                </div>
+            `;
+        }
+        
+        function fameUpdateClaimForm() {
+            const amount = document.getElementById('fame-amount').value;
+            const details = document.getElementById('fame-claim-details');
+            const submitBtn = document.getElementById('submit-claim-btn');
+            
+            if (amount) {
+                details.style.display = 'block';
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('btn-neutral');
+                submitBtn.classList.add('btn-success');
+            } else {
+                details.style.display = 'none';
+                submitBtn.disabled = true;
+                submitBtn.classList.remove('btn-success');
+                submitBtn.classList.add('btn-neutral');
+            }
+        }
+        
+        function fameSubmitClaim() {
+            const amount = document.getElementById('fame-amount').value;
+            document.getElementById('fame-output').innerHTML = `
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;border-left:4px solid #43b581;'>
+                    <div style='color:#43b581;font-weight:bold;font-size:1.1em;margin-bottom:8px;'>✅ Reclamación Enviada</div>
+                    <div style='margin-bottom:12px;'>
+                        Tu reclamación de <b>\${amount.toLocaleString()} Fame Points</b> ha sido enviada.
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        <b>ID de Reclamación:</b> #0042<br>
+                        <b>Estado:</b> Pendiente de revisión<br><br>
+                        Un administrador revisará tu solicitud y la aprobará o rechazará. Recibirás una notificación del resultado.
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='fameShowMainPanel()'>Volver al Panel</button>
+                </div>
+            `;
+        }
+        
+        function fameShowMyHistory() {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='color:#ffd700;font-weight:bold;font-size:1.1em;margin-bottom:12px;'>📊 Mi Historial de Reclamaciones</div>
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;margin:12px 0;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>
+                        <div>
+                            <span style='color:#43b581;font-weight:bold;'>#0041 - 1,000 Fame Points</span>
+                        </div>
+                        <div>
+                            <span style='background:#43b581;color:#fff;padding:4px 8px;border-radius:4px;font-size:0.8em;'>CONFIRMADO</span>
+                        </div>
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        Reclamado: 20/08/2025 14:30 • Confirmado: 20/08/2025 16:45
+                    </div>
+                </div>
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;margin:12px 0;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>
+                        <div>
+                            <span style='color:#faa61a;font-weight:bold;'>#0042 - 5,000 Fame Points</span>
+                        </div>
+                        <div>
+                            <span style='background:#faa61a;color:#23272a;padding:4px 8px;border-radius:4px;font-size:0.8em;'>PENDIENTE</span>
+                        </div>
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        Reclamado: 22/08/2025 10:15 • Esperando revisión...
+                    </div>
+                </div>
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;margin:12px 0;'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;'>
+                        <div>
+                            <span style='color:#e74c3c;font-weight:bold;'>#0040 - 500 Fame Points</span>
+                        </div>
+                        <div>
+                            <span style='background:#e74c3c;color:#fff;padding:4px 8px;border-radius:4px;font-size:0.8em;'>RECHAZADO</span>
+                        </div>
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        Reclamado: 18/08/2025 09:20 • Rechazado: 18/08/2025 12:30<br>
+                        <span style='color:#e74c3c;'>Razón: Evidencia insuficiente</span>
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='fameShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        
+        function fameShowAdminPending() {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='color:#faa61a;font-weight:bold;font-size:1.1em;margin-bottom:12px;'>👨‍💼 Reclamaciones Pendientes de Confirmación</div>
+                <div style='color:#aaa;margin-bottom:16px;'>
+                    <b>3 reclamaciones</b> esperando confirmación en <b>SCUM Survival Server</b>
+                </div>
+                <div class='fame-pending-item' onclick='fameShowPendingDetail(1)'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;'>
+                        <div>
+                            <span style='color:#ffd700;font-weight:bold;'>#0043 - 10,000 Fame Points</span><br>
+                            <span style='color:#aaa;font-size:0.9em;'>🎮 PvP_Champion_2025 • 📅 22/08/2025 15:30</span>
+                        </div>
+                        <div style='color:#faa61a;'>⏳</div>
+                    </div>
+                </div>
+                <div class='fame-pending-item' onclick='fameShowPendingDetail(2)'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;'>
+                        <div>
+                            <span style='color:#ffd700;font-weight:bold;'>#0042 - 5,000 Fame Points</span><br>
+                            <span style='color:#aaa;font-size:0.9em;'>🎮 BaseBuilder_Master • 📅 22/08/2025 10:15</span>
+                        </div>
+                        <div style='color:#faa61a;'>⏳</div>
+                    </div>
+                </div>
+                <div class='fame-pending-item' onclick='fameShowPendingDetail(3)'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;'>
+                        <div>
+                            <span style='color:#ffd700;font-weight:bold;'>#0041 - 2,000 Fame Points</span><br>
+                            <span style='color:#aaa;font-size:0.9em;'>🎮 CraftingExpert_99 • 📅 21/08/2025 18:45</span>
+                        </div>
+                        <div style='color:#faa61a;'>⏳</div>
+                    </div>
+                </div>
+                <div style='color:#aaa;font-size:0.9em;text-align:center;margin-top:16px;'>
+                    Haz clic en una reclamación para ver detalles y confirmar/rechazar
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='fameShowMainPanel()'>Volver</button>
+                </div>
+            `;
+        }
+        
+        function fameShowPendingDetail(id) {
+            const claims = {
+                1: {
+                    id: '0043',
+                    amount: '10,000',
+                    user: 'PvP_Champion_2025',
+                    discord: 'PvPMaster#1234',
+                    date: '22/08/2025 15:30',
+                    reason: 'Alcanzé 10,000 puntos de fama dominando el servidor PvP durante toda la semana. Eliminé más de 200 jugadores y controlé todas las zonas militares.',
+                    evidence: 'https://imgur.com/screenshot1.png\\nhttps://streamable.com/pvp-highlight\\nTestigos: @SurvivalBuddy @TeamMate_Pro'
+                },
+                2: {
+                    id: '0042',
+                    amount: '5,000',
+                    user: 'BaseBuilder_Master',
+                    discord: 'Builder#5678',
+                    date: '22/08/2025 10:15',
+                    reason: 'Construí la base más grande y compleja del servidor, con sistemas automáticos de defensa y granjas. Reconocido por toda la comunidad.',
+                    evidence: 'https://imgur.com/base-tour.png\\nhttps://youtube.com/watch?v=base-showcase'
+                },
+                3: {
+                    id: '0041',
+                    amount: '2,000',
+                    user: 'CraftingExpert_99',
+                    discord: 'Crafter#9999',
+                    date: '21/08/2025 18:45',
+                    reason: 'Completé todas las recetas de crafting del juego y ayudé a más de 50 jugadores nuevos con tutoriales y materiales.',
+                    evidence: 'Screenshots en Discord, testimonios de jugadores ayudados'
+                }
+            };
+            
+            const claim = claims[id];
+            document.getElementById('fame-output').innerHTML = `
+                <div style='color:#ffd700;font-weight:bold;font-size:1.1em;margin-bottom:12px;'>
+                    🏆 Reclamación #\${claim.id} - Fame Point Rewards
+                </div>
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;margin:12px 0;'>
+                    <div style='margin-bottom:12px;'>
+                        <span style='color:#ffd700;font-weight:bold;font-size:1.2em;'>\${claim.amount} Fame Points</span>
+                    </div>
+                    <div style='margin-bottom:16px;'>
+                        <div style='margin-bottom:8px;'>
+                            <b>👤 Usuario:</b> \${claim.user}<br>
+                            <b>Discord:</b> \${claim.discord}<br>
+                            <b>📅 Fecha:</b> \${claim.date}
+                        </div>
+                    </div>
+                    <div style='margin-bottom:16px;'>
+                        <b>📝 Razón de la Reclamación:</b><br>
+                        <div style='background:#23272a;padding:12px;border-radius:6px;margin-top:8px;'>
+                            \${claim.reason}
+                        </div>
+                    </div>
+                    <div style='margin-bottom:16px;'>
+                        <b>🔗 Evidencia:</b><br>
+                        <div style='background:#23272a;padding:12px;border-radius:6px;margin-top:8px;color:#7289da;'>
+                            \${claim.evidence}
+                        </div>
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-success' onclick='fameConfirmClaim("\${claim.id}")'>✅ Confirmar</button>
+                    <button class='btn-danger' onclick='fameRejectClaim("\${claim.id}")'>❌ Rechazar</button>
+                    <button class='btn-back' onclick='fameShowAdminPending()'>Volver a Lista</button>
+                </div>
+            `;
+        }
+        
+        function fameConfirmClaim(claimId) {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;border-left:4px solid #43b581;'>
+                    <div style='color:#43b581;font-weight:bold;font-size:1.1em;margin-bottom:8px;'>✅ Reclamación Confirmada</div>
+                    <div style='margin-bottom:12px;'>
+                        La reclamación <b>#\${claimId}</b> ha sido <b>confirmada exitosamente</b>.
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        • El usuario ha sido notificado por DM<br>
+                        • El ranking se ha actualizado automáticamente<br>
+                        • La reclamación aparece como confirmada en el historial
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-info' onclick='fameShowRanking()'>🏆 Ver Ranking Actualizado</button>
+                    <button class='btn-back' onclick='fameShowAdminPending()'>Volver a Pendientes</button>
+                </div>
+            `;
+        }
+        
+        function fameRejectClaim(claimId) {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;border-left:4px solid #e74c3c;'>
+                    <div style='color:#e74c3c;font-weight:bold;font-size:1.1em;margin-bottom:8px;'>❌ Reclamación Rechazada</div>
+                    <div style='margin-bottom:12px;'>
+                        La reclamación <b>#\${claimId}</b> ha sido <b>rechazada</b>.
+                    </div>
+                    <div style='margin-bottom:16px;'>
+                        <label style='font-weight:bold;margin-bottom:8px;display:block;'>Razón del Rechazo:</label>
+                        <textarea placeholder='Explica por qué se rechaza esta reclamación...' style='width:100%;min-height:60px;padding:8px;border-radius:6px;background:#23272a;color:#fff;border:1px solid #36393f;'></textarea>
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        El usuario será notificado por DM con la razón del rechazo.
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-danger' onclick='fameConfirmReject("\${claimId}")'>✅ Confirmar Rechazo</button>
+                    <button class='btn-back' onclick='fameShowPendingDetail(\${claimId.slice(-1)})'>Cancelar</button>
+                </div>
+            `;
+        }
+        
+        function fameConfirmReject(claimId) {
+            document.getElementById('fame-output').innerHTML = `
+                <div style='background:#2c2f33;border-radius:8px;padding:16px;border-left:4px solid #e74c3c;'>
+                    <div style='color:#e74c3c;font-weight:bold;font-size:1.1em;margin-bottom:8px;'>❌ Reclamación Rechazada</div>
+                    <div style='margin-bottom:12px;'>
+                        La reclamación <b>#\${claimId}</b> ha sido rechazada exitosamente.
+                    </div>
+                    <div style='color:#aaa;font-size:0.9em;'>
+                        • El usuario ha sido notificado por DM con la razón del rechazo<br>
+                        • La reclamación aparece como rechazada en el historial
+                    </div>
+                </div>
+                <div class='buttons'>
+                    <button class='btn-back' onclick='fameShowAdminPending()'>Volver a Pendientes</button>
+                </div>
+            `;
+        }
+        
+        function fameShowMainPanel() {
+            document.getElementById('fame-output').innerHTML = '';
         }
     </script>
 </body>
