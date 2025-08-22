@@ -54,7 +54,7 @@ intents.message_content = True
 class BunkerBotV2(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
-        self.db = BunkerDatabaseV2()
+        self.db = BunkerDatabaseV2("scum_main.db")
 
     async def setup_hook(self):
         """Inicializa el bot"""
@@ -1397,7 +1397,7 @@ async def my_usage_command(interaction: discord.Interaction):
         if subscription['plan_type'] == 'free':
             # Para plan gratuito, verificar si el servidor tiene bunker activo
             from database_v2 import BunkerDatabaseV2
-            db = BunkerDatabaseV2()
+            db = BunkerDatabaseV2("scum_main.db")
             server_limit = await db.check_server_bunker_limit(guild_id)
             
             if server_limit['has_active_bunker']:
@@ -3538,7 +3538,7 @@ class BunkerNotificationConfigView(discord.ui.View):
     async def setup_server_select(self):
         """Configurar selector de servidor dinámicamente"""
         try:
-            db = BunkerDatabaseV2()
+            db = BunkerDatabaseV2("scum_main.db")
             servers = await db.get_unique_servers(self.guild_id)
             
             if servers:
@@ -3799,7 +3799,7 @@ class SaveNotificationButton(discord.ui.Button):
                 return
             
             # Guardar configuración usando la función existente
-            db = BunkerDatabaseV2()
+            db = BunkerDatabaseV2("scum_main.db")
             guild_id = str(interaction.guild.id) if interaction.guild else "default"
             channel_id = str(interaction.channel.id)
             

@@ -153,8 +153,18 @@ def convert_time_to_user_timezone(time_str: str, from_timezone: str, to_timezone
         return f"{time_str} ({from_timezone})"
 
 class TaxiDatabase:
-    def __init__(self, db_path: str = "taxi_system.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        # Auto-detectar qué base usar (compatibilidad durante migración)
+        if db_path is None:
+            import os
+            if os.path.exists("scum_main.db"):
+                self.db_path = "scum_main.db"
+            elif os.path.exists("taxi_system.db"):
+                self.db_path = "taxi_system.db"
+            else:
+                self.db_path = "scum_main.db"  # Default para crear nueva
+        else:
+            self.db_path = db_path
 
     async def initialize(self):
         """Inicializar todas las tablas del sistema"""

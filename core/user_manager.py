@@ -16,8 +16,18 @@ logger = logging.getLogger(__name__)
 class UserManager:
     """Gestor centralizado de usuarios del sistema"""
     
-    def __init__(self, db_path: str = "taxi_system.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        # Auto-detectar qué base usar (compatibilidad durante migración)
+        if db_path is None:
+            import os
+            if os.path.exists("scum_main.db"):
+                self.db_path = "scum_main.db"
+            elif os.path.exists("taxi_system.db"):
+                self.db_path = "taxi_system.db"
+            else:
+                self.db_path = "scum_main.db"  # Default
+        else:
+            self.db_path = db_path
         self._initialized = False
     
     async def initialize(self):
@@ -162,12 +172,14 @@ class UserManager:
         await self.initialize()
         
         async with aiosqlite.connect(self.db_path) as db:
+            # Usar tabla users (unificada) y obtener cuenta real de bank_accounts
             cursor = await db.execute("""
-                SELECT user_id, discord_id, discord_guild_id, username, display_name, 
-                       COALESCE(balance, 0.0) as balance, timezone, language, ingame_name, 
-                       last_active, created_at, welcome_pack_claimed, status
-                FROM taxi_users 
-                WHERE discord_id = ? AND discord_guild_id = ?
+                SELECT u.user_id, u.discord_id, u.discord_guild_id, u.username, u.display_name, 
+                       u.timezone, u.language, u.ingame_name, u.last_active, u.created_at, 
+                       u.welcome_pack_claimed, u.status, b.account_number, b.balance
+                FROM users u
+                LEFT JOIN bank_accounts b ON u.user_id = b.user_id
+                WHERE u.discord_id = ? AND u.discord_guild_id = ?
             """, (discord_id, guild_id))
             
             row = await cursor.fetchone()
@@ -178,15 +190,15 @@ class UserManager:
                     'discord_guild_id': row[2],
                     'username': row[3],
                     'display_name': row[4],
-                    'balance': row[5] or 0.0,
-                    'timezone': row[6] or 'UTC',
-                    'language': row[7] or 'es',
-                    'ingame_name': row[8],
-                    'last_active': row[9],
-                    'created_at': row[10],
-                    'welcome_pack_claimed': row[11] or False,
-                    'status': row[12] or 'active',
-                    'account_number': f"ACC-{row[0]:06d}"  # Generar número de cuenta
+                    'timezone': row[5] or 'UTC',
+                    'language': row[6] or 'es',
+                    'ingame_name': row[7],
+                    'last_active': row[8],
+                    'created_at': row[9],
+                    'welcome_pack_claimed': row[10] or False,
+                    'status': row[11] or 'active',
+                    'account_number': row[12] or f"ACC-{row[0]:06d}",  # Número real o fallback
+                    'balance': float(row[13]) if row[13] is not None else 0.0  # Balance real de bank_accounts
                 }
                 return user_data
             return None
@@ -199,12 +211,14 @@ class UserManager:
         await self.initialize()
         
         async with aiosqlite.connect(self.db_path) as db:
+            # Usar tabla users (unificada) y obtener cuenta real de bank_accounts
             cursor = await db.execute("""
-                SELECT user_id, discord_id, discord_guild_id, username, display_name, 
-                       COALESCE(balance, 0.0) as balance, timezone, language, ingame_name, 
-                       last_active, created_at, welcome_pack_claimed, status
-                FROM taxi_users 
-                WHERE user_id = ?
+                SELECT u.user_id, u.discord_id, u.discord_guild_id, u.username, u.display_name, 
+                       u.timezone, u.language, u.ingame_name, u.last_active, u.created_at, 
+                       u.welcome_pack_claimed, u.status, b.account_number, b.balance
+                FROM users u
+                LEFT JOIN bank_accounts b ON u.user_id = b.user_id
+                WHERE u.user_id = ?
             """, (user_id,))
             
             row = await cursor.fetchone()
@@ -215,15 +229,15 @@ class UserManager:
                     'discord_guild_id': row[2],
                     'username': row[3],
                     'display_name': row[4],
-                    'balance': row[5] or 0.0,
-                    'timezone': row[6] or 'UTC',
-                    'language': row[7] or 'es',
-                    'ingame_name': row[8],
-                    'last_active': row[9],
-                    'created_at': row[10],
-                    'welcome_pack_claimed': row[11] or False,
-                    'status': row[12] or 'active',
-                    'account_number': f"ACC-{row[0]:06d}"
+                    'timezone': row[5] or 'UTC',
+                    'language': row[6] or 'es',
+                    'ingame_name': row[7],
+                    'last_active': row[8],
+                    'created_at': row[9],
+                    'welcome_pack_claimed': row[10] or False,
+                    'status': row[11] or 'active',
+                    'account_number': row[12] or f"ACC-{row[0]:06d}",  # Número real o fallback
+                    'balance': float(row[13]) if row[13] is not None else 0.0  # Balance real de bank_accounts
                 }
             return None
     
@@ -347,12 +361,13 @@ class UserManager:
         
         try:
             async with aiosqlite.connect(self.db_path) as db:
+                # Usar bank_accounts como fuente única de verdad
                 cursor = await db.execute(
-                    "SELECT balance FROM taxi_users WHERE user_id = ?",
+                    "SELECT balance FROM bank_accounts WHERE user_id = ?",
                     (user_id,)
                 )
                 result = await cursor.fetchone()
-                return result[0] if result else 0.0
+                return float(result[0]) if result else 0.0
         except Exception as e:
             logger.error(f"Error obteniendo balance: {e}")
             return 0.0
@@ -363,11 +378,15 @@ class UserManager:
         
         try:
             async with aiosqlite.connect(self.db_path) as db:
+                # Usar bank_accounts como fuente única de verdad
                 await db.execute("""
-                    UPDATE taxi_users 
-                    SET balance = balance + ? 
+                    UPDATE bank_accounts 
+                    SET balance = balance + ?, 
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_transaction = CURRENT_TIMESTAMP,
+                        total_earned = total_earned + ?
                     WHERE user_id = ?
-                """, (amount, user_id))
+                """, (amount, amount, user_id))
                 
                 # Registrar transacción
                 user = await self.get_user_by_id(user_id)
@@ -397,11 +416,15 @@ class UserManager:
                 if current_balance < amount:
                     return False
                 
+                # Usar bank_accounts como fuente única de verdad
                 await db.execute("""
-                    UPDATE taxi_users 
-                    SET balance = balance - ? 
+                    UPDATE bank_accounts 
+                    SET balance = balance - ?, 
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_transaction = CURRENT_TIMESTAMP,
+                        total_spent = total_spent + ?
                     WHERE user_id = ?
-                """, (amount, user_id))
+                """, (amount, amount, user_id))
                 
                 # Registrar transacción
                 user = await self.get_user_by_id(user_id)
@@ -437,18 +460,24 @@ class UserManager:
                 if from_user['balance'] < amount:
                     return False, "Balance insuficiente"
                 
-                # Realizar transferencia
+                # Realizar transferencia usando bank_accounts
                 await db.execute("""
-                    UPDATE taxi_users 
-                    SET balance = balance - ? 
+                    UPDATE bank_accounts 
+                    SET balance = balance - ?, 
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_transaction = CURRENT_TIMESTAMP,
+                        total_spent = total_spent + ?
                     WHERE user_id = ?
-                """, (amount, from_user_id))
+                """, (amount, amount, from_user_id))
                 
                 await db.execute("""
-                    UPDATE taxi_users 
-                    SET balance = balance + ? 
+                    UPDATE bank_accounts 
+                    SET balance = balance + ?, 
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_transaction = CURRENT_TIMESTAMP,
+                        total_earned = total_earned + ?
                     WHERE user_id = ?
-                """, (amount, to_user_id))
+                """, (amount, amount, to_user_id))
                 
                 # Registrar transacción
                 await db.execute("""
@@ -504,12 +533,15 @@ class UserManager:
                     VALUES (?, ?)
                 """, (user_id, amount))
                 
-                # Agregar dinero al balance
+                # Agregar dinero al balance usando bank_accounts
                 await db.execute("""
-                    UPDATE taxi_users 
-                    SET balance = balance + ? 
+                    UPDATE bank_accounts 
+                    SET balance = balance + ?, 
+                        updated_at = CURRENT_TIMESTAMP,
+                        last_transaction = CURRENT_TIMESTAMP,
+                        total_earned = total_earned + ?
                     WHERE user_id = ?
-                """, (amount, user_id))
+                """, (amount, amount, user_id))
                 
                 # Registrar transacción
                 user = await self.get_user_by_id(user_id)

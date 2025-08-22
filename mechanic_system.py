@@ -2037,8 +2037,6 @@ class MechanicSystemView(discord.ui.View):
             # Obtener vehículos registrados del usuario
             user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
             
-            if user_vehicles:
-            
             embed = discord.Embed(
                 title="🚗 Gestión de Vehículos",
                 description=f"Panel de gestión para **{ingame_name}**",
@@ -3105,6 +3103,26 @@ class SquadronSystemView(discord.ui.View):
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    async def _safe_send(self, interaction: discord.Interaction, **kwargs):
+        """Enviar mensaje de forma segura usando response o followup según disponibilidad"""
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(**kwargs)
+            else:
+                await interaction.followup.send(**kwargs)
+        except discord.errors.NotFound as e:
+            # Interacción expiró o no se encontró - no hay nada que hacer
+            logger.warning(f"Interacción expirada/no encontrada en SquadronSystemView: {e}")
+        except discord.errors.InteractionResponded as e:
+            # Ya fue respondida, intentar followup
+            logger.warning(f"Interacción ya respondida en SquadronSystemView, usando followup: {e}")
+            try:
+                await interaction.followup.send(**kwargs)
+            except Exception as followup_error:
+                logger.error(f"Error en followup tras InteractionResponded: {followup_error}")
+        except Exception as e:
+            logger.error(f"Error general en _safe_send de SquadronSystemView: {e}")
 
 class LeaveSquadronConfirmView(discord.ui.View):
     """Vista de confirmación para salir del escuadrón"""

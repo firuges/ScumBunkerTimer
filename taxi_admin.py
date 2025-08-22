@@ -6451,15 +6451,15 @@ class AdminPanelView(BaseView):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
-            # Obtener todos los usuarios registrados del servidor
+            # Obtener todos los usuarios registrados del servidor (tabla users unificada)
             async with aiosqlite.connect(taxi_db.db_path) as db:
                 cursor = await db.execute("""
-                    SELECT tu.discord_id, tu.username, tu.display_name, tu.ingame_name, 
-                           COALESCE(ba.balance, 0.00) as balance, tu.welcome_pack_claimed, tu.created_at
-                    FROM taxi_users tu
-                    LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
-                    WHERE tu.discord_guild_id = ? 
-                    ORDER BY tu.created_at DESC
+                    SELECT u.discord_id, u.username, u.display_name, u.ingame_name, 
+                           COALESCE(ba.balance, 0.00) as balance, u.welcome_pack_claimed, u.created_at
+                    FROM users u
+                    LEFT JOIN bank_accounts ba ON u.user_id = ba.user_id
+                    WHERE u.discord_guild_id = ? 
+                    ORDER BY u.created_at DESC
                 """, (str(interaction.guild.id),))
                 
                 users = await cursor.fetchall()
@@ -7462,3 +7462,158 @@ async def setup_admin_panel(channel: discord.TextChannel, bot):
     except Exception as e:
         logger.error(f"Error configurando panel administrativo: {e}")
         return False
+
+
+class PendingInsuranceView(BaseView):
+    """Vista para seleccionar y gestionar seguros pendientes"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(timeout=300)  # 5 minutos
+        self.bot = bot
+        
+        if options:
+            # Agregar selector con las opciones
+            select = PendingInsuranceSelect(options, bot)
+            self.add_item(select)
+
+
+class PendingInsuranceSelect(discord.ui.Select):
+    """Selector para elegir seguro pendiente"""
+    
+    def __init__(self, options: list, bot):
+        super().__init__(
+            placeholder="Selecciona un seguro para revisar...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+        self.bot = bot
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Callback cuando se selecciona un seguro"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            insurance_id = self.values[0]
+            
+            # Obtener información completa del seguro
+            async with aiosqlite.connect(taxi_db.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT insurance_id, vehicle_id, vehicle_type, vehicle_location, 
+                           description, owner_discord_id, owner_ingame_name, guild_id, 
+                           cost, payment_method, status, created_at
+                    FROM vehicle_insurance 
+                    WHERE insurance_id = ? AND status = 'pending_confirmation'
+                """, (insurance_id,))
+                
+                insurance_data = await cursor.fetchone()
+            
+            if not insurance_data:
+                embed = discord.Embed(
+                    title="❌ Seguro No Encontrado",
+                    description="El seguro seleccionado ya no está pendiente o fue eliminado.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Crear diccionario con los datos del seguro
+            insurance_dict = {
+                'insurance_id': insurance_data[0],
+                'vehicle_id': insurance_data[1],
+                'vehicle_type': insurance_data[2],
+                'vehicle_location': insurance_data[3],
+                'description': insurance_data[4],
+                'owner_discord_id': insurance_data[5],
+                'owner_ingame_name': insurance_data[6],
+                'guild_id': insurance_data[7],
+                'cost': insurance_data[8],
+                'payment_method': insurance_data[9],
+                'status': insurance_data[10],
+                'created_at': insurance_data[11]
+            }
+            
+            # Obtener información del cliente para el embed
+            try:
+                user = self.bot.get_user(int(insurance_data[5]))
+                if user:
+                    insurance_dict['client_display_name'] = user.display_name
+                else:
+                    insurance_dict['client_display_name'] = f"Usuario {insurance_data[5]}"
+            except:
+                insurance_dict['client_display_name'] = f"Usuario {insurance_data[5]}"
+            
+            # Crear embed similar al del DM/canal
+            embed = discord.Embed(
+                title="🔔 Detalles del Seguro Pendiente",
+                description=f"**Revisión desde panel administrativo**",
+                color=0xff8800,
+                timestamp=datetime.now()
+            )
+            
+            embed.add_field(
+                name="🚗 Vehículo",
+                value=f"**Tipo:** {insurance_dict['vehicle_type'].title()}\n**ID:** `{insurance_dict['vehicle_id']}`\n**Ubicación:** {insurance_dict['vehicle_location']}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="👤 Cliente",
+                value=f"**Discord:** {insurance_dict['client_display_name']}\n**InGame:** `{insurance_dict['owner_ingame_name']}`",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Seguro",
+                value=f"**Costo:** ${insurance_dict['cost']:,.0f}\n**Pago:** {insurance_dict['payment_method'].title()}\n**ID:** `{insurance_dict['insurance_id']}`",
+                inline=True
+            )
+            
+            if insurance_dict.get('description'):
+                embed.add_field(
+                    name="📝 Descripción",
+                    value=insurance_dict['description'],
+                    inline=False
+                )
+            
+            # Formatear fecha de creación
+            try:
+                created_date = insurance_dict['created_at'][:16].replace('T', ' ')
+                embed.add_field(
+                    name="📅 Solicitud Creada",
+                    value=f"{created_date}",
+                    inline=True
+                )
+            except:
+                pass
+            
+            embed.add_field(
+                name="⚠️ Importante",
+                value="• **Confirmar:** Procesa el pago y activa el seguro\n• **Rechazar:** Cancela la solicitud sin cobrar\n• El débito de Discord se hará solo tras confirmación",
+                inline=False
+            )
+            
+            embed.set_footer(text=f"Panel Admin • Revisado por {interaction.user.display_name}")
+            
+            # Importar y crear vista de confirmación desde mechanic_system
+            try:
+                from mechanic_system import InsuranceConfirmationView
+                view = InsuranceConfirmationView(insurance_dict, self.bot)
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            except ImportError:
+                # Fallback si no se puede importar
+                embed_error = discord.Embed(
+                    title="❌ Error del Sistema",
+                    description="No se pudo cargar la vista de confirmación. Usa el canal de notificaciones.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed_error, ephemeral=True)
+            
+        except Exception as e:
+            logger.error(f"Error mostrando detalles del seguro: {e}")
+            embed = discord.Embed(
+                title="❌ Error del Sistema",
+                description="Hubo un error obteniendo los detalles del seguro",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)

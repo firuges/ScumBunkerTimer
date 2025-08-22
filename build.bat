@@ -275,22 +275,33 @@ echo 🗄️ Copiando bases de datos existentes...
 :: Verificar y copiar bases de datos si existen
 set "DB_COUNT=0"
 
+:: bunkers_v2.db ya no se usa directamente - datos migrados a scum_main.db
 if exist "bunkers_v2.db" (
-    copy "bunkers_v2.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
-    echo    ✅ bunkers_v2.db - Sistema de bunkers
+    echo    ⚠️  bunkers_v2.db - LEGACY (datos en scum_main.db)
+) else if exist "legacy_backups\bunkers_v2.db" (
+    echo    ✅ bunkers_v2.db - Movida a legacy_backups (datos en scum_main.db)
+)
+
+if exist "scum_main.db" (
+    copy "scum_main.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+    echo    ✅ scum_main.db - Base principal unificada (taxi+bank+usuarios)
     set /a DB_COUNT+=1
 )
 
+:: Mantener compatibilidad con bases antiguas si existen
 if exist "taxi_system.db" (
-    copy "taxi_system.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
-    echo    ✅ taxi_system.db - Sistema de taxi completo
-    set /a DB_COUNT+=1
+    if not exist "scum_main.db" (
+        copy "taxi_system.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+        echo    ⚠️  taxi_system.db - Base antigua (migrar a scum_main.db)
+        set /a DB_COUNT+=1
+    )
 )
 
+:: scum_bank.db ya no se usa - datos migrados a scum_main.db
 if exist "scum_bank.db" (
-    copy "scum_bank.db" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
-    echo    ✅ scum_bank.db - Sistema bancario
-    set /a DB_COUNT+=1
+    echo    ⚠️  scum_bank.db - LEGACY (datos migrados a scum_main.db)
+) else if exist "legacy_backups\scum_bank.db" (
+    echo    ✅ scum_bank.db - Movida a legacy_backups (datos en scum_main.db)
 )
 
 if exist "subscriptions.db" (
@@ -301,14 +312,12 @@ if exist "subscriptions.db" (
 
 :: Buscar otras bases de datos .db
 for %%f in (*.db) do (
-    if not "%%f"=="bunkers_v2.db" (
+    if not "%%f"=="scum_main.db" (
         if not "%%f"=="taxi_system.db" (
-            if not "%%f"=="scum_bank.db" (
-                if not "%%f"=="subscriptions.db" (
-                    copy "%%f" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
-                    echo    ✅ %%f - Base de datos adicional
-                    set /a DB_COUNT+=1
-                )
+            if not "%%f"=="subscriptions.db" (
+                copy "%%f" "%BUILD_FULL_DIR%\databases\" >nul 2>&1
+                echo    ✅ %%f - Base de datos adicional
+                set /a DB_COUNT+=1
             )
         )
     )
@@ -357,8 +366,8 @@ echo PREFIX = '/' >> "%BUILD_FULL_DIR%\config.py"
 echo DEBUG = True >> "%BUILD_FULL_DIR%\config.py"
 echo. >> "%BUILD_FULL_DIR%\config.py"
 echo # Base de datos >> "%BUILD_FULL_DIR%\config.py"
-echo DATABASE_NAME = 'bunkers_v2.db' >> "%BUILD_FULL_DIR%\config.py"
-echo TAXI_DATABASE_NAME = 'taxi_system.db' >> "%BUILD_FULL_DIR%\config.py"
+echo DATABASE_NAME = 'scum_main.db' >> "%BUILD_FULL_DIR%\config.py"
+echo TAXI_DATABASE_NAME = 'scum_main.db' >> "%BUILD_FULL_DIR%\config.py"
 echo. >> "%BUILD_FULL_DIR%\config.py"
 echo # Configuración de logs >> "%BUILD_FULL_DIR%\config.py"
 echo LOG_LEVEL = 'INFO' >> "%BUILD_FULL_DIR%\config.py"

@@ -12,7 +12,14 @@ import asyncio
 class TaxiConfig:
     def __init__(self, guild_id: str = None):
         self.guild_id = guild_id
-        self.db_path = "taxi_system.db"
+        # Auto-detectar qué base usar (compatibilidad durante migración)
+        import os
+        if os.path.exists("scum_main.db"):
+            self.db_path = "scum_main.db"
+        elif os.path.exists("taxi_system.db"):
+            self.db_path = "taxi_system.db"
+        else:
+            self.db_path = "scum_main.db"  # Default
         
         # Initialize with default values first
         self._initialize_defaults()
