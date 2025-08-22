@@ -3979,7 +3979,8 @@ class TaxiAdminCommands(commands.Cog):
         shop_claimer_channel="Canal para notificaciones de compras (solo admins)",
         admin_channel="Canal para panel de administración (gestión usuarios/conductores)",
         bunker_channel="Canal para sistema de bunkers con botones interactivos",
-        mechanic_notifications_channel="Canal para notificaciones de seguros pendientes (mecánicos)"
+        mechanic_notifications_channel="Canal para notificaciones de seguros pendientes (mecánicos)",
+        ticket_channel="Canal para sistema de tickets de soporte"
     )
     @app_commands.default_permissions(administrator=True)
     async def setup_all_channels(self, interaction: discord.Interaction, 
@@ -3992,7 +3993,8 @@ class TaxiAdminCommands(commands.Cog):
                                  shop_claimer_channel: discord.TextChannel,
                                  admin_channel: discord.TextChannel,
                                  bunker_channel: discord.TextChannel,
-                                 mechanic_notifications_channel: discord.TextChannel):
+                                 mechanic_notifications_channel: discord.TextChannel,
+                                 ticket_channel: discord.TextChannel):
         """Configurar todos los canales de una vez con limpieza de paneles anteriores"""
         await interaction.response.defer(ephemeral=True)
         
@@ -4550,6 +4552,85 @@ class TaxiAdminCommands(commands.Cog):
                     results.append("🔧 Notificaciones Mecánico: ❌ Cog no encontrado")
             except Exception as e:
                 results.append(f"🔧 Notificaciones Mecánico: ❌ Error - {str(e)}")
+            
+            # === CONFIGURAR CANAL DE TICKETS ===
+            try:
+                ticket_cog = self.bot.get_cog('TicketSystem')
+                if ticket_cog:
+                    guild_id = str(interaction.guild.id)
+                    try:
+                        # Guardar configuración en la base de datos
+                        async with aiosqlite.connect(taxi_db.db_path) as db:
+                            await db.execute(
+                                """INSERT OR REPLACE INTO channel_config 
+                                (guild_id, channel_type, channel_id, updated_at, updated_by) 
+                                VALUES (?, ?, ?, ?, ?)""",
+                                (guild_id, 'tickets', str(ticket_channel.id), 
+                                 datetime.now().isoformat(), str(interaction.user.id))
+                            )
+                            await db.commit()
+                        
+                        results.append(f"🎫 Tickets: ✅ {ticket_channel.mention}")
+                        
+                        # Limpiar mensajes anteriores del bot
+                        try:
+                            deleted_count = 0
+                            async for message in ticket_channel.history(limit=50):
+                                if message.author == self.bot.user:
+                                    await message.delete()
+                                    deleted_count += 1
+                                    await asyncio.sleep(0.1)  # Evitar rate limits
+                        except Exception as cleanup_e:
+                            logger.warning(f"Error limpiando mensajes de tickets: {cleanup_e}")
+                        
+                        # Crear panel de tickets usando el sistema de tickets
+                        try:
+                            from ticket_views import CreateTicketView
+                            
+                            # Crear embed del panel
+                            ticket_embed = discord.Embed(
+                                title="🎫 Sistema de Tickets",
+                                description=(
+                                    "¿Necesitas ayuda? ¡Crea un ticket!\n\n"
+                                    "**¿Qué es un ticket?**\n"
+                                    "Un canal privado donde puedes comunicarte directamente con los administradores.\n\n"
+                                    "**¿Cómo funciona?**\n"
+                                    "1. Haz clic en **🎫 Crear Ticket**\n"
+                                    "2. Se creará un canal privado solo para ti\n"
+                                    "3. Explica tu consulta o problema\n"
+                                    "4. Un administrador te ayudará\n"
+                                    "5. El ticket se cerrará cuando esté resuelto\n\n"
+                                    "**Reglas:**\n"
+                                    "• Solo puedes tener 1 ticket activo\n"
+                                    "• Debes estar registrado en el sistema\n"
+                                    "• Sé claro y respetuoso"
+                                ),
+                                color=discord.Color.blue()
+                            )
+                            ticket_embed.set_footer(text="Sistema de Tickets SCUM Bot")
+                            ticket_embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/3135/3135715.png")
+                            
+                            # Crear vista con botón
+                            view = CreateTicketView(ticket_cog)
+                            
+                            # Enviar panel
+                            message = await ticket_channel.send(embed=ticket_embed, view=view)
+                            view.message = message
+                            
+                            results[-1] += " + Panel"
+                            logger.info(f"Panel de tickets configurado en {ticket_channel.name}")
+                            
+                        except Exception as panel_e:
+                            logger.error(f"Error creando panel de tickets: {panel_e}")
+                            results[-1] += " ⚠️ (error de panel)"
+                        
+                    except Exception as db_e:
+                        logger.error(f"Error guardando configuración de tickets: {db_e}")
+                        results.append(f"🎫 Tickets: ⚠️ {ticket_channel.mention} (sin persistencia)")
+                else:
+                    results.append("🎫 Tickets: ❌ Cog no encontrado")
+            except Exception as e:
+                results.append(f"🎫 Tickets: ❌ Error - {str(e)}")
             
             # Resultado final
             embed = discord.Embed(

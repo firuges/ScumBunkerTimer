@@ -59,7 +59,7 @@ class BunkerBotV2(commands.Bot):
     async def setup_hook(self):
         """Inicializa el bot"""
         # Sistema de progreso de carga
-        total_steps = 12
+        total_steps = 13
         current_step = 0
         
         def log_progress(step_name: str):
@@ -112,11 +112,25 @@ class BunkerBotV2(commands.Bot):
             except Exception as mechanic_error:
                 logger.error(f"❌ Error cargando sistema de mecánico: {mechanic_error}")
             
+            log_progress("Cargando sistema de tickets...")
+            try:
+                await self.load_extension('ticket_system')
+            except Exception as ticket_error:
+                logger.error(f"❌ Error cargando sistema de tickets: {ticket_error}")
             
             log_progress("Registrando vistas persistentes...")
             try:
                 from taxi_admin import DeliveryConfirmationView, PersistentDeliveryView
                 self.add_view(PersistentDeliveryView())
+                
+                # Registrar vistas persistentes del sistema de tickets
+                from ticket_views import CreateTicketView, CloseTicketView
+                from ticket_system import TicketSystem
+                ticket_system = self.get_cog('TicketSystem')
+                if ticket_system:
+                    self.add_view(CreateTicketView(ticket_system))
+                    logger.info("✅ Vistas persistentes de tickets registradas")
+                
             except Exception as view_error:
                 logger.error(f"❌ Error registrando vistas persistentes: {view_error}")
             
