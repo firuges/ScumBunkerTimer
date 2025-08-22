@@ -123,13 +123,9 @@ class BunkerBotV2(commands.Bot):
                 from taxi_admin import DeliveryConfirmationView, PersistentDeliveryView
                 self.add_view(PersistentDeliveryView())
                 
-                # Registrar vistas persistentes del sistema de tickets
-                from ticket_views import CreateTicketView, CloseTicketView
-                from ticket_system import TicketSystem
-                ticket_system = self.get_cog('TicketSystem')
-                if ticket_system:
-                    self.add_view(CreateTicketView(ticket_system))
-                    logger.info("✅ Vistas persistentes de tickets registradas")
+                # Las vistas persistentes de tickets se restauran automáticamente
+                # en ticket_system.py mediante restore_active_ticket_views()
+                logger.info("ℹ️ Vistas de tickets se restaurarán automáticamente")
                 
             except Exception as view_error:
                 logger.error(f"❌ Error registrando vistas persistentes: {view_error}")
@@ -245,6 +241,11 @@ class BunkerBotV2(commands.Bot):
             admin_cog = self.get_cog('TaxiAdminCommands')
             if admin_cog:
                 await admin_cog.load_channel_configs()
+            
+            # Cargar configuraciones de tickets
+            ticket_cog = self.get_cog('TicketSystem')
+            if ticket_cog:
+                await ticket_cog.load_channel_configs()
             
             # Cargar configuraciones de shop (no tiene cog dedicado)
             await self._load_shop_configs()

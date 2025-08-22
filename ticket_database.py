@@ -48,6 +48,22 @@ class TicketDatabase:
             await db.commit()
             logger.info("✅ Tabla tickets inicializada correctamente")
 
+    async def initialize_ticket_channels_table(self):
+        """Inicializar tabla de canales de tickets activos"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_channels (
+                    ticket_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    guild_id TEXT NOT NULL,
+                    message_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await db.commit()
+            logger.info("✅ Tabla ticket_channels inicializada correctamente")
+
     async def get_next_ticket_number(self, guild_id: str) -> int:
         """Obtener siguiente número de ticket para el servidor"""
         async with aiosqlite.connect(self.db_path) as db:
@@ -75,6 +91,40 @@ class TicketDatabase:
             
             logger.info(f"🎫 Ticket creado: ID={ticket_id}, Número={ticket_number}, Usuario={discord_id}")
             return ticket_id
+
+    async def add_ticket_channel(self, channel_id: str, user_id: str, guild_id: str, message_id: str = None):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                'INSERT INTO ticket_channels (channel_id, user_id, guild_id, message_id) VALUES (?, ?, ?, ?)',
+                (channel_id, user_id, guild_id, message_id)
+            )
+            await db.commit()
+
+    async def remove_ticket_channel(self, channel_id: str):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute('DELETE FROM ticket_channels WHERE channel_id = ?', (channel_id,))
+            await db.commit()
+
+    async def get_active_ticket_channels(self, guild_id: str = None):
+        async with aiosqlite.connect(self.db_path) as db:
+            if guild_id:
+                cursor = await db.execute('''
+                    SELECT tc.* FROM ticket_channels tc
+                    JOIN tickets t ON tc.channel_id = t.channel_id
+                    WHERE tc.guild_id = ? AND t.status = 'open'
+                ''', (guild_id,))
+            else:
+                cursor = await db.execute('''
+                    SELECT tc.* FROM ticket_channels tc
+                    JOIN tickets t ON tc.channel_id = t.channel_id
+                    WHERE t.status = 'open'
+                ''')
+            return await cursor.fetchall()
+
+    async def get_ticket_channel_by_user(self, user_id: str, guild_id: str):
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute('SELECT * FROM ticket_channels WHERE user_id = ? AND guild_id = ?', (user_id, guild_id))
+            return await cursor.fetchone()
 
     async def has_active_ticket(self, user_id: str, guild_id: str) -> bool:
         """Verificar si usuario tiene ticket activo"""
@@ -131,16 +181,17 @@ class TicketDatabase:
             return None
 
     async def get_ticket_by_channel(self, channel_id: str) -> Optional[Dict]:
-        """Obtener ticket por canal"""
+        """Obtener ticket por canal (solo tickets abiertos)"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
                 SELECT ticket_id, ticket_number, user_id, discord_id, discord_guild_id, 
                        status, subject, created_at
                 FROM tickets 
-                WHERE channel_id = ?
+                WHERE channel_id = ? AND status = 'open'
             """, (channel_id,))
             
             result = await cursor.fetchone()
+            logger.info(f"Obteniendo ticket por canal {channel_id}: {result}")
             if result:
                 return {
                     'ticket_id': result[0],
@@ -227,3 +278,37 @@ class TicketDatabase:
                 'active': active,
                 'closed': closed
             }
+
+    async def set_ticket_panel_message_id(self, guild_id: str, channel_id: str, message_id: str):
+        """Guardar el message_id del panel principal de tickets para restaurar la vista"""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_panel (
+                    guild_id TEXT PRIMARY KEY,
+                    channel_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL
+                )
+            """)
+            await db.execute(
+                'INSERT OR REPLACE INTO ticket_panel (guild_id, channel_id, message_id) VALUES (?, ?, ?)',
+                (guild_id, channel_id, message_id)
+            )
+            await db.commit()
+
+    async def get_ticket_panel_message_id(self, guild_id: str):
+        """Obtener el message_id del panel principal de tickets para restaurar la vista"""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Asegurar que la tabla existe
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS ticket_panel (
+                    guild_id TEXT PRIMARY KEY,
+                    channel_id TEXT NOT NULL,
+                    message_id TEXT NOT NULL
+                )
+            """)
+            
+            cursor = await db.execute('SELECT channel_id, message_id FROM ticket_panel WHERE guild_id = ?', (guild_id,))
+            result = await cursor.fetchone()
+            if result:
+                return {'channel_id': result[0], 'message_id': result[1]}
+            return None

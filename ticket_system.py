@@ -26,6 +26,7 @@ class TicketSystem(commands.Cog):
         self.db_path = db_path
         self.ticket_db = TicketDatabase(db_path)
         self.user_manager = UserManager(db_path)
+        self.ticket_channels = {}  # {guild_id: channel_id} - Para paneles principales
         
         # Configuración
         self.TICKET_CATEGORY_NAME = "🎫 Tickets"
@@ -34,7 +35,251 @@ class TicketSystem(commands.Cog):
     async def cog_load(self):
         """Inicializar al cargar el cog"""
         await self.ticket_db.initialize()
+        await self.ticket_db.initialize_ticket_channels_table()
         logger.info("✅ Sistema de Tickets cargado correctamente")
+        # Cargar configuraciones de canales (solo paneles principales)
+        await self.load_channel_configs()
+        
+    async def load_channel_configs(self):
+        """Cargar configuraciones de canales principales de tickets y recrear paneles"""
+        try:
+            from taxi_database import taxi_db
+            configs = await taxi_db.load_all_channel_configs()
+            
+            for guild_id, channels in configs.items():
+                if "tickets" in channels:  # Solo canales principales de tickets
+                    guild_id_int = int(guild_id)
+                    channel_id = channels["tickets"]
+                    
+                    # Guardar en memoria
+                    self.ticket_channels[guild_id_int] = channel_id
+                    
+                    # Obtener canal
+                    channel = self.bot.get_channel(channel_id)
+                    if channel:
+                        # Limpiar mensajes anteriores del bot (solo del panel principal)
+                        try:
+                            deleted_count = 0
+                            async for message in channel.history(limit=20):
+                                if message.author == self.bot.user:
+                                    await message.delete()
+                                    deleted_count += 1
+                                    await asyncio.sleep(0.1)
+                            
+                            if deleted_count > 0:
+                                logger.info(f"🧹 {deleted_count} mensajes anteriores eliminados del canal de tickets {channel.name}")
+                        except Exception as cleanup_e:
+                            logger.warning(f"⚠️ No se pudo limpiar canal de tickets {channel.name}: {cleanup_e}")
+                        
+                        # Recrear panel de tickets
+                        success = await self._create_ticket_panel(channel)
+                        if success:
+                            logger.info(f"✅ Panel de tickets restaurado en {channel.name} (Guild: {guild_id_int})")
+                        else:
+                            logger.warning(f"⚠️ Error restaurando panel de tickets en {channel.name}")
+                    else:
+                        logger.warning(f"❌ Canal de tickets configurado no encontrado: {channel_id}")
+            
+        except Exception as e:
+            logger.error(f"Error cargando configuraciones de canales de tickets: {e}")
+    
+    async def _create_ticket_panel(self, channel: discord.TextChannel) -> bool:
+        """Crear panel de tickets en un canal específico"""
+        try:
+            # Crear embed del panel
+            embed = discord.Embed(
+                title="🎫 Sistema de Tickets",
+                description=(
+                    "¿Necesitas ayuda? ¡Crea un ticket!\n\n"
+                    "**¿Qué es un ticket?**\n"
+                    "Un canal privado donde puedes comunicarte directamente con los administradores.\n\n"
+                    "**¿Cómo funciona?**\n"
+                    "1. Haz clic en **🎫 Crear Ticket**\n"
+                    "2. Se creará un canal privado solo para ti\n"
+                    "3. Explica tu consulta o problema\n"
+                    "4. Un administrador te ayudará\n"
+                    "5. El ticket se cerrará cuando esté resuelto\n\n"
+                    "**Reglas:**\n"
+                    "• Solo puedes tener 1 ticket activo\n"
+                    "• Debes estar registrado en el sistema\n"
+                    "• Sé claro y respetuoso"
+                ),
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="Sistema de Tickets SCUM Bot")
+            embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/3135/3135715.png")
+            
+            # Crear vista con botón
+            view = CreateTicketView(self)
+            
+            # Enviar panel
+            message = await channel.send(embed=embed, view=view)
+            view.message = message
+            
+            # Guardar el message_id del panel principal de tickets para restaurar la vista
+            await self.ticket_db.set_ticket_panel_message_id(
+                str(channel.guild.id), str(channel.id), str(message.id)
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creando panel de tickets: {e}")
+            return False
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Ejecutar cuando el bot esté completamente listo"""
+        logger.info("🚀 Bot ready - Iniciando restauración de vistas dinámicas de tickets...")
+        # Esperar un poco más por si acaso
+        await asyncio.sleep(2)
+        # Solo restaurar vistas de tickets dinámicos (no tocar paneles principales)
+        await self.restore_active_ticket_views()
+
+    async def restore_active_ticket_views(self):
+        """Recorrer canales de tickets activos y restaurar vistas persistentes"""
+        logger.info("🔄 Iniciando restauración de vistas persistentes de tickets...")
+        
+        panels_restored = 0
+        tickets_restored = 0
+        
+        # Restaurar vista persistente del panel principal de tickets
+        logger.info(f"🏛️ Restaurando paneles para {len(self.bot.guilds)} guilds...")
+        logger.info(f"📋 Guilds disponibles: {[f'{g.name}({g.id})' for g in self.bot.guilds]}")
+        
+        for guild in self.bot.guilds:
+            try:
+                panel_info = await self.ticket_db.get_ticket_panel_message_id(str(guild.id))
+                if panel_info:
+                    channel_id = panel_info['channel_id']
+                    message_id = panel_info['message_id']
+                    channel = guild.get_channel(int(channel_id)) if channel_id else None
+                    
+                    if channel and message_id:
+                        from ticket_views import CreateTicketView
+                        view = CreateTicketView(self)
+                        self.bot.add_view(view, message_id=int(message_id))
+                        logger.info(f"✅ Panel de tickets restaurado: Guild {guild.name}, Canal {channel.name}")
+                        panels_restored += 1
+                    else:
+                        logger.warning(f"❌ Panel configurado pero canal no encontrado: Guild {guild.name}, Canal ID {channel_id}")
+                else:
+                    logger.debug(f"ℹ️ No hay panel configurado para guild {guild.name}")
+            except Exception as e:
+                logger.error(f"❌ Error restaurando panel para guild {guild.name}: {e}")
+        
+        # Restaurar vistas persistentes de tickets activos
+        active_channels = await self.ticket_db.get_active_ticket_channels()
+        logger.info(f"🎫 Restaurando {len(active_channels)} tickets activos...")
+        
+        for row in active_channels:
+            # row: (ticket_id, channel_id, user_id, guild_id, message_id, created_at)
+            channel_id = row[1]
+            guild_id = row[3]
+            message_id = row[4]
+            
+            try:
+                guild = self.bot.get_guild(int(guild_id))
+                if not guild:
+                    logger.warning(f"❌ Guild {guild_id} no encontrado para ticket {channel_id}")
+                    logger.info(f"🔍 Intentando obtener guild por API...")
+                    
+                    try:
+                        guild = await self.bot.fetch_guild(int(guild_id))
+                        logger.info(f"✅ Guild obtenido por API: {guild.name}")
+                    except Exception as api_e:
+                        logger.error(f"❌ Guild {guild_id} no accesible por API: {api_e}")
+                        logger.warning(f"🗑️ El bot probablemente no está en este servidor, limpiando registro...")
+                        await self.ticket_db.remove_ticket_channel(str(channel_id))
+                        continue
+                
+                channel = guild.get_channel(int(channel_id))
+                if not channel:
+                    # Intentar obtener por API
+                    try:
+                        channel = await guild.fetch_channel(int(channel_id))
+                        logger.info(f"🔍 Canal {channel_id} obtenido por API")
+                    except Exception:
+                        logger.warning(f"❌ Canal {channel_id} no existe, limpiando registro...")
+                        await self.ticket_db.remove_ticket_channel(str(channel_id))
+                        continue
+                
+                if channel and message_id:
+                    ticket_info = await self.ticket_db.get_ticket_by_channel(str(channel_id))
+                    
+                    if ticket_info:
+                        ticket_data = {
+                            'ticket_id': ticket_info['ticket_id'],
+                            'ticket_number': ticket_info['ticket_number'],
+                            'discord_id': ticket_info['discord_id'],
+                            'channel_id': str(channel_id)
+                        }
+                        
+                        from ticket_views import CloseTicketView
+                        view = CloseTicketView(self, ticket_data)
+                        self.bot.add_view(view, message_id=int(message_id))
+                        
+                        logger.info(f"✅ Ticket #{ticket_info['ticket_number']:04d} restaurado: {channel.name}")
+                        tickets_restored += 1
+                    else:
+                        logger.warning(f"❌ Ticket info no encontrado para canal {channel_id}, limpiando...")
+                        await self.ticket_db.remove_ticket_channel(str(channel_id))
+                        
+            except Exception as e:
+                logger.error(f"❌ Error restaurando ticket {channel_id}: {e}")
+        
+        logger.info(f"🎯 Restauración completada: {panels_restored} paneles, {tickets_restored} tickets")
+
+    @app_commands.command(name="ticket_debug_restore", description="[DEBUG] Forzar restauración de vistas de tickets")
+    @app_commands.default_permissions(administrator=True)
+    async def debug_restore_views(self, interaction: discord.Interaction):
+        """Comando de debug para forzar restauración de vistas"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            embed = discord.Embed(
+                title="🔧 Debug - Restauración de Vistas",
+                description="Iniciando diagnóstico y restauración forzada...",
+                color=discord.Color.orange()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            
+            # Información del bot
+            bot_guilds = [f"{g.name} ({g.id})" for g in self.bot.guilds]
+            logger.info(f"[DEBUG] Bot está en {len(self.bot.guilds)} guilds: {bot_guilds}")
+            
+            # Información de tickets activos
+            active_channels = await self.ticket_db.get_active_ticket_channels()
+            logger.info(f"[DEBUG] Canales activos en BD: {len(active_channels)}")
+            
+            for row in active_channels:
+                channel_id, guild_id = row[1], row[3]
+                logger.info(f"[DEBUG] - Canal {channel_id} en Guild {guild_id}")
+            
+            # Ejecutar restauración
+            await self.restore_active_ticket_views()
+            
+            # Resultado
+            result_embed = discord.Embed(
+                title="✅ Debug Completado",
+                description="Revisa los logs para detalles de la restauración.",
+                color=discord.Color.green()
+            )
+            result_embed.add_field(
+                name="Información",
+                value=f"• Guilds del bot: {len(self.bot.guilds)}\n• Tickets activos en BD: {len(active_channels)}",
+                inline=False
+            )
+            
+            await interaction.edit_original_response(embed=result_embed)
+            
+        except Exception as e:
+            logger.error(f"Error en debug restore: {e}")
+            error_embed = discord.Embed(
+                title="❌ Error en Debug",
+                description=f"Error: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.edit_original_response(embed=error_embed)
 
     @app_commands.command(name="ticket_setup", description="Configurar panel de tickets (Solo Admin)")
     @app_commands.describe(
@@ -89,6 +334,11 @@ class TicketSystem(commands.Cog):
             # Enviar panel
             message = await target_channel.send(embed=embed, view=view)
             view.message = message
+            
+            # Guardar el message_id del panel principal de tickets para restaurar la vista
+            await self.ticket_db.set_ticket_panel_message_id(
+                str(target_channel.guild.id), str(target_channel.id), str(message.id)
+            )
             
             # Confirmar al admin
             success_embed = discord.Embed(
@@ -226,6 +476,11 @@ class TicketSystem(commands.Cog):
             )
             close_view.message = welcome_message
             
+            # Guardar canal en tabla ticket_channels
+            await self.ticket_db.add_ticket_channel(
+                str(ticket_channel.id), str(user.id), str(guild.id), str(welcome_message.id)
+            )
+            
             # Log del ticket creado
             await self._log_ticket_action(
                 guild, "created", ticket_number, user, 
@@ -257,6 +512,9 @@ class TicketSystem(commands.Cog):
             if not success:
                 return False
             
+            # Limpiar tabla ticket_channels
+            await self.ticket_db.remove_ticket_channel(str(channel.id))
+            
             # Log del ticket cerrado
             await self._log_ticket_action(
                 channel.guild, "closed", ticket_data['ticket_number'], 
@@ -269,8 +527,9 @@ class TicketSystem(commands.Cog):
                 await asyncio.sleep(5)
                 try:
                     await channel.delete(reason=f"Ticket #{ticket_data['ticket_number']} cerrado")
-                except:
-                    pass
+                    logger.info(f"Canal {channel.name} eliminado exitosamente")
+                except Exception as e:
+                    logger.error(f"Error eliminando canal {channel.name}: {e}")
             
             asyncio.create_task(delete_channel())
             
