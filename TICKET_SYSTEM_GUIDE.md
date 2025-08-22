@@ -15,7 +15,7 @@ Sistema de tickets independiente que permite a los usuarios crear canales privad
 
 ### 🔧 **Flujo de Trabajo:**
 ```
-Usuario → [Crear Ticket] → Canal privado creado → Admin + Usuario chat → [Cerrar Ticket] → Canal eliminado
+Usuario → [Crear Ticket] → Canal privado creado → Admin + Usuario chat → [Cerrar Ticket] → Canal movido a "Tickets Cerrados" → [Borrar Ticket] (Admin) → Canal eliminado
 ```
 
 ## 🏗️ Estructura de Archivos
@@ -56,7 +56,7 @@ Configura el canal de tickets para el servidor
 
 ### `/ticket_close <ticket_number>`
 Cierra ticket específico (admin)
-- Elimina canal
+- Mueve canal a categoría "Tickets Cerrados"
 - Actualiza base de datos
 
 ### `/ticket_list`
@@ -94,14 +94,22 @@ overwrites = {
 ### Botón Cerrar Ticket:
 - Emoji: 🔒
 - Label: "Cerrar Ticket"
+- Style: `discord.ButtonStyle.secondary`
+- Acción: Mueve ticket a "Tickets Cerrados"
+
+### Botón Borrar Ticket (Solo Admin):
+- Emoji: 🗑️
+- Label: "Borrar Ticket"
 - Style: `discord.ButtonStyle.danger`
+- Acción: Elimina canal permanentemente
 
 ## 🔄 Estados de Ticket
 
 | Estado | Descripción |
 |--------|-------------|
-| `open` | Ticket activo |
-| `closed` | Ticket cerrado |
+| `open` | Ticket activo - Ambos botones disponibles |
+| `closed` | Ticket cerrado - Solo "Borrar" disponible (admin) |
+| `deleted` | Ticket eliminado permanentemente |
 
 ## 🚀 Integración
 
@@ -130,22 +138,40 @@ await bot.add_cog(ticket_system)
 2. **Usuario clickea** botón "🎫 Crear Ticket"  
 3. **Sistema crea** canal `ticket-0001` 
 4. **Usuario y admin** pueden chatear privadamente
-5. **Admin clickea** "🔒 Cerrar Ticket" cuando resuelto
-6. **Canal se elimina** automáticamente
+5. **Usuario/Admin clickea** "🔒 Cerrar Ticket" cuando resuelto
+6. **Canal se mueve** a categoría "Tickets Cerrados"
+7. **Admin puede usar** "🗑️ Borrar Ticket" para eliminar permanentemente
 
 ## ⚠️ Validaciones
 
 - ✅ Usuario debe estar registrado en el sistema
 - ✅ Máximo 1 ticket activo por usuario por servidor
-- ✅ Solo admins pueden cerrar tickets
+- ✅ Usuarios y admins pueden cerrar tickets
+- ✅ Solo admins pueden borrar tickets permanentemente
 - ✅ Permisos de canal correctos automáticamente
+- ✅ Vistas se recrean automáticamente después del reinicio
 
 ## 🔧 Configuración
 
 ### Variables de entorno:
 ```python
-TICKET_CATEGORY_NAME = "🎫 Tickets"  # Categoría para organizar canales
-TICKET_LOG_CHANNEL = "ticket-logs"  # Canal para logs de admin
+TICKET_CATEGORY_NAME = "🎫 Tickets"              # Categoría para tickets activos
+CLOSED_TICKET_CATEGORY_NAME = "🎫 Tickets Cerrados"  # Categoría para tickets cerrados  
+TICKET_LOG_CHANNEL = "ticket-logs"              # Canal para logs de admin
 ```
+
+## 🆕 Nuevas Funcionalidades
+
+### 🎫 Fame Point Rewards:
+- ✅ **Selector mejorado** - Permite re-selección del mismo item
+- ✅ **Botón "Ver Premios"** - Usuarios ven premios, admins configuran
+- ✅ **Configuración por servidor** - Premios personalizables por guild
+
+### 🎫 Sistema de Tickets Mejorado:
+- ✅ **Dos botones diferenciados** - Cerrar vs Borrar
+- ✅ **Categoría automática** - "Tickets Cerrados" se crea automáticamente
+- ✅ **Estados granulares** - open, closed, deleted
+- ✅ **Vistas persistentes** - Se recrean después del reinicio
+- ✅ **Botón readonly** - "Cerrar" se deshabilita tras uso
 
 Este sistema es modular, reutilizable y se integra perfectamente con la estructura existente de scum_main.db.

@@ -206,7 +206,7 @@ class TicketDatabase:
             return None
 
     async def close_ticket(self, ticket_id: int, closed_by: str) -> bool:
-        """Cerrar ticket"""
+        """Cerrar ticket (mover a cerrados)"""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute("""
                 UPDATE tickets 
@@ -219,6 +219,23 @@ class TicketDatabase:
             
             if updated:
                 logger.info(f"🔒 Ticket {ticket_id} cerrado por {closed_by}")
+            
+            return updated
+
+    async def delete_ticket(self, ticket_id: int, deleted_by: str) -> bool:
+        """Borrar ticket permanentemente"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                UPDATE tickets 
+                SET status = 'deleted', closed_at = CURRENT_TIMESTAMP, closed_by = ?
+                WHERE ticket_id = ? AND status IN ('open', 'closed')
+            """, (deleted_by, ticket_id))
+            
+            await db.commit()
+            updated = cursor.rowcount > 0
+            
+            if updated:
+                logger.info(f"🗑️ Ticket {ticket_id} borrado por {deleted_by}")
             
             return updated
 
@@ -246,6 +263,39 @@ class TicketDatabase:
                     'channel_id': result[4],
                     'subject': result[5],
                     'created_at': result[6]
+                })
+            
+            return tickets
+
+    async def get_closed_tickets(self, guild_id: str) -> List[Dict]:
+        """Obtener todos los tickets cerrados del servidor"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT t.ticket_id, t.ticket_number, t.user_id, t.discord_id, 
+                       u.ingame_name, u.username, t.discord_guild_id,
+                       t.channel_id, t.subject, t.created_at, t.status
+                FROM tickets t
+                LEFT JOIN users u ON t.user_id = u.user_id
+                WHERE t.discord_guild_id = ? AND t.status = 'closed'
+                ORDER BY t.ticket_number ASC
+            """, (guild_id,))
+            
+            results = await cursor.fetchall()
+            tickets = []
+            
+            for result in results:
+                tickets.append({
+                    'ticket_id': result[0],
+                    'ticket_number': result[1],
+                    'user_id': result[2],
+                    'discord_id': result[3],
+                    'ingame_name': result[4],
+                    'username': result[5],
+                    'guild_id': result[6],
+                    'channel_id': result[7],
+                    'subject': result[8],
+                    'created_at': result[9],
+                    'status': result[10]
                 })
             
             return tickets

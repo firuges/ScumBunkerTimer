@@ -30,6 +30,7 @@ class TicketSystem(commands.Cog):
         
         # Configuración
         self.TICKET_CATEGORY_NAME = "🎫 Tickets"
+        self.CLOSED_TICKET_CATEGORY_NAME = "🎫 Tickets Cerrados"
         self.TICKET_LOG_CHANNEL = "ticket-logs"
         
     async def cog_load(self):
@@ -80,8 +81,73 @@ class TicketSystem(commands.Cog):
                     else:
                         logger.warning(f"❌ Canal de tickets configurado no encontrado: {channel_id}")
             
+            # Recrear vistas de tickets individuales (tanto abiertos como cerrados)
+            await self._recreate_ticket_views()
+            
         except Exception as e:
             logger.error(f"Error cargando configuraciones de canales de tickets: {e}")
+    
+    async def _recreate_ticket_views(self):
+        """Recrear vistas para todos los tickets existentes (abiertos y cerrados)"""
+        try:
+            for guild in self.bot.guilds:
+                guild_id = str(guild.id)
+                
+                # Obtener tickets abiertos y cerrados
+                tickets_open = await self.ticket_db.get_active_tickets(guild_id)
+                tickets_closed = await self.ticket_db.get_closed_tickets(guild_id)
+                
+                all_tickets = tickets_open + tickets_closed
+                
+                for ticket in all_tickets:
+                    channel = self.bot.get_channel(int(ticket['channel_id']))
+                    if channel:
+                        # Buscar el mensaje de bienvenida del ticket (el que tiene los botones)
+                        async for message in channel.history(limit=50):
+                            if (message.author == self.bot.user and 
+                                message.embeds and 
+                                "Bienvenido a tu ticket" in message.embeds[0].description and
+                                message.embeds[0].footer and
+                                f"Ticket ID: {ticket['ticket_id']}" in message.embeds[0].footer.text):
+                                
+                                # Recrear vista según el estado del ticket
+                                ticket_data = {
+                                    'ticket_id': ticket['ticket_id'],
+                                    'ticket_number': ticket['ticket_number'],
+                                    'discord_id': ticket['discord_id'],
+                                    'channel_id': ticket['channel_id'],
+                                    'status': ticket.get('status', 'open')
+                                }
+                                
+                                # Crear vista apropiada
+                                if ticket.get('status') == 'closed':
+                                    # Ticket cerrado - solo botón borrar activo
+                                    close_view = CloseTicketView(self, ticket_data)
+                                    # Deshabilitar el botón de cerrar
+                                    for item in close_view.children:
+                                        if hasattr(item, 'custom_id') and item.custom_id == "close_ticket_btn":
+                                            item.disabled = True
+                                            item.label = "🔒 Ticket Cerrado"
+                                            item.style = discord.ButtonStyle.secondary
+                                            break
+                                else:
+                                    # Ticket abierto - ambos botones activos
+                                    close_view = CloseTicketView(self, ticket_data)
+                                
+                                # Actualizar mensaje con la vista recreada
+                                try:
+                                    await message.edit(view=close_view)
+                                    close_view.message = message
+                                    logger.debug(f"Vista recreada para ticket #{ticket['ticket_number']} ({ticket.get('status', 'open')})")
+                                except Exception as e:
+                                    logger.warning(f"Error recreando vista para ticket #{ticket['ticket_number']}: {e}")
+                                break
+                
+                if all_tickets:
+                    logger.info(f"✅ {len(all_tickets)} vistas de tickets recreadas en {guild.name}")
+                    
+        except Exception as e:
+            logger.error(f"Error recreando vistas de tickets: {e}")
     
     async def _create_ticket_panel(self, channel: discord.TextChannel) -> bool:
         """Crear panel de tickets en un canal específico"""
@@ -501,7 +567,7 @@ class TicketSystem(commands.Cog):
 
     async def close_ticket(self, channel: discord.TextChannel, closed_by: str, 
                           ticket_data: dict) -> bool:
-        """Cerrar ticket"""
+        """Cerrar ticket (mover a categoría cerrados)"""
         try:
             # Cerrar en base de datos
             success = await self.ticket_db.close_ticket(
@@ -512,13 +578,62 @@ class TicketSystem(commands.Cog):
             if not success:
                 return False
             
-            # Limpiar tabla ticket_channels
-            await self.ticket_db.remove_ticket_channel(str(channel.id))
+            # Obtener o crear categoría de tickets cerrados
+            closed_category = await self._get_or_create_closed_category(channel.guild)
+            
+            if closed_category:
+                # Mover canal a categoría cerrados
+                await channel.edit(category=closed_category)
+                
+                # Remover permisos de escritura del usuario original
+                user = channel.guild.get_member(int(ticket_data['discord_id']))
+                if user:
+                    await channel.set_permissions(user, send_messages=False, reason="Ticket cerrado")
+                
+                # Agregar mensaje de ticket cerrado
+                embed = discord.Embed(
+                    title="🔒 Ticket Cerrado",
+                    description=f"Este ticket fue cerrado por <@{closed_by}>.",
+                    color=discord.Color.orange(),
+                    timestamp=datetime.now()
+                )
+                embed.add_field(name="Estado", value="Cerrado - Solo lectura", inline=False)
+                await channel.send(embed=embed)
             
             # Log del ticket cerrado
             await self._log_ticket_action(
                 channel.guild, "closed", ticket_data['ticket_number'], 
                 channel.guild.get_member(int(closed_by)) or "Sistema",
+                f"Canal movido a Tickets Cerrados: {channel.mention}"
+            )
+            
+            logger.info(f"Ticket #{ticket_data['ticket_number']} cerrado y movido por {closed_by}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error cerrando ticket: {e}")
+            return False
+
+    async def delete_ticket(self, channel: discord.TextChannel, deleted_by: str, 
+                           ticket_data: dict) -> bool:
+        """Borrar ticket permanentemente"""
+        try:
+            # Marcar como eliminado en base de datos
+            success = await self.ticket_db.delete_ticket(
+                ticket_data['ticket_id'], 
+                deleted_by
+            )
+            
+            if not success:
+                return False
+            
+            # Limpiar tabla ticket_channels
+            await self.ticket_db.remove_ticket_channel(str(channel.id))
+            
+            # Log del ticket borrado
+            await self._log_ticket_action(
+                channel.guild, "deleted", ticket_data['ticket_number'], 
+                channel.guild.get_member(int(deleted_by)) or "Sistema",
                 f"Canal: {channel.mention}"
             )
             
@@ -526,19 +641,61 @@ class TicketSystem(commands.Cog):
             async def delete_channel():
                 await asyncio.sleep(5)
                 try:
-                    await channel.delete(reason=f"Ticket #{ticket_data['ticket_number']} cerrado")
+                    await channel.delete(reason=f"Ticket #{ticket_data['ticket_number']} borrado por admin")
                     logger.info(f"Canal {channel.name} eliminado exitosamente")
                 except Exception as e:
                     logger.error(f"Error eliminando canal {channel.name}: {e}")
             
             asyncio.create_task(delete_channel())
             
-            logger.info(f"Ticket #{ticket_data['ticket_number']} cerrado por {closed_by}")
+            logger.info(f"Ticket #{ticket_data['ticket_number']} borrado por {deleted_by}")
             return True
             
         except Exception as e:
-            logger.error(f"Error cerrando ticket: {e}")
+            logger.error(f"Error borrando ticket: {e}")
             return False
+
+    async def _get_or_create_closed_category(self, guild: discord.Guild) -> Optional[discord.CategoryChannel]:
+        """Obtener o crear categoría de tickets cerrados"""
+        try:
+            # Buscar categoría existente
+            closed_category = discord.utils.get(guild.categories, name=self.CLOSED_TICKET_CATEGORY_NAME)
+            
+            if closed_category:
+                return closed_category
+            
+            # Crear nueva categoría
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                guild.me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    manage_channels=True,
+                    send_messages=True,
+                    manage_permissions=True
+                )
+            }
+            
+            # Dar permisos a administradores
+            for role in guild.roles:
+                if role.permissions.administrator:
+                    overwrites[role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True
+                    )
+            
+            closed_category = await guild.create_category(
+                self.CLOSED_TICKET_CATEGORY_NAME,
+                overwrites=overwrites,
+                reason="Categoría automática para tickets cerrados"
+            )
+            
+            logger.info(f"Categoría '{self.CLOSED_TICKET_CATEGORY_NAME}' creada en {guild.name}")
+            return closed_category
+            
+        except Exception as e:
+            logger.error(f"Error creando categoría de tickets cerrados: {e}")
+            return None
 
     async def _log_ticket_action(self, guild: discord.Guild, action: str, 
                                ticket_number: int, user, details: str = ""):

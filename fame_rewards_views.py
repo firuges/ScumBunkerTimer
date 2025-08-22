@@ -24,6 +24,141 @@ class FameRewardsView(discord.ui.View):
         
         # Crear selector con los valores de fama configurables
         self.add_item(FameAmountSelect(fame_values))
+    
+    @discord.ui.button(label="🏆 Ver Premios", style=discord.ButtonStyle.secondary, emoji="🏆")
+    async def view_rewards(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Mostrar premios disponibles por Fame Points"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Verificar si es admin para poder configurar premios
+            is_admin = any(role.permissions.administrator for role in interaction.user.roles)
+            
+            # Obtener configuración actual de premios (si existe)
+            rewards_config = await self.fame_system.get_rewards_config(str(interaction.guild.id))
+            
+            if is_admin:
+                # Admin: Mostrar modal para configurar premios
+                modal = RewardsConfigModal(self.fame_system, rewards_config)
+                await interaction.response.send_modal(modal)
+            else:
+                # Usuario normal: Mostrar premios disponibles
+                embed = discord.Embed(
+                    title="🏆 Premios por Fame Points",
+                    description="Estos son los premios disponibles según tus puntos de fama:",
+                    color=discord.Color.gold()
+                )
+                
+                # Obtener valores de fama configurados
+                fame_values = await self.fame_system.fame_db.get_fame_config(str(interaction.guild.id))
+                
+                for fame_amount in sorted(fame_values):
+                    reward_desc = rewards_config.get(str(fame_amount), f"Premio por {fame_amount:,} Fame Points")
+                    embed.add_field(
+                        name=f"🏅 {fame_amount:,} Fame Points",
+                        value=reward_desc,
+                        inline=False
+                    )
+                
+                embed.add_field(
+                    name="💡 Cómo Reclamar",
+                    value="Usa el selector de arriba para elegir la cantidad de Fame Points que tienes y reclama tu premio.",
+                    inline=False
+                )
+                
+                embed.set_footer(text=f"Premios configurados para {interaction.guild.name}")
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error mostrando premios: {e}")
+            embed = discord.Embed(
+                title="❌ Error",
+                description="No se pudo cargar la información de premios.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+class RewardsConfigModal(discord.ui.Modal, title="🏆 Configurar Premios por Fame Points"):
+    """Modal para que admins configuren los premios"""
+    
+    def __init__(self, fame_system, current_config: dict):
+        super().__init__()
+        self.fame_system = fame_system
+        self.current_config = current_config
+    
+    rewards_config = discord.ui.TextInput(
+        label="Configuración de Premios",
+        placeholder="100=Kit de Inicio, 500=Set de Armadura, 1000=Vehículo Premium...",
+        required=True,
+        max_length=2000,
+        style=discord.TextStyle.paragraph
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """Procesar configuración de premios"""
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Parsear configuración del admin
+            rewards_dict = {}
+            config_lines = self.rewards_config.value.split(',')
+            
+            for line in config_lines:
+                line = line.strip()
+                if '=' in line:
+                    try:
+                        fame_str, reward_desc = line.split('=', 1)
+                        fame_amount = int(fame_str.strip())
+                        reward_desc = reward_desc.strip()
+                        rewards_dict[str(fame_amount)] = reward_desc
+                    except ValueError:
+                        continue
+            
+            if not rewards_dict:
+                embed = discord.Embed(
+                    title="❌ Formato Incorrecto",
+                    description="No se pudo parsear la configuración. Usa el formato:\n`100=Kit de Inicio, 500=Set de Armadura`",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+            
+            # Guardar configuración
+            success = await self.fame_system.save_rewards_config(str(interaction.guild.id), rewards_dict)
+            
+            if success:
+                embed = discord.Embed(
+                    title="✅ Premios Configurados",
+                    description=f"Se han configurado premios para {len(rewards_dict)} niveles de Fame Points.",
+                    color=discord.Color.green()
+                )
+                
+                # Mostrar configuración guardada
+                for fame_amount, reward in sorted(rewards_dict.items(), key=lambda x: int(x[0])):
+                    embed.add_field(
+                        name=f"🏅 {int(fame_amount):,} FP",
+                        value=reward,
+                        inline=False
+                    )
+                
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="No se pudo guardar la configuración de premios.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                
+        except Exception as e:
+            logger.error(f"Error configurando premios: {e}")
+            embed = discord.Embed(
+                title="❌ Error interno",
+                description="Ocurrió un error al configurar los premios.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 class FameAmountSelect(discord.ui.Select):
     """Selector para elegir cantidad de fama a reclamar"""
@@ -97,6 +232,9 @@ class FameAmountSelect(discord.ui.Select):
             # Mostrar modal de confirmación
             modal = FameClaimModal(self.view.fame_system, fame_amount, user_data)
             await interaction.response.send_modal(modal)
+            
+            # Limpiar la selección para permitir re-selección
+            self.values = []
             
         except Exception as e:
             logger.error(f"Error en callback de FameAmountSelect: {e}")

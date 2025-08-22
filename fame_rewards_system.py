@@ -28,6 +28,7 @@ class FameRewardsSystem(commands.Cog):
         self.user_manager = UserManager(db_path)
         self.fame_channels = {}  # {guild_id: channel_id} - Para paneles principales
         self.notification_channels = {}  # {guild_id: channel_id} - Para notificaciones de admin
+        self.rewards_configs = {}  # {guild_id: {fame_amount: reward_description}} - Configuración de premios
         
     async def cog_load(self):
         """Inicializar al cargar el cog"""
@@ -473,6 +474,34 @@ class FameRewardsSystem(commands.Cog):
                 color=discord.Color.red()
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def get_rewards_config(self, guild_id: str) -> dict:
+        """Obtener configuración de premios para el guild"""
+        return self.rewards_configs.get(guild_id, {
+            "100": "🎒 Kit de Supervivencia Básico",
+            "500": "🔫 Set de Armas Avanzadas", 
+            "1000": "🛡️ Armadura Completa Nivel 3",
+            "2000": "🚗 Vehículo Premium",
+            "5000": "🏠 Base Fortificada",
+            "10000": "👑 Título VIP por 30 días",
+            "15000": "💎 Recompensa Épica Personalizada"
+        })
+
+    async def save_rewards_config(self, guild_id: str, rewards_config: dict) -> bool:
+        """Guardar configuración de premios"""
+        try:
+            # Guardar en memoria
+            self.rewards_configs[guild_id] = rewards_config
+            
+            # TODO: Implementar persistencia en base de datos si se desea
+            # Por ahora se mantiene en memoria para simplicidad
+            
+            logger.info(f"Configuración de premios guardada para guild {guild_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error guardando configuración de premios: {e}")
+            return False
 
 async def setup(bot):
     """Setup function para cargar el cog"""
