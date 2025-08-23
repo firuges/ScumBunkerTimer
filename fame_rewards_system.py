@@ -477,30 +477,45 @@ class FameRewardsSystem(commands.Cog):
 
     async def get_rewards_config(self, guild_id: str) -> dict:
         """Obtener configuración de premios para el guild"""
-        return self.rewards_configs.get(guild_id, {
-            "100": "🎒 Kit de Supervivencia Básico",
-            "500": "🔫 Set de Armas Avanzadas", 
-            "1000": "🛡️ Armadura Completa Nivel 3",
-            "2000": "🚗 Vehículo Premium",
-            "5000": "🏠 Base Fortificada",
-            "10000": "👑 Título VIP por 30 días",
-            "15000": "💎 Recompensa Épica Personalizada"
-        })
+        try:
+            # Intentar cargar desde base de datos primero
+            db_rewards = await self.fame_db.get_rewards_config(guild_id)
+            
+            # Actualizar caché en memoria
+            self.rewards_configs[guild_id] = db_rewards
+            
+            return db_rewards
+            
+        except Exception as e:
+            logger.error(f"Error cargando premios desde BD para guild {guild_id}: {e}")
+            # Fallback a valores por defecto en memoria
+            return self.rewards_configs.get(guild_id, {
+                "100": "🎒 Kit de Supervivencia Básico",
+                "500": "🔫 Set de Armas Avanzadas", 
+                "1000": "🛡️ Armadura Completa Nivel 3",
+                "2000": "🚗 Vehículo Premium",
+                "5000": "🏠 Base Fortificada",
+                "10000": "👑 Título VIP por 30 días",
+                "15000": "💎 Recompensa Épica Personalizada"
+            })
 
     async def save_rewards_config(self, guild_id: str, rewards_config: dict) -> bool:
         """Guardar configuración de premios"""
         try:
-            # Guardar en memoria
-            self.rewards_configs[guild_id] = rewards_config
+            # Guardar en base de datos
+            success = await self.fame_db.save_rewards_config(guild_id, rewards_config)
             
-            # TODO: Implementar persistencia en base de datos si se desea
-            # Por ahora se mantiene en memoria para simplicidad
+            if success:
+                # Actualizar caché en memoria solo si BD fue exitosa
+                self.rewards_configs[guild_id] = rewards_config
+                logger.info(f"✅ Configuración de premios guardada para guild {guild_id}")
+            else:
+                logger.error(f"❌ Error guardando premios en BD para guild {guild_id}")
             
-            logger.info(f"Configuración de premios guardada para guild {guild_id}")
-            return True
+            return success
             
         except Exception as e:
-            logger.error(f"Error guardando configuración de premios: {e}")
+            logger.error(f"❌ Error guardando configuración de premios: {e}")
             return False
 
 async def setup(bot):

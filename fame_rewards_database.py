@@ -46,6 +46,19 @@ class FameRewardsDatabase:
                 )
             """)
             
+            # Tabla de premios/recompensas por guild
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS fame_point_rewards (
+                    reward_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    fame_amount INTEGER NOT NULL,
+                    reward_description TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(guild_id, fame_amount)
+                )
+            """)
+            
             # Índices para optimizar consultas
             await db.execute("""
                 CREATE INDEX IF NOT EXISTS idx_fame_claims_user_guild_status 
@@ -88,6 +101,86 @@ class FameRewardsDatabase:
             
             await db.commit()
             logger.info(f"✅ Configuración de fama actualizada para guild {guild_id}: {fame_values}")
+
+    async def get_rewards_config(self, guild_id: str) -> Dict[str, str]:
+        """Obtener configuración de premios desde la base de datos"""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("""
+                SELECT fame_amount, reward_description 
+                FROM fame_point_rewards 
+                WHERE guild_id = ?
+                ORDER BY fame_amount ASC
+            """, (guild_id,))
+            
+            rows = await cursor.fetchall()
+            
+            if rows:
+                # Convertir resultados a diccionario
+                return {str(row[0]): row[1] for row in rows}
+            else:
+                # Valores por defecto si no hay configuración
+                default_rewards = {
+                    "100": "🎒 Kit de Supervivencia Básico",
+                    "500": "🔫 Set de Armas Avanzadas", 
+                    "1000": "🛡️ Armadura Completa Nivel 3",
+                    "2000": "🚗 Vehículo Premium",
+                    "5000": "🏠 Base Fortificada",
+                    "10000": "👑 Título VIP por 30 días",
+                    "15000": "💎 Recompensa Épica Personalizada"
+                }
+                
+                # Guardar valores por defecto en la base de datos
+                await self.save_rewards_config(guild_id, default_rewards)
+                return default_rewards
+
+    async def save_rewards_config(self, guild_id: str, rewards_config: Dict[str, str]) -> bool:
+        """Guardar configuración de premios en la base de datos"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Primero eliminar configuración existente para este guild
+                await db.execute("""
+                    DELETE FROM fame_point_rewards WHERE guild_id = ?
+                """, (guild_id,))
+                
+                # Insertar nueva configuración
+                for fame_amount_str, reward_desc in rewards_config.items():
+                    try:
+                        fame_amount = int(fame_amount_str)
+                        await db.execute("""
+                            INSERT INTO fame_point_rewards (guild_id, fame_amount, reward_description)
+                            VALUES (?, ?, ?)
+                        """, (guild_id, fame_amount, reward_desc))
+                    except ValueError:
+                        continue  # Saltar valores no numéricos
+                
+                await db.commit()
+                logger.info(f"✅ Configuración de premios guardada para guild {guild_id}: {len(rewards_config)} premios")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Error guardando configuración de premios para guild {guild_id}: {e}")
+            return False
+
+    async def delete_reward(self, guild_id: str, fame_amount: int) -> bool:
+        """Eliminar un premio específico de la base de datos"""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    DELETE FROM fame_point_rewards 
+                    WHERE guild_id = ? AND fame_amount = ?
+                """, (guild_id, fame_amount))
+                
+                await db.commit()
+                deleted = cursor.rowcount > 0
+                
+                if deleted:
+                    logger.info(f"🗑️ Premio eliminado: {fame_amount} FP para guild {guild_id}")
+                
+                return deleted
+                
+        except Exception as e:
+            logger.error(f"❌ Error eliminando premio {fame_amount} para guild {guild_id}: {e}")
+            return False
 
     async def create_fame_claim(self, user_id: str, discord_id: str, guild_id: str, 
                                fame_amount: int, notification_message_id: str = None) -> int:
