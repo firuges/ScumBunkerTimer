@@ -11,7 +11,18 @@
       "Bash(git restore:*)",
       "Bash(git add:*)",
       "Bash(git push:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm start)",
+      "Bash(npm install:*)",
+      "Bash(npx react-scripts start:*)",
+      "Bash(SET PORT=3001)",
+      "Bash(PORT=3001 npm start)",
+      "Bash(PORT=3002 npm start)",
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(set PORT=3002)",
+      "Bash(cross-env:*)",
+      "Bash($env:PORT=3002)"
     ],
     "deny": [],
     "ask": []

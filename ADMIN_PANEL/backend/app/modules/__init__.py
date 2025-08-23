@@ -1,0 +1,3 @@
+"""
+Bot modules package
+"""

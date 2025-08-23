@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # Backend FastAPI
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DATABASE_URL=sqlite:///./scum_main.db
+    volumes:
+      - ./backend:/app
+      - ../scum_main.db:/app/scum_main.db:ro  # Shared database read-only
+    command: uvicorn simple_main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - PORT=3000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm start
+
+networks:
+  default:
+    name: scum-admin-network

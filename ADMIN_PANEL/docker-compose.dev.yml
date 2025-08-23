@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Development backend with hot reload
+  backend:
+    build: 
+      context: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - DATABASE_URL=sqlite:///./scum_main.db
+    volumes:
+      - ./backend:/app
+      - ../scum_main.db:/app/scum_main.db:ro
+    command: uvicorn simple_main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+
+  # Development frontend with hot reload  
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3002:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - FAST_REFRESH=true
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    stdin_open: true
+    tty: true
+
+networks:
+  default:
+    name: scum-admin-dev
