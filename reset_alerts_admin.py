@@ -612,7 +612,7 @@ class ResetAlertsAdmin(commands.Cog):
             import aiosqlite
             
             # Contar usuarios con UTC
-            async with aiosqlite.connect("taxi_system.db") as db:
+            async with aiosqlite.connect("scum_main.db") as db:
                 cursor = await db.execute("""
                     SELECT COUNT(*) FROM users 
                     WHERE timezone = 'UTC' OR timezone IS NULL
@@ -705,7 +705,7 @@ class ResetAlertsAdmin(commands.Cog):
             import aiosqlite
             
             # Verificar configuraciones en BD
-            async with aiosqlite.connect("taxi_system.db") as db:
+            async with aiosqlite.connect("scum_main.db") as db:
                 cursor = await db.execute("""
                     SELECT guild_id, channel_type, channel_id, updated_at, updated_by 
                     FROM channel_config 
@@ -809,7 +809,7 @@ class ResetAlertsAdmin(commands.Cog):
             from datetime import datetime
             
             # Buscar configuraciones incorrectas
-            async with aiosqlite.connect("taxi_system.db") as db:
+            async with aiosqlite.connect("scum_main.db") as db:
                 cursor = await db.execute("""
                     SELECT guild_id, channel_type, channel_id, updated_at, updated_by 
                     FROM channel_config 

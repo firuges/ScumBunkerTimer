@@ -20,6 +20,7 @@ from taxi_database import taxi_db
 from taxi_config import taxi_config
 from core.user_manager import user_manager, get_user_by_discord_id, get_user_balance
 from rate_limiter import rate_limit, rate_limiter
+from mechanic_system import get_user_vehicles
 
 # Obtener VEHICLE_TYPES desde la instancia de configuración
 VEHICLE_TYPES = taxi_config.VEHICLE_TYPES
@@ -398,7 +399,9 @@ class TaxiSystemView(discord.ui.View):
                     description="No estás registrado como conductor. ¿Te gustaría registrarte?",
                     color=0xff6b6b
                 )
-                view = DriverRegistrationView()
+                # Obtener vehículos registrados del usuario (si los tiene)
+                user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+                view = DriverRegistrationView(user_vehicles)
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 return
             driver_info = await taxi_db.get_driver_info(int(user_data['user_id']))
@@ -409,7 +412,9 @@ class TaxiSystemView(discord.ui.View):
                     description="No estás registrado como conductor. ¿Te gustaría registrarte?",
                     color=0xff6b6b
                 )
-                view = DriverRegistrationView()
+                # Obtener vehículos registrados del usuario (si los tiene)
+                user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+                view = DriverRegistrationView(user_vehicles)
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 return
             
@@ -1229,7 +1234,9 @@ class DriverRegistrationView(discord.ui.View):
             logger.warning(f"Usuario {interaction.user.id} en cooldown - ignorando")
             return
         
-        view = DriverRegistrationView()
+        # Obtener vehículos registrados del usuario (si los tiene)
+        user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+        view = DriverRegistrationView(user_vehicles)
         embed = discord.Embed(
             title="🚗 Registro de Conductor",
             description="Selecciona los tipos de vehículos que conduces. Puedes seleccionar múltiples vehículos.",
@@ -1253,13 +1260,13 @@ class DriverRegistrationView(discord.ui.View):
 class DriverRegistrationView(discord.ui.View):
     """Vista para registro de conductor con selector múltiple"""
     
-    def __init__(self):
+    def __init__(self, user_vehicles=None):
         super().__init__(timeout=300)
         self.selected_vehicles = []
         self.description = ""
         
         # Crear selector de vehículos
-        self.vehicle_select = VehicleSelect()
+        self.vehicle_select = VehicleSelect(user_vehicles)
         self.add_item(self.vehicle_select)
     
     @discord.ui.button(label="📝 Agregar Descripción", style=discord.ButtonStyle.secondary, emoji="📝")
@@ -1295,11 +1302,19 @@ class DriverRegistrationView(discord.ui.View):
                 success, message = await taxi_db.update_driver_vehicles(int(user_data['user_id']), self.selected_vehicles)
                 
                 if success:
+                    # Recargar vehículos actualizados del usuario
+                    updated_user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+                    
                     embed = discord.Embed(
                         title="✅ Vehículos Actualizados",
                         description="Tus vehículos han sido actualizados exitosamente!",
                         color=0x00ff00
                     )
+                    
+                    # Crear nueva vista con vehículos actualizados
+                    new_view = DriverRegistrationView(updated_user_vehicles)
+                    await interaction.followup.edit_message(interaction.message.id, embed=embed, view=new_view)
+                    return
                 else:
                     embed = discord.Embed(
                         title="❌ Error",
@@ -1321,6 +1336,9 @@ class DriverRegistrationView(discord.ui.View):
                 if success:
                     # Actualizar con todos los vehículos seleccionados
                     await taxi_db.update_driver_vehicles(int(user_data['user_id']), self.selected_vehicles)
+                    
+                    # Recargar vehículos del usuario recién registrado
+                    updated_user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
                     
                     embed = discord.Embed(
                         title="✅ Registro Completado",
@@ -1559,28 +1577,89 @@ class RegisteredDriverView(discord.ui.View):
 class VehicleSelect(discord.ui.Select):
     """Selector múltiple de vehículos"""
     
-    def __init__(self):
+    def __init__(self, user_vehicles=None):
         options = []
-        for vehicle_type, data in VEHICLE_TYPES.items():
+        
+        # Si se proporcionan vehículos registrados, solo mostrar categorías disponibles
+        if user_vehicles:
+            # Mapeo entre tipos de vehículos del taller y tipos de taxi
+            vehicle_mapping = {
+                'laika': 'auto',
+                'ranger': 'auto', 
+                'ww': 'auto',
+                'moto': 'moto',
+                'avion': 'avion',
+                'hidroavion': 'hidroavion',
+                'barca': 'barco'
+            }
+            
+            # Obtener tipos únicos de vehículos registrados y mapearlos
+            taxi_vehicle_types = set()
+            for vehicle in user_vehicles:
+                mechanic_type = vehicle[2].lower()  # El tipo de vehículo está en la posición 2
+                taxi_type = vehicle_mapping.get(mechanic_type, mechanic_type)
+                taxi_vehicle_types.add(taxi_type)
+            
+            # Solo mostrar opciones para tipos de vehículos que el usuario tiene registrados
+            for vehicle_type in taxi_vehicle_types:
+                if vehicle_type in VEHICLE_TYPES:
+                    data = VEHICLE_TYPES[vehicle_type]
+                    options.append(
+                        discord.SelectOption(
+                            label=data['name'],
+                            value=vehicle_type,
+                            description=data['description'],
+                            emoji=data['emoji']
+                        )
+                    )
+        else:
+            # Comportamiento original: mostrar todos los tipos de vehículos
+            for vehicle_type, data in VEHICLE_TYPES.items():
+                options.append(
+                    discord.SelectOption(
+                        label=data['name'],
+                        value=vehicle_type,
+                        description=data['description'],
+                        emoji=data['emoji']
+                    )
+                )
+        
+        # Si no hay opciones disponibles, agregar mensaje informativo
+        if not options:
             options.append(
                 discord.SelectOption(
-                    label=data['name'],
-                    value=vehicle_type,
-                    description=data['description'],
-                    emoji=data['emoji']
+                    label="Sin vehículos registrados",
+                    value="none",
+                    description="Registra vehículos primero"
                 )
             )
         
         super().__init__(
-            placeholder="Selecciona tus vehículos...",
+            placeholder="Selecciona tus vehículos disponibles..." if user_vehicles else "Selecciona tus vehículos...",
             options=options,
             min_values=1,
-            max_values=len(options)  # Permitir selección múltiple
+            max_values=len(options) if options[0].value != "none" else 1
         )
     
     async def callback(self, interaction: discord.Interaction):
         """Procesar selección de vehículos"""
         view = self.view
+        
+        # Verificar si se seleccionó "none"
+        if "none" in self.values:
+            embed = discord.Embed(
+                title="🚗 Sin Vehículos Registrados",
+                description="Primero debes registrar vehículos antes de gestionar tus opciones de taxi.",
+                color=0xff6b6b
+            )
+            embed.add_field(
+                name="🎯 ¿Cómo registrar vehículos?",
+                value="1. Usa el comando `/mechanic` en este servidor\n2. Presiona **'🚗 Gestionar Mis Vehículos'**\n3. Selecciona **'➕ Registrar Vehículo'**\n4. Completa la información de tu vehículo\n5. Regresa aquí para gestionar tus opciones de taxi",
+                inline=False
+            )
+            await interaction.response.edit_message(embed=embed, view=None)
+            return
+        
         view.selected_vehicles = self.values
         
         # Actualizar embed con selección actual
@@ -2245,7 +2324,9 @@ class DriverPanelView(discord.ui.View):
             return
             
         try:
-            view = DriverRegistrationView()
+            # Obtener vehículos registrados del usuario (si los tiene)
+            user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+            view = DriverRegistrationView(user_vehicles)
             embed = discord.Embed(
                 title="🚗 Gestionar Vehículos",
                 description="Actualiza tus vehículos registrados. Puedes seleccionar múltiples vehículos.",
@@ -2424,7 +2505,9 @@ class DriverProfileView(discord.ui.View):
             return
             
         try:
-            view = DriverRegistrationView()
+            # Obtener vehículos registrados del usuario (si los tiene)
+            user_vehicles = await get_user_vehicles(str(interaction.user.id), str(interaction.guild.id))
+            view = DriverRegistrationView(user_vehicles)
             embed = discord.Embed(
                 title="🚗 Gestionar Vehículos",
                 description="Actualiza tus vehículos registrados. Puedes seleccionar múltiples vehículos.",

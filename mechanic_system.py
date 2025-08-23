@@ -2246,6 +2246,12 @@ class VehicleRegistrationView(discord.ui.View):
                 emoji="✈️"
             ),
             discord.SelectOption(
+                label="🛩️ Hidroavión",
+                value="hidroavion",
+                description="Avión que aterriza en agua",
+                emoji="🛩️"
+            ),
+            discord.SelectOption(
                 label="🚤 Barca",
                 value="barca",
                 description="Embarcación acuática",

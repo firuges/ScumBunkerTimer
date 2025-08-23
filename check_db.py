@@ -3,7 +3,7 @@ import aiosqlite
 
 async def check_db():
     try:
-        async with aiosqlite.connect('taxi_system.db') as db:
+        async with aiosqlite.connect('scum_main.db') as db:
             # Ver tablas
             cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = await cursor.fetchall()

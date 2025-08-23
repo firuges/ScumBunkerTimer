@@ -175,8 +175,6 @@ class TaxiDatabase:
             import os
             if os.path.exists("scum_main.db"):
                 self.db_path = "scum_main.db"
-            elif os.path.exists("taxi_system.db"):
-                self.db_path = "taxi_system.db"
             else:
                 self.db_path = "scum_main.db"  # Default para crear nueva
         else:
