@@ -29,13 +29,27 @@ def detect_user_timezone(interaction=None) -> str:
         
         import datetime
         
-        # Detectar offset de timezone local del sistema
+        # Detectar offset de timezone local del sistema (método moderno)
         local_time = datetime.datetime.now()
-        utc_time = datetime.datetime.utcnow()
+        utc_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
         offset_seconds = (local_time - utc_time).total_seconds()
-        offset_hours = int(offset_seconds // 3600)
+        # Usar round() en lugar de // para evitar problemas con números negativos
+        offset_hours = round(offset_seconds / 3600)
         
         logger.info(f"Sistema detectado con offset: {offset_hours}h")
+        
+        # Debug adicional para entender el cálculo
+        logger.info(f"Tiempo local: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Tiempo UTC: {utc_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Diferencia en segundos: {offset_seconds}")
+        
+        # Verificar timezone del sistema si es posible
+        try:
+            import time
+            system_tz_info = time.tzname
+            logger.info(f"Info del sistema timezone: {system_tz_info}")
+        except Exception as tz_e:
+            logger.debug(f"No se pudo obtener info de timezone del sistema: {tz_e}")
         
         # Para usuarios de SCUM Uruguay, lo más probable es que estén en:
         # 1. Uruguay (America/Montevideo) - UTC-3
@@ -59,9 +73,11 @@ def detect_user_timezone(interaction=None) -> str:
             logger.info(f"Timezone detectado para usuario: {detected_tz} (offset: {offset_hours}h)")
             return detected_tz
         
-        # Manejo especial para offset -4 (error común de detección)
+        # Ya no debería necesitar manejo especial para -4h con el cálculo corregido
+        # Pero dejamos un log por si acaso aparece
         if offset_hours == -4:
-            logger.info(f"Offset -4h detectado, corrigiendo a Uruguay (UTC-3)")
+            logger.warning(f"⚠️ Offset -4h detectado (inesperado con cálculo corregido)")
+            logger.info(f"✅ Para bot SCUM Uruguay, asumiendo America/Montevideo (UTC-3)")
             return "America/Montevideo"
         
         # Si no coincide con ningún offset conocido, pero estamos en bot Uruguay,
@@ -171,7 +187,7 @@ class TaxiDatabase:
         async with aiosqlite.connect(self.db_path) as db:
             # === TABLA DE USUARIOS ===
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS taxi_users (
+                CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     discord_id TEXT UNIQUE NOT NULL,
                     discord_guild_id TEXT NOT NULL,
@@ -197,7 +213,7 @@ class TaxiDatabase:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_transaction TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'active',
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -237,7 +253,7 @@ class TaxiDatabase:
                     last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -267,7 +283,7 @@ class TaxiDatabase:
                     started_at TIMESTAMP,
                     completed_at TIMESTAMP,
                     cancelled_at TIMESTAMP,
-                    FOREIGN KEY (passenger_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (passenger_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     FOREIGN KEY (driver_id) REFERENCES taxi_drivers(driver_id) ON DELETE SET NULL
                 )
             """)
@@ -283,8 +299,8 @@ class TaxiDatabase:
                     rating_type TEXT NOT NULL, -- 'passenger_to_driver' or 'driver_to_passenger'
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (request_id) REFERENCES taxi_requests(request_id) ON DELETE CASCADE,
-                    FOREIGN KEY (rater_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE,
-                    FOREIGN KEY (rated_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (rater_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (rated_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -297,7 +313,7 @@ class TaxiDatabase:
                     cash_bonus DECIMAL(10,2) DEFAULT 5000.00,
                     items_given TEXT, -- JSON string
                     claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -308,7 +324,7 @@ class TaxiDatabase:
                     user_id INTEGER NOT NULL,
                     amount DECIMAL(10,2) DEFAULT 250.00,
                     claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -327,7 +343,7 @@ class TaxiDatabase:
                     delivered_at TIMESTAMP NULL,
                     delivered_by TEXT NULL, -- Discord ID del admin que entregó
                     guild_id TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
                 )
             """)
             
@@ -351,7 +367,7 @@ class TaxiDatabase:
                     tier TEXT NOT NULL,
                     last_purchase TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     next_available TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
                     UNIQUE(user_id, tier)
                 )
             """)
@@ -375,7 +391,7 @@ class TaxiDatabase:
                     details TEXT,
                     guild_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id) ON DELETE SET NULL
+                    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
                 )
             """)
             
@@ -393,8 +409,8 @@ class TaxiDatabase:
             """)
             
             # === CREAR ÍNDICES ===
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_users_discord_id ON taxi_users(discord_id)")
-            await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_users_guild ON taxi_users(discord_guild_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_discord_id ON users(discord_id)")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_users_guild ON users(discord_guild_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_bank_accounts_user ON bank_accounts(user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_bank_transactions_accounts ON bank_transactions(from_account, to_account)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_taxi_drivers_status ON taxi_drivers(status)")
@@ -446,18 +462,18 @@ class TaxiDatabase:
             except Exception as e:
                 logger.warning(f"Error en migración de shop_purchases: {e}")
             
-            # Migración para taxi_users - agregar columna timezone
+            # Migración para users - agregar columna timezone
             try:
-                cursor = await db.execute("PRAGMA table_info(taxi_users)")
+                cursor = await db.execute("PRAGMA table_info(users)")
                 columns = await cursor.fetchall()
                 column_names = [col[1] for col in columns]
                 
                 if 'timezone' not in column_names:
-                    await db.execute("ALTER TABLE taxi_users ADD COLUMN timezone TEXT DEFAULT 'UTC'")
-                    logger.info("✅ Columna timezone agregada a taxi_users")
+                    await db.execute("ALTER TABLE users ADD COLUMN timezone TEXT DEFAULT 'UTC'")
+                    logger.info("✅ Columna timezone agregada a users")
                 
             except Exception as e:
-                logger.warning(f"Error en migración de timezone en taxi_users: {e}")
+                logger.warning(f"Error en migración de timezone en users: {e}")
             
             # === TABLAS DEL SISTEMA DE ALERTAS DE REINICIO ===
             await db.execute("""
@@ -506,19 +522,19 @@ class TaxiDatabase:
             # === MIGRACIONES ===
             # Agregar columna ingame_name si no existe
             try:
-                cursor = await db.execute("PRAGMA table_info(taxi_users)")
+                cursor = await db.execute("PRAGMA table_info(users)")
                 columns = await cursor.fetchall()
                 column_names = [col[1] for col in columns]
                 
                 if 'ingame_name' not in column_names:
-                    await db.execute("ALTER TABLE taxi_users ADD COLUMN ingame_name TEXT")
-                    logger.info("✅ Migración: Columna ingame_name agregada a taxi_users")
+                    await db.execute("ALTER TABLE users ADD COLUMN ingame_name TEXT")
+                    logger.info("✅ Migración: Columna ingame_name agregada a users")
                 
                 if 'language' not in column_names:
-                    await db.execute("ALTER TABLE taxi_users ADD COLUMN language TEXT DEFAULT 'es'")
-                    logger.info("✅ Migración: Columna language agregada a taxi_users")
+                    await db.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'es'")
+                    logger.info("✅ Migración: Columna language agregada a users")
             except Exception as e:
-                logger.error(f"Error en migraciones de taxi_users: {e}")
+                logger.error(f"Error en migraciones de users: {e}")
             
             await db.commit()
             logger.info("✅ Base de datos del sistema de taxi inicializada")
@@ -531,7 +547,7 @@ class TaxiDatabase:
             try:
                 # Verificar si ya existe
                 cursor = await db.execute(
-                    "SELECT user_id FROM taxi_users WHERE discord_id = ? AND discord_guild_id = ?",
+                    "SELECT user_id FROM users WHERE discord_id = ? AND discord_guild_id = ?",
                     (discord_id, guild_id)
                 )
                 existing = await cursor.fetchone()
@@ -545,7 +561,7 @@ class TaxiDatabase:
                 
                 # Registrar usuario
                 cursor = await db.execute("""
-                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed, timezone, ingame_name)
+                    INSERT INTO users (discord_id, discord_guild_id, username, display_name, welcome_pack_claimed, timezone, ingame_name)
                     VALUES (?, ?, ?, ?, TRUE, ?, ?)
                 """, (discord_id, guild_id, username, display_name, timezone, ingame_name))
                 
@@ -611,7 +627,7 @@ class TaxiDatabase:
                 SELECT tu.user_id, tu.discord_id, tu.discord_guild_id, tu.username, tu.display_name, 
                        tu.joined_at, tu.last_active, tu.status, tu.welcome_pack_claimed, tu.created_at, 
                        tu.timezone, tu.ingame_name, ba.account_number, ba.balance
-                FROM taxi_users tu
+                FROM users tu
                 LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
                 WHERE tu.discord_id = ? AND tu.discord_guild_id = ?
             """, (discord_id, guild_id))
@@ -642,7 +658,7 @@ class TaxiDatabase:
         async with aiosqlite.connect(self.db_path) as db:
             try:
                 cursor = await db.execute("""
-                    UPDATE taxi_users 
+                    UPDATE users 
                     SET timezone = ? 
                     WHERE discord_id = ? AND discord_guild_id = ?
                 """, (timezone, discord_id, guild_id))
@@ -653,6 +669,54 @@ class TaxiDatabase:
             except Exception as e:
                 logger.error(f"Error actualizando timezone de usuario: {e}")
                 return False
+
+    async def update_users_without_timezone(self, guild_id: str = None) -> int:
+        """Actualizar timezone para usuarios que no lo tienen configurado o tienen None/UTC por defecto"""
+        async with aiosqlite.connect(self.db_path) as db:
+            try:
+                # Consulta para encontrar usuarios sin timezone adecuado
+                query = """
+                    SELECT discord_id, discord_guild_id, username 
+                    FROM users 
+                    WHERE (timezone IS NULL OR timezone = 'UTC' OR timezone = '')
+                """
+                params = []
+                
+                if guild_id:
+                    query += " AND discord_guild_id = ?"
+                    params.append(guild_id)
+                
+                cursor = await db.execute(query, params)
+                users_to_update = await cursor.fetchall()
+                
+                if not users_to_update:
+                    logger.info("✅ Todos los usuarios ya tienen timezone configurado")
+                    return 0
+                
+                # Detectar timezone actual
+                detected_tz = detect_user_timezone()
+                updated_count = 0
+                
+                logger.info(f"🔄 Actualizando timezone para {len(users_to_update)} usuarios sin configuración")
+                logger.info(f"📍 Timezone detectado para asignar: {detected_tz}")
+                
+                # Actualizar cada usuario
+                for user_data in users_to_update:
+                    discord_id, user_guild_id, username = user_data
+                    
+                    success = await self.update_user_timezone(discord_id, user_guild_id, detected_tz)
+                    if success:
+                        updated_count += 1
+                        logger.info(f"✅ Timezone actualizado para {username} ({discord_id}): {detected_tz}")
+                    else:
+                        logger.warning(f"❌ Error actualizando timezone para {username} ({discord_id})")
+                
+                logger.info(f"🎯 Actualización completada: {updated_count}/{len(users_to_update)} usuarios")
+                return updated_count
+                
+            except Exception as e:
+                logger.error(f"❌ Error actualizando timezones de usuarios: {e}")
+                return 0
 
     async def save_channel_config(self, guild_id: str, channel_type: str, channel_id: str, updated_by: str = None) -> bool:
         """Guardar configuración de canal en base de datos"""
@@ -956,14 +1020,14 @@ class TaxiDatabase:
             guild_params = (guild_id,) if guild_id else ()
             
             # Usuarios registrados
-            cursor = await db.execute(f"SELECT COUNT(*) FROM taxi_users {guild_filter}", guild_params)
+            cursor = await db.execute(f"SELECT COUNT(*) FROM users {guild_filter}", guild_params)
             stats['total_users'] = (await cursor.fetchone())[0]
             
             # Conductores registrados
             if guild_id:
                 cursor = await db.execute("""
                     SELECT COUNT(*) FROM taxi_drivers td
-                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    JOIN users tu ON td.user_id = tu.user_id
                     WHERE tu.discord_guild_id = ?
                 """, (guild_id,))
             else:
@@ -974,7 +1038,7 @@ class TaxiDatabase:
             if guild_id:
                 cursor = await db.execute("""
                     SELECT COUNT(*) FROM taxi_requests tr
-                    JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                    JOIN users tu ON tr.passenger_id = tu.user_id
                     WHERE tu.discord_guild_id = ? AND tr.status = 'completed'
                 """, (guild_id,))
             else:
@@ -985,7 +1049,7 @@ class TaxiDatabase:
             if guild_id:
                 cursor = await db.execute("""
                     SELECT COALESCE(SUM(ba.balance), 0) FROM bank_accounts ba
-                    JOIN taxi_users tu ON ba.user_id = tu.user_id
+                    users tu ON ba.user_id = tu.user_id
                     WHERE tu.discord_guild_id = ? AND ba.status = 'active'
                 """, (guild_id,))
             else:
@@ -996,7 +1060,7 @@ class TaxiDatabase:
             if guild_id:
                 cursor = await db.execute("""
                     SELECT COUNT(*) FROM taxi_drivers td
-                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    users tu ON td.user_id = tu.user_id
                     WHERE tu.discord_guild_id = ? AND td.status = 'online'
                 """, (guild_id,))
             else:
@@ -1382,7 +1446,7 @@ class TaxiDatabase:
                 cursor = await db.execute("""
                     SELECT user_id, discord_id, discord_guild_id, username, 
                            display_name, created_at, last_active
-                    FROM taxi_users 
+                    FROM users 
                     WHERE user_id = ?
                 """, (user_id,))
                 
@@ -1415,7 +1479,7 @@ class TaxiDatabase:
                 # Primero obtener el user_id interno usando el discord_id (NO discord_user_id)
                 cursor = await db.execute("""
                     SELECT tu.user_id 
-                    FROM taxi_users tu
+                    FROM users tu
                     WHERE tu.discord_id = ?
                 """, (str(discord_user_id),))
                 user_data = await cursor.fetchone()
@@ -1485,9 +1549,9 @@ class TaxiDatabase:
                     WHERE user_id = ?
                 """, (amount, user_id))
                 
-                # También actualizar last_active en taxi_users
+                # También actualizar last_active en users
                 await db.execute("""
-                    UPDATE taxi_users 
+                    UPDATE users 
                     SET last_active = CURRENT_TIMESTAMP
                     WHERE user_id = ?
                 """, (user_id,))
@@ -1574,7 +1638,7 @@ class TaxiDatabase:
                 # Verificar saldo del usuario una vez más
                 cursor = await db.execute("""
                     SELECT ba.balance 
-                    FROM taxi_users tu
+                    FROM users tu
                     LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
                     WHERE tu.user_id = ?
                 """, (user_id,))
@@ -1592,9 +1656,9 @@ class TaxiDatabase:
                     WHERE user_id = ?
                 """, (price, user_id))
                 
-                # También actualizar last_active en taxi_users
+                # También actualizar last_active en users
                 await db.execute("""
-                    UPDATE taxi_users 
+                    UPDATE users 
                     SET last_active = CURRENT_TIMESTAMP
                     WHERE user_id = ?
                 """, (user_id,))
@@ -1746,7 +1810,7 @@ class TaxiDatabase:
                     SELECT sp.purchase_id, sp.pack_id, sp.tier, sp.amount_paid, 
                            sp.purchased_at, tu.discord_id, tu.display_name
                     FROM shop_purchases sp
-                    JOIN taxi_users tu ON sp.user_id = tu.user_id
+                    users tu ON sp.user_id = tu.user_id
                     WHERE sp.status = 'pending' AND sp.guild_id = ?
                     ORDER BY sp.purchased_at ASC
                 """, (guild_id,))
@@ -1776,7 +1840,7 @@ class TaxiDatabase:
                 cursor = await db.execute("""
                     SELECT sp.*, tu.discord_id, tu.display_name
                     FROM shop_purchases sp
-                    JOIN taxi_users tu ON sp.user_id = tu.user_id
+                    users tu ON sp.user_id = tu.user_id
                     WHERE sp.purchase_id = ?
                 """, (purchase_id,))
                 
@@ -2027,7 +2091,7 @@ class TaxiDatabase:
                            tr.estimated_cost, tr.final_cost, tr.created_at, tr.accepted_at,
                            tu.discord_id as passenger_discord_id, tu.display_name as passenger_name
                     FROM taxi_requests tr
-                    JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                    users tu ON tr.passenger_id = tu.user_id
                     WHERE tr.driver_id = ? AND tr.status = 'accepted'
                     ORDER BY tr.accepted_at DESC
                 """, (driver_id,))
@@ -2106,7 +2170,7 @@ class TaxiDatabase:
                     # Obtener cuentas bancarias
                     cursor = await db.execute("""
                         SELECT ba.account_number FROM bank_accounts ba
-                        JOIN taxi_users tu ON ba.user_id = tu.user_id
+                        users tu ON ba.user_id = tu.user_id
                         WHERE tu.user_id = ? LIMIT 1
                     """, (passenger_id,))
                     passenger_account = await cursor.fetchone()
@@ -2321,7 +2385,7 @@ class TaxiDatabase:
                     SELECT td.driver_id, td.total_rides, td.total_earnings, td.rating,
                            td.vehicle_type, tu.display_name, td.created_at
                     FROM taxi_drivers td
-                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    users tu ON td.user_id = tu.user_id
                     WHERE tu.discord_guild_id = ? AND td.total_rides > 0
                     ORDER BY td.total_rides DESC, td.rating DESC, td.total_earnings DESC
                     LIMIT ?
@@ -2366,7 +2430,7 @@ class TaxiDatabase:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
-                    "UPDATE taxi_users SET language = ? WHERE user_id = ?",
+                    "UPDATE users SET language = ? WHERE user_id = ?",
                     (language, user_id)
                 )
                 await db.commit()
@@ -2382,7 +2446,7 @@ class TaxiDatabase:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT language FROM taxi_users WHERE user_id = ?",
+                    "SELECT language FROM users WHERE user_id = ?",
                     (user_id,)
                 )
                 result = await cursor.fetchone()
@@ -2402,12 +2466,12 @@ class TaxiDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 if guild_id:
                     cursor = await db.execute(
-                        "SELECT language FROM taxi_users WHERE discord_id = ? AND discord_guild_id = ?",
+                        "SELECT language FROM users WHERE discord_id = ? AND discord_guild_id = ?",
                         (discord_id, guild_id)
                     )
                 else:
                     cursor = await db.execute(
-                        "SELECT language FROM taxi_users WHERE discord_id = ?",
+                        "SELECT language FROM users WHERE discord_id = ?",
                         (discord_id,)
                     )
                 

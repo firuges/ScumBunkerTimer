@@ -614,7 +614,7 @@ class ResetAlertsAdmin(commands.Cog):
             # Contar usuarios con UTC
             async with aiosqlite.connect("taxi_system.db") as db:
                 cursor = await db.execute("""
-                    SELECT COUNT(*) FROM taxi_users 
+                    SELECT COUNT(*) FROM users 
                     WHERE timezone = 'UTC' OR timezone IS NULL
                 """)
                 utc_count = (await cursor.fetchone())[0]
@@ -643,7 +643,7 @@ class ResetAlertsAdmin(commands.Cog):
                 if not dry_run:
                     # Ejecutar migración real
                     cursor = await db.execute("""
-                        UPDATE taxi_users 
+                        UPDATE users 
                         SET timezone = ? 
                         WHERE timezone = 'UTC' OR timezone IS NULL
                     """, (target_timezone,))
@@ -664,7 +664,7 @@ class ResetAlertsAdmin(commands.Cog):
                     # Mostrar algunos ejemplos
                     cursor = await db.execute("""
                         SELECT discord_id, username, discord_guild_id 
-                        FROM taxi_users 
+                        FROM users 
                         WHERE timezone = 'UTC' OR timezone IS NULL
                         LIMIT 10
                     """)

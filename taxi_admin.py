@@ -639,7 +639,7 @@ class TaxiSystemView(discord.ui.View):
                 async with aiosqlite.connect(taxi_db.db_path) as db:
                     cursor = await db.execute("""
                         SELECT user_id, discord_id, discord_guild_id, username, display_name 
-                        FROM taxi_users 
+                        FROM users 
                         WHERE discord_id = ?
                         ORDER BY last_active DESC 
                         LIMIT 1
@@ -657,7 +657,7 @@ class TaxiSystemView(discord.ui.View):
                         logger.debug(f"✅ Usuario encontrado con búsqueda alternativa: guild_id={result[2]}")
             
             if not user_data:
-                logger.debug(f"❌ Usuario {user_id} no encontrado en taxi_users")
+                logger.debug(f"❌ Usuario {user_id} no encontrado en users")
                 return None
             
             # Consultar la base de datos real con el user_id interno
@@ -687,7 +687,7 @@ class TaxiSystemView(discord.ui.View):
             user_data = await get_user_by_discord_id(str(user_id), str(guild_id))
             
             if not user_data:
-                logger.debug(f"❌ Usuario {user_id} no encontrado en taxi_users")
+                logger.debug(f"❌ Usuario {user_id} no encontrado en users")
                 return None
             
             # Obtener información del conductor
@@ -916,7 +916,7 @@ class TaxiSystemView(discord.ui.View):
                            tr.final_cost, tr.completed_at, td.license_number, tu_driver.display_name as driver_name
                     FROM taxi_requests tr
                     JOIN taxi_drivers td ON tr.driver_id = td.driver_id
-                    JOIN taxi_users tu_driver ON td.user_id = tu_driver.user_id
+                    JOIN users tu_driver ON td.user_id = tu_driver.user_id
                     LEFT JOIN taxi_ratings rating ON rating.request_id = tr.request_id AND rating.rater_id = ?
                     WHERE tr.passenger_id = ? 
                     AND tr.status = 'completed' 
@@ -3561,7 +3561,7 @@ class UpdateInGameNameModal(discord.ui.Modal, title="🎮 Actualizar Nombre InGa
         try:
             async with aiosqlite.connect(taxi_db.db_path) as db:
                 await db.execute(
-                    "UPDATE taxi_users SET ingame_name = ? WHERE discord_id = ? AND discord_guild_id = ?",
+                    "UPDATE users SET ingame_name = ? WHERE discord_id = ? AND discord_guild_id = ?",
                     (new_name, str(interaction.user.id), str(interaction.guild.id))
                 )
                 await db.commit()
@@ -3693,6 +3693,30 @@ class WelcomeSystemView(discord.ui.View):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
             
+            # Verificar y actualizar timezone si es necesario
+            current_timezone = user_data.get('timezone')
+            timezone_updated = False
+            
+            if not current_timezone or current_timezone in ['UTC', '', 'null']:
+                from taxi_database import detect_user_timezone, taxi_db
+                
+                # Detectar timezone actual del sistema
+                detected_tz = detect_user_timezone()
+                logger.info(f"🔄 Usuario {interaction.user.display_name} tiene timezone '{current_timezone}', actualizando a '{detected_tz}'")
+                
+                # Actualizar timezone del usuario
+                success = await taxi_db.update_user_timezone(
+                    str(interaction.user.id),
+                    str(interaction.guild.id), 
+                    detected_tz
+                )
+                
+                if success:
+                    # Actualizar los datos locales para mostrar el nuevo timezone
+                    user_data['timezone'] = detected_tz
+                    timezone_updated = True
+                    logger.info(f"✅ Timezone actualizado para {interaction.user.display_name}: {detected_tz}")
+            
             # Crear embed con información del usuario
             embed = discord.Embed(
                 title="📋 Tu Estado en el Sistema",
@@ -3755,6 +3779,15 @@ class WelcomeSystemView(discord.ui.View):
                     value=f"**Timezone:** {user_data.get('timezone', 'UTC')}\n**Sistema:** Activo",
                     inline=True
                 )
+            
+            # Agregar notificación si el timezone fue actualizado
+            if timezone_updated:
+                embed.add_field(
+                    name="🔄 Timezone Actualizado",
+                    value=f"Tu zona horaria ha sido detectada y actualizada a: **{user_data.get('timezone')}**",
+                    inline=False
+                )
+                embed.color = discord.Color.green()  # Cambiar a verde para indicar actualización
             
             embed.set_footer(text=f"Sistema SCUM • Usuario ID: {user_data.get('user_id')}")
             
@@ -4932,7 +4965,7 @@ class TaxiAdminCommands(commands.Cog):
                 # Contar usuarios registrados
                 async with aiosqlite.connect(taxi_db.db_path) as db:
                     cursor = await db.execute(
-                        "SELECT COUNT(*) FROM taxi_users WHERE discord_guild_id = ?", 
+                        "SELECT COUNT(*) FROM users WHERE discord_guild_id = ?", 
                         (guild_id,)
                     )
                     result = await cursor.fetchone()
@@ -4941,7 +4974,7 @@ class TaxiAdminCommands(commands.Cog):
                     # Contar conductores activos
                     cursor = await db.execute(
                         """SELECT COUNT(*) FROM taxi_drivers td 
-                           JOIN taxi_users tu ON td.user_id = tu.user_id 
+                           JOIN users tu ON td.user_id = tu.user_id 
                            WHERE tu.discord_guild_id = ? AND td.status != 'inactive'""", 
                         (guild_id,)
                     )
@@ -4951,7 +4984,7 @@ class TaxiAdminCommands(commands.Cog):
                     # Contar viajes completados
                     cursor = await db.execute(
                         """SELECT COUNT(*) FROM taxi_requests tr 
-                           JOIN taxi_users tu ON tr.passenger_id = tu.user_id 
+                           JOIN users tu ON tr.passenger_id = tu.user_id 
                            WHERE tu.discord_guild_id = ? AND tr.status = 'completed'""", 
                         (guild_id,)
                     )
@@ -4962,7 +4995,7 @@ class TaxiAdminCommands(commands.Cog):
                     cursor = await db.execute(
                         """SELECT COUNT(*) FROM bank_transactions bt
                            JOIN bank_accounts ba ON bt.to_account = ba.account_number
-                           JOIN taxi_users tu ON ba.user_id = tu.user_id
+                           users tu ON ba.user_id = tu.user_id
                            WHERE tu.discord_guild_id = ?""", 
                         (guild_id,)
                     )
@@ -5300,7 +5333,7 @@ class TaxiAdminCommands(commands.Cog):
                     cursor = await db.execute("""
                         SELECT tr.request_id, tr.passenger_id, tu.discord_id, tu.display_name
                         FROM taxi_requests tr
-                        JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                        users tu ON tr.passenger_id = tu.user_id
                         WHERE tr.status = 'pending' 
                         AND tu.discord_guild_id = ?
                         AND datetime(tr.created_at) < ?
@@ -6827,7 +6860,7 @@ class AdminPanelView(BaseView):
                            tu.discord_id, tu.display_name, tu.ingame_name, COALESCE(ba.balance, 0.00) as balance,
                            td.created_at, td.last_activity
                     FROM taxi_drivers td
-                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    users tu ON td.user_id = tu.user_id
                     LEFT JOIN bank_accounts ba ON tu.user_id = ba.user_id
                     WHERE tu.discord_guild_id = ?
                     ORDER BY td.created_at DESC
@@ -7497,7 +7530,38 @@ class AdminPanelView(BaseView):
                 inline=False
             )
             
-            embed.set_footer(text=f"Solicitado por {interaction.user.display_name}")
+            # Actualizar timezone del admin actual
+            from taxi_database import taxi_db
+            admin_updated = await taxi_db.update_user_timezone(
+                str(interaction.user.id), 
+                str(interaction.guild.id), 
+                detected_timezone
+            )
+            
+            if admin_updated:
+                embed.add_field(
+                    name="✅ Admin Actualizado",
+                    value=f"Tu timezone ha sido actualizado a: `{detected_timezone}`",
+                    inline=False
+                )
+            
+            # Verificar usuarios sin timezone
+            users_updated = await taxi_db.update_users_without_timezone(str(interaction.guild.id))
+            
+            if users_updated > 0:
+                embed.add_field(
+                    name="🔄 Usuarios Actualizados",
+                    value=f"Se actualizó el timezone de **{users_updated}** usuarios que no lo tenían configurado.",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="✅ Usuarios al Día",
+                    value="Todos los usuarios ya tienen timezone configurado.",
+                    inline=False
+                )
+            
+            embed.set_footer(text=f"Solicitado por {interaction.user.display_name} • Timezone actualizado")
             
             await interaction.followup.send(embed=embed, ephemeral=True)
             
@@ -7826,7 +7890,7 @@ class TripRatingModal(discord.ui.Modal):
                     async with aiosqlite.connect(taxi_db.db_path) as db:
                         cursor = await db.execute("""
                             SELECT tu.discord_id FROM taxi_drivers td
-                            JOIN taxi_users tu ON td.user_id = tu.user_id
+                            users tu ON td.user_id = tu.user_id
                             WHERE td.driver_id = ?
                         """, (driver_id,))
                         

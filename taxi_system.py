@@ -898,7 +898,7 @@ class TaxiSystem(commands.Cog):
                            tr.estimated_cost, tr.vehicle_type, tr.created_at,
                            tu.discord_id as passenger_discord_id, tu.display_name as passenger_name
                     FROM taxi_requests tr
-                    JOIN taxi_users tu ON tr.passenger_id = tu.user_id
+                    JOIN users tu ON tr.passenger_id = tu.user_id
                     WHERE tr.request_id = ? AND tr.status = 'pending'
                 """, (request_id,))
                 
@@ -916,11 +916,11 @@ class TaxiSystem(commands.Cog):
                     SELECT td.driver_id, td.user_id, td.vehicle_type, td.rating, td.total_rides,
                            tu.discord_id, tu.display_name, tu.discord_guild_id
                     FROM taxi_drivers td
-                    JOIN taxi_users tu ON td.user_id = tu.user_id
+                    JOIN users tu ON td.user_id = tu.user_id
                     WHERE td.status = 'available' 
                     AND (td.vehicle_type = ? OR td.vehicle_type LIKE '%' || ? || '%')
                     AND tu.discord_guild_id = (
-                        SELECT discord_guild_id FROM taxi_users 
+                        SELECT discord_guild_id FROM users 
                         WHERE user_id = ? LIMIT 1
                     )
                     ORDER BY td.rating DESC, td.total_rides DESC

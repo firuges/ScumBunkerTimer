@@ -96,8 +96,6 @@ class SCUMServerMonitor:
                     # Log para debugging
                     if 'data' in data:
                         attrs = data['data'].get('attributes', {})
-                        logger.info(f"Server name: {attrs.get('name', 'Unknown')}")
-                        logger.info(f"Raw attributes - players: {attrs.get('players')}, maxPlayers: {attrs.get('maxPlayers')}, status: {attrs.get('status')}")
                     
                     return self._parse_server_data(data['data'])
                 else:

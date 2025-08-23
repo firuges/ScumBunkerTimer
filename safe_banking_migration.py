@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 MIGRACIÓN BANCARIA UNIFICADA SEGURA
-Consolida users, taxi_users y bank_accounts en bank_accounts como fuente única
+Consolida users, users y bank_accounts en bank_accounts como fuente única
 Preserva el balance más alto y todos los datos críticos
 """
 
@@ -28,22 +28,22 @@ class SafeBankingMigration:
             cursor = await db.execute("SELECT COUNT(*) FROM users")
             users_count = (await cursor.fetchone())[0]
             
-            cursor = await db.execute("SELECT COUNT(*) FROM taxi_users") 
-            taxi_users_count = (await cursor.fetchone())[0]
+            cursor = await db.execute("SELECT COUNT(*) FROM users") 
+            users_count = (await cursor.fetchone())[0]
             
             cursor = await db.execute("SELECT COUNT(*) FROM bank_accounts")
             bank_accounts_count = (await cursor.fetchone())[0]
             
             logger.info(f"📊 Estado actual:")
             logger.info(f"   - users: {users_count} registros")
-            logger.info(f"   - taxi_users: {taxi_users_count} registros") 
+            logger.info(f"   - users: {users_count} registros") 
             logger.info(f"   - bank_accounts: {bank_accounts_count} registros")
             
             # Verificar usuarios con dinero
             cursor = await db.execute("SELECT COUNT(*) FROM users WHERE balance > 0")
             users_with_money = (await cursor.fetchone())[0]
             
-            cursor = await db.execute("SELECT COUNT(*) FROM taxi_users WHERE balance > 0")
+            cursor = await db.execute("SELECT COUNT(*) FROM users WHERE balance > 0")
             taxi_with_money = (await cursor.fetchone())[0]
             
             cursor = await db.execute("SELECT COUNT(*) FROM bank_accounts WHERE balance > 0")
@@ -51,12 +51,12 @@ class SafeBankingMigration:
             
             logger.info(f"💰 Usuarios con dinero:")
             logger.info(f"   - users: {users_with_money}")
-            logger.info(f"   - taxi_users: {taxi_with_money}")
+            logger.info(f"   - users: {taxi_with_money}")
             logger.info(f"   - bank_accounts: {bank_with_money}")
             
             return {
                 'users_count': users_count,
-                'taxi_users_count': taxi_users_count,
+                'users_count': users_count,
                 'bank_accounts_count': bank_accounts_count,
                 'users_with_money': users_with_money,
                 'taxi_with_money': taxi_with_money,
@@ -69,18 +69,18 @@ class SafeBankingMigration:
         
         conflicts = []
         async with aiosqlite.connect(self.db_path) as db:
-            # Buscar usuarios que están en users y taxi_users
+            # Buscar usuarios que están en users y users
             cursor = await db.execute("""
                 SELECT u.user_id, u.discord_id, u.username, u.balance as users_balance,
                        t.balance as taxi_balance, u.ingame_name, t.ingame_name as taxi_ingame
                 FROM users u
-                JOIN taxi_users t ON u.discord_id = t.discord_id AND u.discord_guild_id = t.discord_guild_id
+                users t ON u.discord_id = t.discord_id AND u.discord_guild_id = t.discord_guild_id
             """)
             
             user_taxi_conflicts = await cursor.fetchall()
             for conflict in user_taxi_conflicts:
                 conflicts.append({
-                    'type': 'users_vs_taxi_users',
+                    'type': 'users_vs_users',
                     'user_id': conflict[0],
                     'discord_id': conflict[1],
                     'username': conflict[2],
@@ -90,7 +90,7 @@ class SafeBankingMigration:
                     'taxi_ingame': conflict[6]
                 })
                 logger.warning(f"⚠️ Conflicto encontrado - Usuario: {conflict[2]}")
-                logger.warning(f"   Balance users: ${conflict[3]} vs taxi_users: ${conflict[4]}")
+                logger.warning(f"   Balance users: ${conflict[3]} vs users: ${conflict[4]}")
                 
             # Buscar usuarios que están en users y bank_accounts
             cursor = await db.execute("""
@@ -141,10 +141,10 @@ class SafeBankingMigration:
                 username = user[3]
                 balance_users = user[5] or 0.0
                 
-                # Buscar balance en taxi_users para este usuario
+                # Buscar balance en users para este usuario
                 cursor = await db.execute("""
                     SELECT balance, ingame_name, timezone 
-                    FROM taxi_users 
+                    FROM users 
                     WHERE discord_id = ? AND discord_guild_id = ?
                 """, (discord_id, guild_id))
                 

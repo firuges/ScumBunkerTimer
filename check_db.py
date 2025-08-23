@@ -18,10 +18,10 @@ async def check_db():
             for col in columns:
                 print(f'{col[1]} ({col[2]})')
             
-            # Ver estructura de taxi_users 
-            cursor = await db.execute('PRAGMA table_info(taxi_users)')
+            # Ver estructura de users 
+            cursor = await db.execute('PRAGMA table_info(users)')
             columns = await cursor.fetchall()
-            print('\n=== ESTRUCTURA DE taxi_users ===')
+            print('\n=== ESTRUCTURA DE users ===')
             for col in columns:
                 print(f'{col[1]} ({col[2]})')
             
@@ -42,7 +42,7 @@ async def check_db():
                 print('❌ No encontrada por UUID')
             
             # Ver usuarios
-            cursor = await db.execute("SELECT user_id, discord_id, discord_guild_id FROM taxi_users WHERE discord_id = '418198613210955776'")
+            cursor = await db.execute("SELECT user_id, discord_id, discord_guild_id FROM users WHERE discord_id = '418198613210955776'")
             user_row = await cursor.fetchone()
             print(f'\n=== USUARIO ===')
             if user_row:
@@ -58,7 +58,7 @@ async def check_db():
                 print('❌ Usuario no encontrado')
                 
                 # Ver todos los usuarios para debug
-                cursor = await db.execute("SELECT user_id, discord_id, discord_guild_id FROM taxi_users")
+                cursor = await db.execute("SELECT user_id, discord_id, discord_guild_id FROM users")
                 all_users = await cursor.fetchall()
                 print(f'\n=== TODOS LOS USUARIOS ===')
                 for user in all_users:

@@ -15,7 +15,7 @@ Este directorio contiene bases de datos legacy que ya no se utilizan activamente
 - **Razón del backup**: Base de pruebas no necesaria en producción
 
 ## ⚠️ Importante:
-- **NO REMOVER** taxi_users de scum_main.db - Es fundamental para el sistema de taxis
+- **NO REMOVER** users de scum_main.db - Es fundamental para el sistema de taxis
 - **MANTENER** taxi_system.db - Base secundaria del sistema de taxis
 - **bunkers_v2.db** - BunkerAdvice_V2.py actualizado para usar scum_main.db (puede moverse cuando no esté en uso)
 

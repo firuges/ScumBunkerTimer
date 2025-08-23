@@ -36,17 +36,17 @@ class UserManager:
             return
             
         async with aiosqlite.connect(self.db_path) as db:
-            # Verificar si tabla taxi_users existe
+            # Verificar si tabla users existe
             cursor = await db.execute("""
                 SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='taxi_users'
+                WHERE type='table' AND name='users'
             """)
             table_exists = await cursor.fetchone()
             
             if not table_exists:
                 # Crear tabla nueva con estructura completa
                 await db.execute("""
-                    CREATE TABLE taxi_users (
+                    CREATE TABLE users (
                         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                         discord_id TEXT NOT NULL,
                         discord_guild_id TEXT NOT NULL,
@@ -66,13 +66,13 @@ class UserManager:
                 """)
             else:
                 # Verificar y agregar columna balance si no existe
-                cursor = await db.execute("PRAGMA table_info(taxi_users)")
+                cursor = await db.execute("PRAGMA table_info(users)")
                 columns = await cursor.fetchall()
                 column_names = [col[1] for col in columns]
                 
                 if 'balance' not in column_names:
-                    await db.execute("ALTER TABLE taxi_users ADD COLUMN balance REAL DEFAULT 0.0")
-                    logger.info("Agregada columna 'balance' a tabla taxi_users")
+                    await db.execute("ALTER TABLE users ADD COLUMN balance REAL DEFAULT 0.0")
+                    logger.info("Agregada columna 'balance' a tabla users")
             
             # Tabla de transacciones (movida de taxi_database para centralizar)
             await db.execute("""
@@ -95,7 +95,7 @@ class UserManager:
                     user_id INTEGER NOT NULL,
                     amount REAL NOT NULL,
                     claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES taxi_users(user_id)
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
                 )
             """)
             
@@ -118,7 +118,7 @@ class UserManager:
             try:
                 # Verificar si ya existe
                 cursor = await db.execute(
-                    "SELECT user_id FROM taxi_users WHERE discord_id = ? AND discord_guild_id = ?",
+                    "SELECT user_id FROM users WHERE discord_id = ? AND discord_guild_id = ?",
                     (discord_id, guild_id)
                 )
                 existing = await cursor.fetchone()
@@ -133,7 +133,7 @@ class UserManager:
                 
                 # Registrar usuario con estructura existente
                 cursor = await db.execute("""
-                    INSERT INTO taxi_users (discord_id, discord_guild_id, username, display_name, 
+                    INSERT INTO users (discord_id, discord_guild_id, username, display_name, 
                                           welcome_pack_claimed, timezone, ingame_name, balance, language)
                     VALUES (?, ?, ?, ?, TRUE, ?, ?, 1000.0, 'es')
                 """, (discord_id, guild_id, username, display_name, timezone, ingame_name))
@@ -247,7 +247,7 @@ class UserManager:
         
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                UPDATE taxi_users 
+                UPDATE users 
                 SET last_active = CURRENT_TIMESTAMP
                 WHERE user_id = ?
             """, (user_id,))
@@ -265,7 +265,7 @@ class UserManager:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
-                    "UPDATE taxi_users SET language = ? WHERE user_id = ?",
+                    "UPDATE users SET language = ? WHERE user_id = ?",
                     (language, user_id)
                 )
                 await db.commit()
@@ -285,7 +285,7 @@ class UserManager:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "SELECT language FROM taxi_users WHERE user_id = ?",
+                    "SELECT language FROM users WHERE user_id = ?",
                     (user_id,)
                 )
                 result = await cursor.fetchone()
@@ -308,12 +308,12 @@ class UserManager:
             async with aiosqlite.connect(self.db_path) as db:
                 if guild_id:
                     cursor = await db.execute(
-                        "SELECT language FROM taxi_users WHERE discord_id = ? AND discord_guild_id = ?",
+                        "SELECT language FROM users WHERE discord_id = ? AND discord_guild_id = ?",
                         (discord_id, guild_id)
                     )
                 else:
                     cursor = await db.execute(
-                        "SELECT language FROM taxi_users WHERE discord_id = ?",
+                        "SELECT language FROM users WHERE discord_id = ?",
                         (discord_id,)
                     )
                 
@@ -335,7 +335,7 @@ class UserManager:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
-                    UPDATE taxi_users 
+                    UPDATE users 
                     SET timezone = ? 
                     WHERE discord_id = ? AND discord_guild_id = ?
                 """, (timezone, discord_id, guild_id))
@@ -567,11 +567,11 @@ class UserManager:
         async with aiosqlite.connect(self.db_path) as db:
             if guild_id:
                 cursor = await db.execute(
-                    "SELECT COUNT(*) FROM taxi_users WHERE discord_guild_id = ?", 
+                    "SELECT COUNT(*) FROM users WHERE discord_guild_id = ?", 
                     (guild_id,)
                 )
             else:
-                cursor = await db.execute("SELECT COUNT(*) FROM taxi_users")
+                cursor = await db.execute("SELECT COUNT(*) FROM users")
             
             result = await cursor.fetchone()
             return result[0] if result else 0
@@ -669,7 +669,7 @@ async def user_exists(user_id: int) -> bool:
     try:
         async with aiosqlite.connect(user_manager.db_path) as db:
             cursor = await db.execute(
-                "SELECT user_id FROM taxi_users WHERE discord_id = ? LIMIT 1",
+                "SELECT user_id FROM users WHERE discord_id = ? LIMIT 1",
                 (str(user_id),)
             )
             result = await cursor.fetchone()
@@ -688,7 +688,7 @@ async def get_user(user_id: int) -> Optional[Dict]:
                 SELECT user_id, discord_id, discord_guild_id, username, display_name, 
                        COALESCE(balance, 0.0) as balance, timezone, language, ingame_name, 
                        last_active, created_at, welcome_pack_claimed, status
-                FROM taxi_users 
+                FROM users 
                 WHERE discord_id = ?
                 LIMIT 1
             """, (str(user_id),))
