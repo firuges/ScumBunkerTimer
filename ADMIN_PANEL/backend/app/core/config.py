@@ -60,9 +60,12 @@ def get_database_url() -> str:
     if os.path.isabs(settings.DATABASE_URL):
         return f"sqlite:///{settings.DATABASE_URL}"
     
-    # Relative path - resolve based on backend directory
-    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    db_path = os.path.join(backend_dir, settings.DATABASE_URL)
+    # Relative path - resolve based on project root directory
+    # Go up from backend/app/core to the project root where scum_main.db is located
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    # Go up one more level to reach ScumBunkerTimer root
+    project_root = os.path.dirname(backend_dir)
+    db_path = os.path.join(project_root, "scum_main.db")
     return f"sqlite:///{db_path}"
 
 def is_development() -> bool:

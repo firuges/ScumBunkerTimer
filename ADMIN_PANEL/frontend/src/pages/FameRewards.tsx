@@ -135,7 +135,7 @@ export const FameRewards: React.FC = () => {
           title={editingReward ? 'Editar Recompensa' : 'Nueva Recompensa'}
         >
           <FameRewardForm
-            reward={editingReward}
+            reward={editingReward || undefined}
             onSave={handleSave}
             onCancel={() => {
               setShowModal(false);

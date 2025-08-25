@@ -1,0 +1,1 @@
+# Analytics module for SCUM Bot Admin Panel

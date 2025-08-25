@@ -13,12 +13,14 @@ import {
   TruckIcon,
   BanknotesIcon,
   WrenchScrewdriverIcon,
+  CubeIcon,
   UsersIcon,
   DocumentTextIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   Bars3Icon,
   XMarkIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 interface NavigationItem {
@@ -34,8 +36,10 @@ const navigation: NavigationItem[] = [
   { name: 'Fame Points', href: '/fame-rewards', icon: TrophyIcon },
   { name: 'Taxi System', href: '/taxi-config', icon: TruckIcon },
   { name: 'Banking', href: '/banking', icon: BanknotesIcon },
-  { name: 'Mechanics', href: '/mechanics', icon: WrenchScrewdriverIcon },
+  { name: 'Mechanics', href: '/mechanic', icon: WrenchScrewdriverIcon },
+  { name: 'Bunkers', href: '/bunkers', icon: CubeIcon },
   { name: 'Analytics', href: '/analytics', icon: ChartBarIcon },
+  { name: 'Super Admin', href: '/superadmin', icon: ShieldCheckIcon, badge: 'OWNER' },
   { name: 'User Management', href: '/users', icon: UsersIcon },
   { name: 'Audit Logs', href: '/logs', icon: DocumentTextIcon },
   { name: 'Settings', href: '/settings', icon: CogIcon },

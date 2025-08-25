@@ -105,23 +105,42 @@ class DatabaseManager:
     async def init_admin_tables(self):
         """Initialize admin panel specific tables"""
         try:
-            # Read and execute admin panel tables SQL
+            # Read and execute basic fame tables SQL first
             import os
-            sql_file = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                "..", "..", "create_admin_panel_tables.sql"
-            )
             
-            if os.path.exists(sql_file):
-                with open(sql_file, 'r', encoding='utf-8') as f:
+            # Get project root (ScumBunkerTimer directory)
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            project_root = os.path.dirname(backend_dir)
+            
+            fame_sql_file = os.path.join(project_root, "create_fame_tables.sql")
+            
+            if os.path.exists(fame_sql_file):
+                with open(fame_sql_file, 'r', encoding='utf-8') as f:
                     sql_content = f.read()
                 
                 conn = await self.connect()
                 await conn.executescript(sql_content)
                 await conn.commit()
+                logger.info("✅ Fame rewards tables initialized successfully")
+            else:
+                logger.warning(f"⚠️ Fame tables SQL file not found: {fame_sql_file}")
+            
+            # Also try to execute full admin panel tables SQL
+            admin_sql_file = os.path.join(
+                os.path.dirname(project_root), 
+                "ADMIN_PANEL", "create_admin_panel_tables.sql"
+            )
+            
+            if os.path.exists(admin_sql_file):
+                with open(admin_sql_file, 'r', encoding='utf-8') as f:
+                    admin_sql_content = f.read()
+                
+                conn = await self.connect()
+                await conn.executescript(admin_sql_content)
+                await conn.commit()
                 logger.info("✅ Admin panel tables initialized successfully")
             else:
-                logger.warning(f"⚠️ Admin tables SQL file not found: {sql_file}")
+                logger.warning(f"⚠️ Admin tables SQL file not found: {admin_sql_file}")
                 
         except Exception as e:
             logger.error(f"❌ Error initializing admin tables: {e}")

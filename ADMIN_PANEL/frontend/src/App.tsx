@@ -5,7 +5,11 @@ import LoginPage from './components/auth/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { FameRewards } from './pages/FameRewards';
 import { TaxiConfig } from './pages/TaxiConfig';
-import { BankingConfig } from './pages/BankingConfig';
+import { BankingConfigPage } from './pages/BankingConfig';
+import MechanicConfigPage from './pages/MechanicConfig';
+import AnalyticsPage from './pages/Analytics';
+import { BunkersConfig } from './pages/BunkersConfig';
+import SuperAdminPanel from './pages/SuperAdmin';
 import { useAuthStore } from './store/authStore';
 import NotificationContainer from './components/ui/NotificationContainer';
 import './App.css';
@@ -28,7 +32,11 @@ function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/fame-rewards" element={<FameRewards />} />
                   <Route path="/taxi-config" element={<TaxiConfig />} />
-                  <Route path="/banking" element={<BankingConfig />} />
+                  <Route path="/banking" element={<BankingConfigPage />} />
+                  <Route path="/mechanic" element={<MechanicConfigPage />} />
+                  <Route path="/bunkers" element={<BunkersConfig />} />
+                  <Route path="/analytics" element={<AnalyticsPage />} />
+                  <Route path="/superadmin" element={<SuperAdminPanel />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>

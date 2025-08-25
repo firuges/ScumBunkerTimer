@@ -1,370 +1,313 @@
-import React, { useState } from 'react';
-import { BanknotesIcon, CogIcon, ChartBarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import React, { useState, useEffect } from 'react';
+import { CogIcon, BanknotesIcon, ClockIcon } from '@heroicons/react/24/outline';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import { bankingAPI, BankingConfig, BankingConfigUpdate } from '../api/banking';
 
-export const BankingConfig: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('general');
+export const BankingConfigPage: React.FC = () => {
+  const [config, setConfig] = useState<BankingConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const tabs = [
-    { id: 'general', name: 'Configuración General', icon: CogIcon },
-    { id: 'interest', name: 'Tasas de Interés', icon: BanknotesIcon },
-    { id: 'transactions', name: 'Transacciones', icon: ChartBarIcon },
-    { id: 'schedules', name: 'Horarios', icon: ClockIcon },
-  ];
+  // Mock guild ID - in real app this would come from auth context
+  const guildId = '123456789';
+
+  // Load config from API
+  useEffect(() => {
+    loadConfig();
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await bankingAPI.getConfig(guildId);
+      setConfig(data);
+    } catch (err: any) {
+      console.error('Error loading banking config:', err);
+      setError('Failed to load banking configuration. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!config) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      setSuccess(null);
+
+      const updateData: BankingConfigUpdate = {
+        bank_channel_id: config.bank_channel_id,
+        welcome_bonus: config.welcome_bonus,
+        daily_bonus: config.daily_bonus,
+        min_balance: config.min_balance,
+        max_balance: config.max_balance,
+        transfer_fee_percent: config.transfer_fee_percent,
+        min_transfer_amount: config.min_transfer_amount,
+        max_transfer_amount: config.max_transfer_amount,
+        max_daily_transfers: config.max_daily_transfers,
+        overdraft_enabled: config.overdraft_enabled,
+        overdraft_limit: config.overdraft_limit,
+        interest_rate: config.interest_rate,
+        bank_hours_start: config.bank_hours_start,
+        bank_hours_end: config.bank_hours_end,
+        weekend_enabled: config.weekend_enabled,
+      };
+
+      const updatedConfig = await bankingAPI.updateConfig(updateData, guildId);
+      setConfig(updatedConfig);
+      setSuccess('Banking configuration updated successfully!');
+    } catch (err: any) {
+      console.error('Error updating config:', err);
+      setError('Failed to update banking configuration. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInputChange = (field: keyof BankingConfig, value: any) => {
+    if (!config) return;
+    setConfig({ ...config, [field]: value });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!config) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-600">Failed to load banking configuration.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="py-6">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Sistema Bancario</h1>
-          <p className="mt-2 text-sm text-gray-600">
-            Configura balances iniciales, tasas de interés y límites de transacciones
-          </p>
+        {/* Header */}
+        <div className="md:flex md:items-center md:justify-between mb-8">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl font-bold text-gray-900">Banking Configuration</h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Configure the banking system settings for your Discord server
+            </p>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`${
-                  activeTab === tab.id
-                    ? 'border-indigo-500 text-indigo-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center`}
-              >
-                <tab.icon className="h-4 w-4 mr-2" />
-                {tab.name}
-              </button>
-            ))}
-          </nav>
-        </div>
+        {/* Messages */}
+        {error && (
+          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+            <span className="block sm:inline">{error}</span>
+            <button
+              className="absolute top-0 bottom-0 right-0 px-4 py-3"
+              onClick={() => setError(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
-        {/* Tab Content */}
-        <div className="bg-white rounded-lg shadow p-6">
-          {activeTab === 'general' && (
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Configuración General</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Balance Inicial de Bienvenida
+        {success && (
+          <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
+            <span className="block sm:inline">{success}</span>
+            <button
+              className="absolute top-0 bottom-0 right-0 px-4 py-3"
+              onClick={() => setSuccess(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        <form onSubmit={handleSave} className="space-y-8">
+          {/* General Settings */}
+          <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
+            <div className="md:grid md:grid-cols-3 md:gap-6">
+              <div className="md:col-span-1">
+                <div className="flex items-center">
+                  <CogIcon className="h-6 w-6 text-gray-400 mr-2" />
+                  <h3 className="text-lg font-medium leading-6 text-gray-900">General Settings</h3>
+                </div>
+                <p className="mt-1 text-sm text-gray-600">
+                  Basic configuration for the banking system
+                </p>
+              </div>
+              <div className="mt-5 md:mt-0 md:col-span-2">
+                <div className="grid grid-cols-6 gap-6">
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="bank_channel_id" className="block text-sm font-medium text-gray-700">
+                      Bank Channel ID
                     </label>
                     <input
-                      type="number"
-                      defaultValue="1000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      type="text"
+                      id="bank_channel_id"
+                      value={config.bank_channel_id || ''}
+                      onChange={(e) => handleInputChange('bank_channel_id', e.target.value)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      placeholder="123456789012345678"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Dinero que reciben los nuevos usuarios</p>
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Límite de Transacción Máxima
+
+                  <div className="col-span-6 sm:col-span-3">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={config.weekend_enabled}
+                        onChange={(e) => handleInputChange('weekend_enabled', e.target.checked)}
+                        className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                      />
+                      <label className="ml-2 text-sm text-gray-700">
+                        Enable Weekend Banking
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Money Settings */}
+          <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
+            <div className="md:grid md:grid-cols-3 md:gap-6">
+              <div className="md:col-span-1">
+                <div className="flex items-center">
+                  <BanknotesIcon className="h-6 w-6 text-gray-400 mr-2" />
+                  <h3 className="text-lg font-medium leading-6 text-gray-900">Money Settings</h3>
+                </div>
+                <p className="mt-1 text-sm text-gray-600">
+                  Configure bonuses, limits, and fees
+                </p>
+              </div>
+              <div className="mt-5 md:mt-0 md:col-span-2">
+                <div className="grid grid-cols-6 gap-6">
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="welcome_bonus" className="block text-sm font-medium text-gray-700">
+                      Welcome Bonus
                     </label>
                     <input
                       type="number"
-                      defaultValue="50000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      id="welcome_bonus"
+                      value={config.welcome_bonus}
+                      onChange={(e) => handleInputChange('welcome_bonus', parseInt(e.target.value) || 0)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      min="0"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Máximo dinero por transacción</p>
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Comisión por Transferencia (%)
+
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="daily_bonus" className="block text-sm font-medium text-gray-700">
+                      Daily Bonus
                     </label>
                     <input
                       type="number"
+                      id="daily_bonus"
+                      value={config.daily_bonus}
+                      onChange={(e) => handleInputChange('daily_bonus', parseInt(e.target.value) || 0)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      min="0"
+                    />
+                  </div>
+
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="transfer_fee_percent" className="block text-sm font-medium text-gray-700">
+                      Transfer Fee (%)
+                    </label>
+                    <input
+                      type="number"
+                      id="transfer_fee_percent"
+                      value={config.transfer_fee_percent}
+                      onChange={(e) => handleInputChange('transfer_fee_percent', parseFloat(e.target.value) || 0)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      min="0"
+                      max="100"
                       step="0.1"
-                      defaultValue="2.5"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Porcentaje de comisión por transferir dinero</p>
                   </div>
-                  
-                  <div>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        defaultChecked
-                        className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">Permitir transacciones entre usuarios</span>
+
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="interest_rate" className="block text-sm font-medium text-gray-700">
+                      Interest Rate (%)
                     </label>
-                  </div>
-                  
-                  <div>
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        defaultChecked
-                        className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">Registro de todas las transacciones</span>
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="font-medium text-gray-900 mb-3">Estadísticas Actuales</h3>
-                  <div className="space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Total en circulación:</span>
-                      <span className="text-sm font-semibold">$2,847,390</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Usuarios activos:</span>
-                      <span className="text-sm font-semibold">1,234</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Transacciones hoy:</span>
-                      <span className="text-sm font-semibold">456</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Comisiones generadas:</span>
-                      <span className="text-sm font-semibold">$12,847</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'interest' && (
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Tasas de Interés</h2>
-              <p className="text-gray-600 mb-6">Configura intereses por mantener dinero en el banco</p>
-              
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-900 mb-2">Interés Diario</h3>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        defaultValue="0.5"
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                      />
-                      <span className="text-sm text-gray-500">%</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Interés aplicado cada 24 horas</p>
-                  </div>
-                  
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-900 mb-2">Interés Semanal</h3>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        defaultValue="3.0"
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                      />
-                      <span className="text-sm text-gray-500">%</span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Bonus adicional semanal</p>
-                  </div>
-                  
-                  <div className="border border-gray-200 rounded-lg p-4">
-                    <h3 className="font-medium text-gray-900 mb-2">Balance Mínimo</h3>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-500">$</span>
-                      <input
-                        type="number"
-                        defaultValue="100"
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Mínimo para generar intereses</p>
-                  </div>
-                </div>
-                
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="font-medium text-blue-900 mb-2">Calculadora de Intereses</h3>
-                  <p className="text-sm text-blue-700 mb-3">
-                    Con $10,000 en el banco:
-                  </p>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <div className="font-semibold text-blue-900">Diario</div>
-                      <div className="text-blue-700">+$50.00</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-blue-900">Semanal</div>
-                      <div className="text-blue-700">+$300.00</div>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-blue-900">Mensual</div>
-                      <div className="text-blue-700">+$1,500.00</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'transactions' && (
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Historial de Transacciones</h2>
-              
-              <div className="mb-4">
-                <div className="flex space-x-4">
-                  <input
-                    type="text"
-                    placeholder="Buscar por usuario..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                  <select className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option>Todas las transacciones</option>
-                    <option>Solo transferencias</option>
-                    <option>Solo depósitos</option>
-                    <option>Solo retiros</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                <table className="min-w-full divide-y divide-gray-300">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Usuario</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Tipo</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Cantidad</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    <tr>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Usuario#1234</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Transferencia</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$1,500</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Hace 5 min</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Completada
-                        </span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Usuario#5678</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Depósito</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$2,000</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Hace 12 min</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Completada
-                        </span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Usuario#9012</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Retiro</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">$750</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Hace 1 hora</td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                          Pendiente
-                        </span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'schedules' && (
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Horarios de Operación</h2>
-              <p className="text-gray-600 mb-6">Configura los horarios donde el banco está disponible</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="flex items-center mb-4">
                     <input
-                      type="checkbox"
-                      defaultChecked
-                      className="rounded border-gray-300 text-indigo-600 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200"
+                      type="number"
+                      id="interest_rate"
+                      value={config.interest_rate}
+                      onChange={(e) => handleInputChange('interest_rate', parseFloat(e.target.value) || 0)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                      min="0"
+                      max="100"
+                      step="0.01"
                     />
-                    <span className="ml-2 text-sm font-medium text-gray-700">Banco disponible 24/7</span>
-                  </label>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-50">
-                  <div>
-                    <h3 className="font-medium text-gray-900 mb-3">Horarios por Día</h3>
-                    <div className="space-y-2">
-                      {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((day) => (
-                        <div key={day} className="flex items-center justify-between py-2 border-b border-gray-200">
-                          <span className="text-sm text-gray-600">{day}</span>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="time"
-                              defaultValue="09:00"
-                              className="text-xs border border-gray-300 rounded px-2 py-1"
-                              disabled
-                            />
-                            <span className="text-xs text-gray-400">a</span>
-                            <input
-                              type="time"
-                              defaultValue="18:00"
-                              className="text-xs border border-gray-300 rounded px-2 py-1"
-                              disabled
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h3 className="font-medium text-gray-900 mb-3">Configuraciones Especiales</h3>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 text-indigo-600 shadow-sm"
-                            disabled
-                          />
-                          <span className="ml-2 text-sm text-gray-500">Cerrado en feriados</span>
-                        </label>
-                      </div>
-                      
-                      <div>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 text-indigo-600 shadow-sm"
-                            disabled
-                          />
-                          <span className="ml-2 text-sm text-gray-500">Horario reducido fines de semana</span>
-                        </label>
-                      </div>
-                      
-                      <div>
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            defaultChecked
-                            className="rounded border-gray-300 text-indigo-600 shadow-sm"
-                            disabled
-                          />
-                          <span className="ml-2 text-sm text-gray-500">Intereses se calculan fuera de horario</span>
-                        </label>
-                      </div>
-                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+
+          {/* Banking Hours */}
+          <div className="bg-white shadow px-4 py-5 sm:rounded-lg sm:p-6">
+            <div className="md:grid md:grid-cols-3 md:gap-6">
+              <div className="md:col-span-1">
+                <div className="flex items-center">
+                  <ClockIcon className="h-6 w-6 text-gray-400 mr-2" />
+                  <h3 className="text-lg font-medium leading-6 text-gray-900">Banking Hours</h3>
+                </div>
+                <p className="mt-1 text-sm text-gray-600">
+                  Set operating hours for the bank
+                </p>
+              </div>
+              <div className="mt-5 md:mt-0 md:col-span-2">
+                <div className="grid grid-cols-6 gap-6">
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="bank_hours_start" className="block text-sm font-medium text-gray-700">
+                      Opening Time
+                    </label>
+                    <input
+                      type="time"
+                      id="bank_hours_start"
+                      value={config.bank_hours_start}
+                      onChange={(e) => handleInputChange('bank_hours_start', e.target.value)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                    />
+                  </div>
+
+                  <div className="col-span-6 sm:col-span-3">
+                    <label htmlFor="bank_hours_end" className="block text-sm font-medium text-gray-700">
+                      Closing Time
+                    </label>
+                    <input
+                      type="time"
+                      id="bank_hours_end"
+                      value={config.bank_hours_end}
+                      onChange={(e) => handleInputChange('bank_hours_end', e.target.value)}
+                      className="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-indigo-600 border border-transparent rounded-md shadow-sm py-2 px-4 inline-flex justify-center text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save Configuration'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
